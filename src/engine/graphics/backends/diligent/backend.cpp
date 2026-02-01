@@ -806,8 +806,6 @@ void DiligentBackend::renderUiOverlay() {
         return;
     }
     context_->SetRenderTargets(1, &rtv, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-    const float clearColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    context_->ClearRenderTarget(rtv, clearColor, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     const auto& scDesc = swapChain_->GetDesc();
     Diligent::Viewport vp{};

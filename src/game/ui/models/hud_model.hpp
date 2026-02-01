@@ -29,6 +29,8 @@ struct HudModel {
     HudDialog dialog;
     HudVisibility visibility;
     std::array<float, 4> hudBackgroundColor{0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 4> hudTextColor{1.0f, 1.0f, 1.0f, 1.0f};
+    float hudTextScale = 1.0f;
     float fpsValue = 0.0f;
 };
 

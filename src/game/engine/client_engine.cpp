@@ -134,6 +134,7 @@ void ClientEngine::lateUpdate(TimeUtils::duration deltaTime) {
         input->reloadKeyBindings();
         ui->setDialogText(game_input::SpawnHintText(*input));
     }
+    handleGlobalUiInput();
     network->flushPeekedMessages();
 }
 
@@ -145,6 +146,24 @@ void ClientEngine::updateRoamingCamera(TimeUtils::duration deltaTime, bool allow
     const std::vector<platform::Event> emptyEvents;
     const auto &events = input ? input->events() : emptyEvents;
     roamingCamera.update(deltaTime, *input, events, settings, allowInput);
+}
+
+void ClientEngine::handleGlobalUiInput() {
+    if (!ui || !input) {
+        return;
+    }
+    const bool consoleVisible = ui->console().isVisible();
+    if (consoleVisible && inputState.escape) {
+        ui->console().hide();
+        return;
+    }
+    if (inputState.escape) {
+        if (ui->isQuickMenuVisible()) {
+            ui->setQuickMenuVisible(false);
+        } else if (!consoleVisible) {
+            ui->setQuickMenuVisible(true);
+        }
+    }
 }
 
 void ClientEngine::setRoamingModeSession(bool enabled) {

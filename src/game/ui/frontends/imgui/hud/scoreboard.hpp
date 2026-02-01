@@ -12,7 +12,7 @@ namespace ui {
 class ImGuiHudScoreboard {
 public:
     void setEntries(const std::vector<ScoreboardEntry> &entriesIn);
-    void draw(ImGuiIO &io, const ImVec4 &backgroundColor);
+    void draw(ImGuiIO &io, const ImVec4 &backgroundColor, const ImVec4 &textColor, float textScale);
 
 private:
     std::vector<ScoreboardEntry> entries;

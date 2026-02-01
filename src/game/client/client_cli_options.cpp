@@ -76,6 +76,12 @@ ClientCLIOptions ParseClientCLIOptions(int argc, char *argv[]) {
     options.add_options()
         ("ecs-smoke", "ECS smoke test: spawn a simple ECS world mesh + camera");
     options.add_options()
+        ("test-3d", "Minimal 3D scene: no UI/network, just ECS render + camera");
+    options.add_options()
+        ("test-3d-world", "test-3d: render world.glb via MeshComponent instead of procedural cube");
+    options.add_options()
+        ("test-3d-ui", "test-3d: enable UI overlay rendering");
+    options.add_options()
         ("strict-config", "Fail startup if required config keys are missing", cxxopts::value<bool>()->default_value("true"));
     options.add_options()
         ("v,verbose", "Enable verbose logging (-v=debug, -vv=trace)")
@@ -117,6 +123,9 @@ ClientCLIOptions ParseClientCLIOptions(int argc, char *argv[]) {
     parsed.devQuickStart = result.count("dev-quick-start") > 0;
     parsed.uiSmokeTest = result.count("ui-smoke") > 0;
     parsed.ecsSmokeTest = result.count("ecs-smoke") > 0;
+    parsed.test3d = result.count("test-3d") > 0;
+    parsed.test3dWorld = result.count("test-3d-world") > 0;
+    parsed.test3dUi = result.count("test-3d-ui") > 0;
     parsed.strictConfig = result["strict-config"].as<bool>();
     parsed.verbose = static_cast<int>(result.count("verbose"));
     parsed.logLevel = result.count("log-level") ? result["log-level"].as<std::string>() : std::string();

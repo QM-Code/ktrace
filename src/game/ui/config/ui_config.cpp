@@ -113,6 +113,14 @@ std::array<float, 4> UiConfig::GetHudBackgroundColor() {
     return ui::config::GetRequiredColor("ui.hud.backgroundColor");
 }
 
+std::array<float, 4> UiConfig::GetHudTextColor() {
+    return ui::config::GetRequiredColor("ui.hud.textColor");
+}
+
+float UiConfig::GetHudTextScale() {
+    return ui::config::GetRequiredFloat("ui.hud.textScale");
+}
+
 bool UiConfig::GetValidateUi() {
     return ui::config::GetRequiredBool("ui.Validate");
 }
@@ -140,6 +148,15 @@ bool UiConfig::SetHudCrosshair(bool value) {
 bool UiConfig::SetHudBackgroundColor(const std::array<float, 4> &value) {
     const karma::json::Value array = karma::json::Array({value[0], value[1], value[2], value[3]});
     return karma::config::ConfigStore::Set("ui.hud.backgroundColor", array);
+}
+
+bool UiConfig::SetHudTextColor(const std::array<float, 4> &value) {
+    const karma::json::Value array = karma::json::Array({value[0], value[1], value[2], value[3]});
+    return karma::config::ConfigStore::Set("ui.hud.textColor", array);
+}
+
+bool UiConfig::SetHudTextScale(float value) {
+    return karma::config::ConfigStore::Set("ui.hud.textScale", value);
 }
 
 } // namespace ui

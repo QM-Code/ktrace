@@ -39,6 +39,8 @@ public:
 
     void setShowFps(bool show);
     void setHudBackgroundColor(const ImVec4 &color);
+    void setHudTextColor(const ImVec4 &color);
+    void setHudTextScale(float scale);
     void draw(ImGuiIO &io, ImFont *bigFont);
     bool isScoreboardVisible() const { return scoreboardVisible; }
     bool isChatVisible() const { return chatVisible; }
@@ -61,6 +63,8 @@ private:
     bool fpsVisible = false;
     bool dialogVisible = false;
     ImVec4 hudBackgroundColor{0.0f, 0.0f, 0.0f, 1.0f};
+    ImVec4 hudTextColor{1.0f, 1.0f, 1.0f, 1.0f};
+    float hudTextScale = 1.0f;
 };
 
 } // namespace ui

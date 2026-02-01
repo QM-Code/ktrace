@@ -56,7 +56,9 @@
     "settings": {
       "language_label": "语言",
       "hud_background_label": "背景",
-      "hud_background_edit": "编辑"
+      "hud_background_edit": "编辑",
+      "hud_text_color_label": "文字颜色",
+      "hud_text_size_label": "文字大小"
     }
   }
 }

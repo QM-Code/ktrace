@@ -51,6 +51,39 @@
                             </div>
                         </div>
                     </div>
+                    <div class="settings-hud-text">
+                        <div class="settings-hud-background-row">
+                            <span class="settings-hud-background-label" data-i18n="ui.settings.hud_text_color_label"></span>
+                            <div class="settings-hud-background-actions">
+                                <div id="settings-hud-text-swatch" class="settings-color-swatch"></div>
+                                <button id="settings-hud-text-edit" class="settings-color-edit" data-i18n="ui.settings.hud_background_edit"></button>
+                            </div>
+                        </div>
+                        <div id="settings-hud-text-popup" class="settings-color-popup hidden">
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">R</span>
+                                <input id="settings-hud-text-r" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="1.0" />
+                                <span id="settings-hud-text-r-value" class="settings-color-value">1.00</span>
+                            </div>
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">G</span>
+                                <input id="settings-hud-text-g" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="1.0" />
+                                <span id="settings-hud-text-g-value" class="settings-color-value">1.00</span>
+                            </div>
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">B</span>
+                                <input id="settings-hud-text-b" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="1.0" />
+                                <span id="settings-hud-text-b-value" class="settings-color-value">1.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-hud-text-size">
+                        <div class="settings-brightness-row">
+                            <span class="settings-brightness-label" data-i18n="ui.settings.hud_text_size_label"></span>
+                            <span id="settings-hud-text-size-value" class="settings-brightness-value">1.00x</span>
+                        </div>
+                        <input id="settings-hud-text-size-slider" class="settings-brightness-slider" type="range" min="0.5" max="1.5" step="0.05" value="1.0" />
+                    </div>
                     <div class="settings-hud-items">
                         <div class="settings-hud-item">
                             <span>Scoreboard</span>

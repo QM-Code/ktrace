@@ -167,6 +167,38 @@ void RmlUiHud::setHudBackgroundColor(const std::array<float, 4> &color) {
     }
 }
 
+void RmlUiHud::setHudTextColor(const std::array<float, 4> &color) {
+    hudTextColor = color;
+    chat.setTextColor(hudTextColor);
+    scoreboard.setTextColor(hudTextColor);
+    if (fpsElement) {
+        const float r = std::clamp(hudTextColor[0], 0.0f, 1.0f);
+        const float g = std::clamp(hudTextColor[1], 0.0f, 1.0f);
+        const float b = std::clamp(hudTextColor[2], 0.0f, 1.0f);
+        const float a = std::clamp(hudTextColor[3], 0.0f, 1.0f);
+        const int ri = static_cast<int>(r * 255.0f + 0.5f);
+        const int gi = static_cast<int>(g * 255.0f + 0.5f);
+        const int bi = static_cast<int>(b * 255.0f + 0.5f);
+        const int ai = static_cast<int>(a * 255.0f + 0.5f);
+        char buffer[16];
+        std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X%02X", ri, gi, bi, ai);
+        fpsElement->SetProperty("color", buffer);
+    }
+}
+
+void RmlUiHud::setHudTextScale(float scale) {
+    hudTextScale = scale;
+    chat.setTextScale(hudTextScale);
+    scoreboard.setTextScale(hudTextScale);
+    if (fpsElement) {
+        const float clamped = std::clamp(hudTextScale, 0.5f, 3.0f);
+        fpsElement->SetProperty("font-size", std::to_string(14.0f * clamped) + "px");
+        const float baseWidth = 80.0f;
+        fpsElement->SetProperty("min-width", std::to_string(baseWidth * clamped) + "px");
+        fpsElement->SetProperty("text-align", "center");
+    }
+}
+
 void RmlUiHud::setFpsVisible(bool visible) {
     if (visible == fpsVisible) {
         return;
@@ -210,6 +242,8 @@ void RmlUiHud::bindElements() {
     radar.bind(document);
     scoreboard.bind(document, emojiMarkup);
     setHudBackgroundColor(hudBackgroundColor);
+    setHudTextColor(hudTextColor);
+    setHudTextScale(hudTextScale);
     chat.setVisible(chatVisible);
     scoreboard.setVisible(scoreboardVisible);
     radar.setVisible(radarVisible);

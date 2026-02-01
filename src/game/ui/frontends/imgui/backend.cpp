@@ -192,6 +192,9 @@ void ImGuiBackend::update() {
     hud.setChatLines(hudModel.chatLines);
     const auto &bg = hudModel.hudBackgroundColor;
     hud.setHudBackgroundColor(ImVec4(bg[0], bg[1], bg[2], bg[3]));
+    const auto &textColor = hudModel.hudTextColor;
+    hud.setHudTextColor(ImVec4(textColor[0], textColor[1], textColor[2], textColor[3]));
+    hud.setHudTextScale(hudModel.hudTextScale);
 
     const bool consoleVisible = consoleView.isVisible();
     const bool hudVisible = hudModel.visibility.hud;

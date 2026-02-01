@@ -44,6 +44,8 @@ public:
     static bool GetHudFps();
     static bool GetHudCrosshair();
     static std::array<float, 4> GetHudBackgroundColor();
+    static std::array<float, 4> GetHudTextColor();
+    static float GetHudTextScale();
     static bool GetValidateUi();
 
     static bool SetHudScoreboard(bool value);
@@ -52,6 +54,8 @@ public:
     static bool SetHudFps(bool value);
     static bool SetHudCrosshair(bool value);
     static bool SetHudBackgroundColor(const std::array<float, 4> &value);
+    static bool SetHudTextColor(const std::array<float, 4> &value);
+    static bool SetHudTextScale(float value);
 };
 
 } // namespace ui

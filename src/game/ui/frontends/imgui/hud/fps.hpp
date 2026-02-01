@@ -9,7 +9,7 @@ class ImGuiHudFps {
 public:
     void setVisible(bool show);
     void setValue(float value);
-    void draw(ImGuiIO &io, const ImVec4 &backgroundColor);
+    void draw(ImGuiIO &io, const ImVec4 &backgroundColor, const ImVec4 &textColor, float textScale);
 
 private:
     bool visible = false;

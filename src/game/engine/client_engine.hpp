@@ -49,6 +49,7 @@ public:
     void step(TimeUtils::duration deltaTime);
     void lateUpdate(TimeUtils::duration deltaTime);
     void updateRoamingCamera(TimeUtils::duration deltaTime, bool allowInput);
+    void handleGlobalUiInput();
 
     const game_input::InputState& getInputState() const { return inputState; }
 };

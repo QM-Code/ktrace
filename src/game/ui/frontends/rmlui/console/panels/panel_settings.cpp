@@ -175,6 +175,74 @@ private:
     RmlUiPanelSettings *panel = nullptr;
 };
 
+class RmlUiPanelSettings::HudTextListener final : public Rml::EventListener {
+public:
+    explicit HudTextListener(RmlUiPanelSettings *panelIn)
+        : panel(panelIn) {}
+
+    void ProcessEvent(Rml::Event &event) override {
+        if (!panel) {
+            return;
+        }
+        auto *target = event.GetTargetElement();
+        auto *input = rmlui_dynamic_cast<Rml::ElementFormControlInput*>(target);
+        if (!input) {
+            return;
+        }
+        if (event.GetType() == "input" || event.GetType() == "change") {
+            panel->hudTextDragging = true;
+            panel->handleHudTextInput(false);
+            panel->hudTextCommit.markChanged();
+        }
+    }
+
+private:
+    RmlUiPanelSettings *panel = nullptr;
+};
+
+class RmlUiPanelSettings::HudTextToggleListener final : public Rml::EventListener {
+public:
+    explicit HudTextToggleListener(RmlUiPanelSettings *panelIn)
+        : panel(panelIn) {}
+
+    void ProcessEvent(Rml::Event &event) override {
+        if (!panel) {
+            return;
+        }
+        if (event.GetType() == "click") {
+            panel->handleHudTextToggle();
+        }
+    }
+
+private:
+    RmlUiPanelSettings *panel = nullptr;
+};
+
+class RmlUiPanelSettings::HudTextSizeListener final : public Rml::EventListener {
+public:
+    explicit HudTextSizeListener(RmlUiPanelSettings *panelIn)
+        : panel(panelIn) {}
+
+    void ProcessEvent(Rml::Event &event) override {
+        if (!panel) {
+            return;
+        }
+        auto *target = event.GetTargetElement();
+        auto *input = rmlui_dynamic_cast<Rml::ElementFormControlInput*>(target);
+        if (!input) {
+            return;
+        }
+        if (event.GetType() == "input" || event.GetType() == "change") {
+            panel->hudTextSizeDragging = true;
+            panel->handleHudTextSizeInput(false);
+            panel->hudTextSizeCommit.markChanged();
+        }
+    }
+
+private:
+    RmlUiPanelSettings *panel = nullptr;
+};
+
 RmlUiPanelSettings::RmlUiPanelSettings()
     : RmlUiPanel("settings", "client/ui/console_panel_settings.rml") {}
 
@@ -211,6 +279,17 @@ void RmlUiPanelSettings::onLoaded(Rml::ElementDocument *doc) {
     hudBackgroundGValue = document->GetElementById("settings-hud-background-g-value");
     hudBackgroundBValue = document->GetElementById("settings-hud-background-b-value");
     hudBackgroundAValue = document->GetElementById("settings-hud-background-a-value");
+    hudTextSwatch = document->GetElementById("settings-hud-text-swatch");
+    hudTextPopup = document->GetElementById("settings-hud-text-popup");
+    hudTextEditButton = document->GetElementById("settings-hud-text-edit");
+    hudTextRSlider = document->GetElementById("settings-hud-text-r");
+    hudTextGSlider = document->GetElementById("settings-hud-text-g");
+    hudTextBSlider = document->GetElementById("settings-hud-text-b");
+    hudTextRValue = document->GetElementById("settings-hud-text-r-value");
+    hudTextGValue = document->GetElementById("settings-hud-text-g-value");
+    hudTextBValue = document->GetElementById("settings-hud-text-b-value");
+    hudTextSizeSlider = document->GetElementById("settings-hud-text-size-slider");
+    hudTextSizeValue = document->GetElementById("settings-hud-text-size-value");
     languageSelect = document->GetElementById("settings-language-select");
     hudScoreboardToggle.on = document->GetElementById("settings-hud-scoreboard-on");
     hudScoreboardToggle.off = document->GetElementById("settings-hud-scoreboard-off");
@@ -255,6 +334,33 @@ void RmlUiPanelSettings::onLoaded(Rml::ElementDocument *doc) {
             hudBackgroundASlider->AddEventListener("change", listener.get());
             hudBackgroundASlider->AddEventListener("input", listener.get());
         }
+        listeners.emplace_back(std::move(listener));
+    }
+    if (hudTextEditButton) {
+        auto listener = std::make_unique<HudTextToggleListener>(this);
+        hudTextEditButton->AddEventListener("click", listener.get());
+        listeners.emplace_back(std::move(listener));
+    }
+    if (hudTextRSlider || hudTextGSlider || hudTextBSlider) {
+        auto listener = std::make_unique<HudTextListener>(this);
+        if (hudTextRSlider) {
+            hudTextRSlider->AddEventListener("change", listener.get());
+            hudTextRSlider->AddEventListener("input", listener.get());
+        }
+        if (hudTextGSlider) {
+            hudTextGSlider->AddEventListener("change", listener.get());
+            hudTextGSlider->AddEventListener("input", listener.get());
+        }
+        if (hudTextBSlider) {
+            hudTextBSlider->AddEventListener("change", listener.get());
+            hudTextBSlider->AddEventListener("input", listener.get());
+        }
+        listeners.emplace_back(std::move(listener));
+    }
+    if (hudTextSizeSlider) {
+        auto listener = std::make_unique<HudTextSizeListener>(this);
+        hudTextSizeSlider->AddEventListener("change", listener.get());
+        hudTextSizeSlider->AddEventListener("input", listener.get());
         listeners.emplace_back(std::move(listener));
     }
     if (languageSelect) {
@@ -314,6 +420,8 @@ void RmlUiPanelSettings::onLoaded(Rml::ElementDocument *doc) {
     syncSettingsFromConfig();
     syncRenderBrightnessControls(true);
     syncHudBackgroundControls(true);
+    syncHudTextControls(true);
+    syncHudTextSizeControls(true);
     syncRenderControls();
     syncHudControls();
     updateStatus();
@@ -328,6 +436,8 @@ void RmlUiPanelSettings::onUpdate() {
         syncSettingsFromConfig();
         syncRenderBrightnessControls(true);
         syncHudBackgroundControls(true);
+        syncHudTextControls(true);
+        syncHudTextSizeControls(true);
         syncRenderControls();
         syncHudControls();
         updateStatus();
@@ -363,6 +473,16 @@ void RmlUiPanelSettings::refreshDebouncedCommits() {
     hudBackgroundCommit.tryCommit(debounce, [&]() {
         hudBackgroundDragging = false;
         handleHudBackgroundInput(true);
+    });
+
+    hudTextCommit.tryCommit(debounce, [&]() {
+        hudTextDragging = false;
+        handleHudTextInput(true);
+    });
+
+    hudTextSizeCommit.tryCommit(debounce, [&]() {
+        hudTextSizeDragging = false;
+        handleHudTextSizeInput(true);
     });
 }
 
@@ -539,6 +659,140 @@ void RmlUiPanelSettings::syncHudBackgroundValues() {
     setValue(hudBackgroundAValue, color[3]);
 }
 
+void RmlUiPanelSettings::syncHudTextControls(bool syncSliders) {
+    if (!syncSliders) {
+        syncHudTextSwatch();
+        syncHudTextValues();
+        return;
+    }
+    auto color = settingsModel.hud.textColor();
+    color[3] = 1.0f;
+    auto setSlider = [](Rml::Element *element, float value) {
+        auto *input = rmlui_dynamic_cast<Rml::ElementFormControlInput*>(element);
+        if (input) {
+            input->SetValue(std::to_string(value));
+        }
+    };
+    setSlider(hudTextRSlider, color[0]);
+    setSlider(hudTextGSlider, color[1]);
+    setSlider(hudTextBSlider, color[2]);
+    syncHudTextSwatch();
+    syncHudTextValues();
+}
+
+void RmlUiPanelSettings::syncHudTextSwatch() {
+    if (!hudTextSwatch) {
+        return;
+    }
+    const auto color = settingsModel.hud.textColor();
+    const float r = std::clamp(color[0], 0.0f, 1.0f);
+    const float g = std::clamp(color[1], 0.0f, 1.0f);
+    const float b = std::clamp(color[2], 0.0f, 1.0f);
+    const float a = std::clamp(color[3], 0.0f, 1.0f);
+    const int ri = static_cast<int>(r * 255.0f + 0.5f);
+    const int gi = static_cast<int>(g * 255.0f + 0.5f);
+    const int bi = static_cast<int>(b * 255.0f + 0.5f);
+    const int ai = static_cast<int>(a * 255.0f + 0.5f);
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X%02X", ri, gi, bi, ai);
+    hudTextSwatch->SetProperty("background-color", buffer);
+}
+
+void RmlUiPanelSettings::syncHudTextValues() {
+    const auto color = settingsModel.hud.textColor();
+    auto setValue = [](Rml::Element *element, float value) {
+        if (!element) {
+            return;
+        }
+        std::ostringstream oss;
+        oss.setf(std::ios::fixed);
+        oss.precision(2);
+        oss << value;
+        element->SetInnerRML(oss.str());
+    };
+    setValue(hudTextRValue, color[0]);
+    setValue(hudTextGValue, color[1]);
+    setValue(hudTextBValue, color[2]);
+}
+
+void RmlUiPanelSettings::handleHudTextInput(bool commit) {
+    auto getSliderValue = [](Rml::Element *element, float fallback) {
+        auto *input = rmlui_dynamic_cast<Rml::ElementFormControlInput*>(element);
+        if (!input) {
+            return fallback;
+        }
+        try {
+            return std::stof(input->GetValue());
+        } catch (...) {
+            return fallback;
+        }
+    };
+    const auto current = settingsModel.hud.textColor();
+    const float r = getSliderValue(hudTextRSlider, current[0]);
+    const float g = getSliderValue(hudTextGSlider, current[1]);
+    const float b = getSliderValue(hudTextBSlider, current[2]);
+    settingsModel.hud.setTextColor({r, g, b, 1.0f}, commit);
+    syncHudTextSwatch();
+    syncHudTextValues();
+    if (commit) {
+        std::string error;
+        if (!settingsController.saveHudSettings(&error)) {
+            showStatus(error, true);
+        }
+        settingsModel.hud.clearDirty();
+    }
+}
+
+void RmlUiPanelSettings::handleHudTextToggle() {
+    if (!hudTextPopup) {
+        return;
+    }
+    const bool hidden = hudTextPopup->IsClassSet("hidden");
+    hudTextPopup->SetClass("hidden", !hidden);
+}
+
+void RmlUiPanelSettings::syncHudTextSizeControls(bool syncSlider) {
+    if (syncSlider && hudTextSizeSlider) {
+        auto *input = rmlui_dynamic_cast<Rml::ElementFormControlInput*>(hudTextSizeSlider);
+        if (input) {
+            input->SetValue(std::to_string(settingsModel.hud.textScale()));
+        }
+    }
+    syncHudTextSizeLabel();
+}
+
+void RmlUiPanelSettings::syncHudTextSizeLabel() {
+    if (!hudTextSizeValue) {
+        return;
+    }
+    std::ostringstream oss;
+    oss.setf(std::ios::fixed);
+    oss.precision(2);
+    oss << settingsModel.hud.textScale() << "x";
+    hudTextSizeValue->SetInnerRML(oss.str());
+}
+
+void RmlUiPanelSettings::handleHudTextSizeInput(bool commit) {
+    float value = settingsModel.hud.textScale();
+    if (hudTextSizeSlider) {
+        if (auto *input = rmlui_dynamic_cast<Rml::ElementFormControlInput*>(hudTextSizeSlider)) {
+            try {
+                value = std::stof(input->GetValue());
+            } catch (...) {
+            }
+        }
+    }
+    settingsModel.hud.setTextScale(value, commit);
+    syncHudTextSizeLabel();
+    if (commit) {
+        std::string error;
+        if (!settingsController.saveHudSettings(&error)) {
+            showStatus(error, true);
+        }
+        settingsModel.hud.clearDirty();
+    }
+}
+
 void RmlUiPanelSettings::handleHudBackgroundInput(bool commit) {
     auto getSliderValue = [](Rml::Element *element, float fallback) {
         auto *input = rmlui_dynamic_cast<Rml::ElementFormControlInput*>(element);
@@ -591,6 +845,8 @@ void RmlUiPanelSettings::syncHudControls() {
     applyToggle(hudFpsToggle, settingsModel.hud.fpsVisible());
     applyToggle(hudCrosshairToggle, settingsModel.hud.crosshairVisible());
     syncHudBackgroundControls(false);
+    syncHudTextControls(false);
+    syncHudTextSizeControls(false);
 }
 
 void RmlUiPanelSettings::syncRenderControls() {

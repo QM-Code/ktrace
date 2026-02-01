@@ -119,22 +119,26 @@ elseif(KARMA_RENDER_BACKEND STREQUAL "bgfx")
     )
 endif()
 
-# Create engine object libraries
-add_library(karma OBJECT ${ENGINE_CLIENT_SOURCES})
-add_library(karma_server OBJECT ${ENGINE_SERVER_SOURCES})
+# Create engine libraries
+add_library(karma STATIC ${ENGINE_CLIENT_SOURCES})
+add_library(karma_server STATIC ${ENGINE_SERVER_SOURCES})
 target_compile_definitions(karma_server PRIVATE KARMA_SERVER)
 
-target_include_directories(karma PRIVATE
+target_include_directories(karma PUBLIC
     ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/engine
+    ${enet_SOURCE_DIR}/include
+)
+target_include_directories(karma PRIVATE
     ${PROJECT_SOURCE_DIR}/src
+)
+target_include_directories(karma_server PUBLIC
+    ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src/engine
     ${enet_SOURCE_DIR}/include
 )
 target_include_directories(karma_server PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src
-    ${PROJECT_SOURCE_DIR}/src/engine
-    ${enet_SOURCE_DIR}/include
 )
 
 target_link_libraries(karma PRIVATE

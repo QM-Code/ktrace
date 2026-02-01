@@ -57,6 +57,8 @@ public:
     void setRadarVisible(bool visible);
     void setCrosshairVisible(bool visible);
     void setHudBackgroundColor(const std::array<float, 4> &color);
+    void setHudTextColor(const std::array<float, 4> &color);
+    void setHudTextScale(float scale);
     void setFpsVisible(bool visible);
     void setFpsValue(float fps);
     void setQuickMenuVisible(bool visible);
@@ -90,6 +92,8 @@ private:
     bool radarVisible = true;
     bool crosshairVisible = true;
     std::array<float, 4> hudBackgroundColor{0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 4> hudTextColor{1.0f, 1.0f, 1.0f, 1.0f};
+    float hudTextScale = 1.0f;
     std::string lastLanguage;
 
     void bindElements();

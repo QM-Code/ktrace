@@ -22,6 +22,9 @@ struct ClientCLIOptions {
     bool strictConfig = true;
     bool uiSmokeTest = false;
     bool ecsSmokeTest = false;
+    bool test3d = false;
+    bool test3dWorld = false;
+    bool test3dUi = false;
     int verbose = 0;
     std::string logLevel;
     bool logLevelExplicit = false;

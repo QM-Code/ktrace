@@ -19,14 +19,17 @@
 #include "client/server/server_connector.hpp"
 #include "game/net/messages.hpp"
 #include "game/common/data_path_spec.hpp"
+#include "game/ui/core/system.hpp"
 #include "karma/common/data_dir_override.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
 #include "karma/common/config_validation.hpp"
 #include "karma/common/i18n.hpp"
+#include "karma/graphics/ui_render_target_bridge.hpp"
 #include "karma/platform/window.hpp"
 #include "ui/config/ui_config.hpp"
+#include "ui/bridges/renderer_bridge.hpp"
 
 #if !defined(_WIN32)
 #include <csignal>
@@ -347,16 +350,6 @@ public:
         if (cliOptions_.uiSmokeTest) {
             updateUiSmokeTest(dt);
         }
-        if (game_ && consoleVisible && engine_.getInputState().escape) {
-            engine_.ui->console().hide();
-        }
-        if (game_ && engine_.getInputState().escape) {
-            if (engine_.ui->isQuickMenuVisible()) {
-                engine_.ui->setQuickMenuVisible(false);
-            } else if (!consoleVisible) {
-                engine_.ui->setQuickMenuVisible(true);
-            }
-        }
         if (!consoleVisible && engine_.getInputState().toggleFullscreen) {
             const bool wasFullscreen = window_.isFullscreen();
             spdlog::info("Fullscreen toggle requested (before={})", wasFullscreen);
@@ -449,6 +442,140 @@ private:
     }
 };
 }
+
+namespace {
+
+graphics::MeshData MakeTestCube(float halfExtent) {
+    const float h = halfExtent;
+    graphics::MeshData mesh;
+    mesh.vertices = {
+        {-h, -h, -h}, { h, -h, -h}, { h,  h, -h}, {-h,  h, -h},
+        {-h, -h,  h}, { h, -h,  h}, { h,  h,  h}, {-h,  h,  h}
+    };
+    mesh.indices = {
+        0, 1, 2, 0, 2, 3,
+        4, 6, 5, 4, 7, 6,
+        0, 4, 5, 0, 5, 1,
+        3, 2, 6, 3, 6, 7,
+        1, 5, 6, 1, 6, 2,
+        0, 3, 7, 0, 7, 4
+    };
+    return mesh;
+}
+
+class TestUiBridge final : public ui::RendererBridge {
+public:
+    explicit TestUiBridge(graphics_backend::UiRenderTargetBridge* backendBridge)
+        : backendBridge_(backendBridge) {
+        if (backendBridge_) {
+            uiBridge_ = std::make_unique<RendererUiBridge>(backendBridge_);
+        }
+    }
+
+    graphics::TextureHandle getRadarTexture() const override {
+        return graphics::TextureHandle{};
+    }
+
+    ui::UiRenderTargetBridge* getUiRenderTargetBridge() const override {
+        return uiBridge_.get();
+    }
+
+private:
+    class RendererUiBridge final : public ui::UiRenderTargetBridge {
+    public:
+        explicit RendererUiBridge(graphics_backend::UiRenderTargetBridge* bridge)
+            : bridge_(bridge) {}
+
+        void* toImGuiTextureId(const graphics::TextureHandle& texture) const override {
+            return bridge_ ? bridge_->toImGuiTextureId(texture) : nullptr;
+        }
+
+        void rebuildImGuiFonts(ImFontAtlas* atlas) override {
+            if (bridge_) {
+                bridge_->rebuildImGuiFonts(atlas);
+            }
+        }
+
+        void renderImGuiToTarget(ImDrawData* drawData) override {
+            if (bridge_) {
+                bridge_->renderImGuiToTarget(drawData);
+            }
+        }
+
+        bool isImGuiReady() const override {
+            return bridge_ && bridge_->isImGuiReady();
+        }
+
+        void ensureImGuiRenderTarget(int width, int height) override {
+            if (bridge_) {
+                bridge_->ensureImGuiRenderTarget(width, height);
+            }
+        }
+
+        graphics::TextureHandle getImGuiRenderTarget() const override {
+            return bridge_ ? bridge_->getImGuiRenderTarget() : graphics::TextureHandle{};
+        }
+
+    private:
+        graphics_backend::UiRenderTargetBridge* bridge_ = nullptr;
+    };
+
+    graphics_backend::UiRenderTargetBridge* backendBridge_ = nullptr;
+    std::unique_ptr<RendererUiBridge> uiBridge_;
+};
+
+class Test3DAdapter final : public karma::app::GameInterface {
+public:
+    Test3DAdapter(platform::Window &window, bool useWorld)
+        : window_(window), useWorld_(useWorld) {}
+
+    void onStart() override {
+        auto *ctx = context();
+        if (!ctx || !ctx->ecsWorld) {
+            return;
+        }
+        auto *world = ctx->ecsWorld;
+        const ecs::EntityId cube = world->createEntity();
+        ecs::Transform cubeXform{};
+        cubeXform.scale = {2.0f, 2.0f, 2.0f};
+        world->set(cube, cubeXform);
+        if (useWorld_) {
+            ecs::MeshComponent mesh{};
+            mesh.mesh_key = karma::data::Resolve("common/models/world.glb").string();
+            world->set(cube, mesh);
+        } else {
+            ecs::ProceduralMesh proc{};
+            proc.mesh = MakeTestCube(1.0f);
+            proc.dirty = true;
+            world->set(cube, proc);
+        }
+
+        cameraEntity_ = world->createEntity();
+        ecs::Transform camXform{};
+        camXform.position = {0.0f, 2.0f, 6.0f};
+        const glm::vec3 target{0.0f, 0.0f, 0.0f};
+        const glm::mat4 view = glm::lookAt(camXform.position, target, glm::vec3(0.0f, 1.0f, 0.0f));
+        camXform.rotation = glm::quat_cast(glm::inverse(view));
+        world->set(cameraEntity_, camXform);
+        ecs::CameraComponent camera{};
+        camera.is_primary = true;
+        camera.fov_degrees = karma::config::ReadRequiredFloatConfig("graphics.Camera.FovDegrees");
+        camera.near_plane = karma::config::ReadRequiredFloatConfig("graphics.Camera.NearPlane");
+        camera.far_plane = karma::config::ReadRequiredFloatConfig("graphics.Camera.FarPlane");
+        world->set(cameraEntity_, camera);
+    }
+
+    void onUpdate(float /*dt*/) override {}
+
+    bool shouldQuit() const override { return window_.shouldClose(); }
+
+private:
+    platform::Window &window_;
+    ecs::EntityId cameraEntity_ = ecs::kInvalidEntity;
+    bool useWorld_ = false;
+};
+
+} // namespace
 
 spdlog::level::level_enum ParseLogLevel(const std::string &level) {
     if (level == "trace") {
@@ -567,6 +694,36 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     window->setVsync(vsyncEnabled);
+
+    if (cliOptions.test3d) {
+        engine::renderer::RendererCore rendererCore(*window);
+        karma::app::EngineApp app;
+        app.context().window = window.get();
+        app.context().rendererCore = &rendererCore;
+        std::unique_ptr<UiSystem> testUi;
+        std::unique_ptr<TestUiBridge> testUiBridge;
+        if (cliOptions.test3dUi) {
+            testUi = std::make_unique<UiSystem>(*window);
+            testUiBridge = std::make_unique<TestUiBridge>(rendererCore.device().getUiRenderTargetBridge());
+            testUi->setRendererBridge(testUiBridge.get());
+            app.context().overlay = testUi.get();
+        }
+        {
+            auto &config = app.config();
+            config.enable_ecs_render_sync = true;
+            config.enable_ecs_camera_sync = true;
+            config.enable_ecs_audio_sync = false;
+            config.enable_ecs_physics_sync = false;
+        }
+        Test3DAdapter adapter(*window, cliOptions.test3dWorld);
+        if (!app.start(adapter, app.config())) {
+            return 1;
+        }
+        while (app.isRunning()) {
+            app.tick();
+        }
+        return 0;
+    }
 
     ClientEngine engine(*window);
     spdlog::trace("ClientEngine initialized successfully");

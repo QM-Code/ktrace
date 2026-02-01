@@ -98,19 +98,16 @@ set(MACOSX_BUNDLE_ICON_FILE "") # Set to your .icns file if you have one
 add_executable(bz3 MACOSX_BUNDLE
     ${CLIENT_SOURCES}
     ${GAME_CLIENT_SOURCES}
-    $<TARGET_OBJECTS:karma>
 )
 
 add_executable(bz3-server
     ${SERVER_SOURCES}
     ${GAME_SERVER_SOURCES}
-    $<TARGET_OBJECTS:karma_server>
 )
 
 if(KARMA_BUILD_ENGINEAPP_SAMPLE)
     add_executable(bz3-engineapp-sample
         ${PROJECT_SOURCE_DIR}/examples/engine_app_sample.cpp
-        $<TARGET_OBJECTS:karma>
     )
     set_target_properties(bz3-engineapp-sample PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
@@ -122,6 +119,7 @@ if(KARMA_BUILD_ENGINEAPP_SAMPLE)
         ${enet_SOURCE_DIR}/include
     )
     target_link_libraries(bz3-engineapp-sample PRIVATE
+        karma
         ${WINDOW_TARGET}
         glm::glm
         enet_static
@@ -231,23 +229,18 @@ set_target_properties(bz3 bz3-server PROPERTIES
 )
 
 target_include_directories(bz3 PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src
-    ${PROJECT_SOURCE_DIR}/src/engine
     ${PROJECT_SOURCE_DIR}/src/game
-    ${enet_SOURCE_DIR}/include
 )
 
 target_include_directories(bz3-server PRIVATE
-    ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/src
-    ${PROJECT_SOURCE_DIR}/src/engine
     ${PROJECT_SOURCE_DIR}/src/game
-    ${enet_SOURCE_DIR}/include
 )
 
 # Link libraries
 target_link_libraries(bz3 PRIVATE
+    karma
     ${WINDOW_TARGET}
     glm::glm
     enet_static
@@ -331,6 +324,7 @@ if(KARMA_AUDIO_BACKEND STREQUAL "sdlaudio")
 endif()
 
 target_link_libraries(bz3-server PRIVATE
+    karma_server
     glm::glm
     enet_static
     assimp::assimp

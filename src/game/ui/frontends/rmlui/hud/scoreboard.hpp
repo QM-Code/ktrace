@@ -24,6 +24,8 @@ public:
     void setVisible(bool visible);
     bool isVisible() const;
     void setBackgroundColor(const std::array<float, 4> &color);
+    void setTextColor(const std::array<float, 4> &color);
+    void setTextScale(float scale);
 
 private:
     Rml::Element *container = nullptr;
@@ -31,6 +33,8 @@ private:
     EmojiMarkupFn emojiMarkup;
     bool visible = true;
     std::array<float, 4> backgroundColor{0.0f, 0.0f, 0.0f, 1.0f};
+    std::array<float, 4> textColor{1.0f, 1.0f, 1.0f, 1.0f};
+    float textScale = 1.0f;
 
     void rebuild(Rml::ElementDocument *document);
 };

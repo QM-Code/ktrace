@@ -69,6 +69,8 @@ void RmlUiHudChat::bind(Rml::ElementDocument *document, EmojiMarkupFn emojiMarku
         input->AddEventListener("blur", inputListener.get());
     }
 
+    setTextColor(textColor);
+    setTextScale(textScale);
     rebuildLines(document);
 }
 
@@ -108,6 +110,9 @@ void RmlUiHudChat::addLine(const std::string &line) {
             auto lineElement = logContent->GetOwnerDocument()->CreateElement("div");
             lineElement->SetClass("hud-chat-line", true);
             lineElement->SetInnerRML(emojiMarkup ? emojiMarkup(segment) : segment);
+            lineElement->SetProperty("color", formatRgba(textColor));
+            const float clamped = std::clamp(textScale, 0.5f, 3.0f);
+            lineElement->SetProperty("font-size", std::to_string(15.0f * clamped) + "px");
             logContent->AppendChild(std::move(lineElement));
             pendingScroll = true;
         }
@@ -168,6 +173,47 @@ void RmlUiHudChat::setBackgroundColor(const std::array<float, 4> &color) {
     }
 }
 
+void RmlUiHudChat::setTextColor(const std::array<float, 4> &color) {
+    textColor = color;
+    const std::string rgba = formatRgba(textColor);
+    if (log) {
+        log->SetProperty("color", rgba);
+    }
+    if (logContent) {
+        logContent->SetProperty("color", rgba);
+        for (int i = 0; i < logContent->GetNumChildren(); ++i) {
+            if (auto *child = logContent->GetChild(i)) {
+                child->SetProperty("color", rgba);
+            }
+        }
+    }
+    if (input) {
+        input->SetProperty("color", rgba);
+    }
+}
+
+void RmlUiHudChat::setTextScale(float scale) {
+    textScale = scale;
+    const float clamped = std::clamp(textScale, 0.5f, 3.0f);
+    const float logSize = 15.0f * clamped;
+    const float inputSize = 15.0f * clamped;
+    const std::string logSizeValue = std::to_string(logSize) + "px";
+    const std::string inputSizeValue = std::to_string(inputSize) + "px";
+    if (log) {
+        log->SetProperty("font-size", logSizeValue);
+    }
+    if (logContent) {
+        for (int i = 0; i < logContent->GetNumChildren(); ++i) {
+            if (auto *child = logContent->GetChild(i)) {
+                child->SetProperty("font-size", logSizeValue);
+            }
+        }
+    }
+    if (input) {
+        input->SetProperty("font-size", inputSizeValue);
+    }
+}
+
 
 bool RmlUiHudChat::consumeSuppressNextChar() {
     if (!suppressNextChar) {
@@ -220,6 +266,9 @@ void RmlUiHudChat::rebuildLines(Rml::ElementDocument *document) {
         auto lineElement = document->CreateElement("div");
         lineElement->SetClass("hud-chat-line", true);
         lineElement->SetInnerRML(emojiMarkup ? emojiMarkup(line) : line);
+        lineElement->SetProperty("color", formatRgba(textColor));
+        const float clamped = std::clamp(textScale, 0.5f, 3.0f);
+        lineElement->SetProperty("font-size", std::to_string(15.0f * clamped) + "px");
         logContent->AppendChild(std::move(lineElement));
     }
     pendingScroll = true;

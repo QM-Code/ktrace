@@ -149,6 +149,8 @@ void ConsoleView::drawSettingsPanel(const MessageColors &colors) {
         ImGui::Spacing();
         const std::string &hudBackgroundLabel = karma::i18n::Get().get("ui.settings.hud_background_label");
         const std::string &hudBackgroundEditLabel = karma::i18n::Get().get("ui.settings.hud_background_edit");
+        const std::string &hudTextColorLabel = karma::i18n::Get().get("ui.settings.hud_text_color_label");
+        const std::string &hudTextSizeLabel = karma::i18n::Get().get("ui.settings.hud_text_size_label");
         auto bgColor = settingsModel.hud.backgroundColor();
         ImVec4 bgPreview(bgColor[0], bgColor[1], bgColor[2], bgColor[3]);
         ImGui::AlignTextToFramePadding();
@@ -182,6 +184,56 @@ void ConsoleView::drawSettingsPanel(const MessageColors &colors) {
                 settingsModel.statusIsError = true;
             }
             hudBackgroundDirty = false;
+        }
+        auto textColor = settingsModel.hud.textColor();
+        textColor[3] = 1.0f;
+        ImVec4 textPreview(textColor[0], textColor[1], textColor[2], textColor[3]);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(hudTextColorLabel.empty() ? "Text Color" : hudTextColorLabel.c_str());
+        ImGui::SameLine();
+        if (ImGui::ColorButton("##hud-text-preview", textPreview, ImGuiColorEditFlags_NoTooltip, ImVec2(28.0f, 18.0f))) {
+            ImGui::OpenPopup("hud-text-picker");
+        }
+        ImGui::SameLine();
+        ImGui::TextUnformatted(hudBackgroundEditLabel.empty() ? "Edit" : hudBackgroundEditLabel.c_str());
+        static bool hudTextDirty = false;
+        if (ImGui::BeginPopup("hud-text-picker")) {
+            float color[3] = {textPreview.x, textPreview.y, textPreview.z};
+            if (ImGui::ColorPicker3("##hud-text-color", color, ImGuiColorEditFlags_NoAlpha)) {
+                settingsModel.hud.setTextColor({color[0], color[1], color[2], 1.0f}, true);
+                hudTextDirty = true;
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit() && hudTextDirty) {
+                std::string error;
+                if (!settingsController.saveHudSettings(&error)) {
+                    settingsModel.statusText = error;
+                    settingsModel.statusIsError = true;
+                }
+                hudTextDirty = false;
+            }
+            ImGui::EndPopup();
+        } else if (hudTextDirty) {
+            std::string error;
+            if (!settingsController.saveHudSettings(&error)) {
+                settingsModel.statusText = error;
+                settingsModel.statusIsError = true;
+            }
+            hudTextDirty = false;
+        }
+        float textScale = settingsModel.hud.textScale();
+        static bool hudTextScaleDirty = false;
+        const char *textSizeLabel = hudTextSizeLabel.empty() ? "Text Size" : hudTextSizeLabel.c_str();
+        if (ImGui::SliderFloat(textSizeLabel, &textScale, 0.5f, 1.5f, "%.2fx")) {
+            settingsModel.hud.setTextScale(textScale, true);
+            hudTextScaleDirty = true;
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit() && hudTextScaleDirty) {
+            std::string error;
+            if (!settingsController.saveHudSettings(&error)) {
+                settingsModel.statusText = error;
+                settingsModel.statusIsError = true;
+            }
+            hudTextScaleDirty = false;
         }
         bool scoreboardVisible = settingsModel.hud.scoreboardVisible();
         if (DrawOnOffToggle("Scoreboard", scoreboardVisible)) {

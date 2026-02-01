@@ -56,7 +56,9 @@
     "settings": {
       "language_label": "भाषा",
       "hud_background_label": "पृष्ठभूमि",
-      "hud_background_edit": "संपादित करें"
+      "hud_background_edit": "संपादित करें",
+      "hud_text_color_label": "पाठ का रंग",
+      "hud_text_size_label": "पाठ का आकार"
     }
   }
 }

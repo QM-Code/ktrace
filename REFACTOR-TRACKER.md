@@ -73,6 +73,7 @@ Checklist:
 - Input event polling + Input update moved into EngineApp tick.
 - UI event handling + UI update moved into EngineApp tick (overlay-owned lifecycle).
 - Roaming camera update/apply moved into ClientEngine lateUpdate (main loop cleanup).
+- Global UI input (escape/quick menu) moved into ClientEngine lateUpdate.
 
 ## Phase 4 - Engine-Owned Loop (client)
 

@@ -56,7 +56,9 @@
     "settings": {
       "language_label": "Language",
       "hud_background_label": "Background",
-      "hud_background_edit": "Edit"
+      "hud_background_edit": "Edit",
+      "hud_text_color_label": "Text Color",
+      "hud_text_size_label": "Text Size"
     }
   }
 }

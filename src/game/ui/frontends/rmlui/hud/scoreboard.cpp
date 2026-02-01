@@ -34,6 +34,9 @@ void RmlUiHudScoreboard::bind(Rml::ElementDocument *document, EmojiMarkupFn emoj
     if (container) {
         container->SetClass("hidden", !visible);
         container->SetProperty("background-color", formatRgba(backgroundColor));
+        container->SetProperty("color", formatRgba(textColor));
+        const float clamped = std::clamp(textScale, 0.5f, 3.0f);
+        container->SetProperty("font-size", std::to_string(18.0f * clamped) + "px");
     }
     rebuild(document);
 }
@@ -63,6 +66,33 @@ void RmlUiHudScoreboard::setBackgroundColor(const std::array<float, 4> &color) {
     }
 }
 
+void RmlUiHudScoreboard::setTextColor(const std::array<float, 4> &color) {
+    textColor = color;
+    if (container) {
+        const std::string rgba = formatRgba(textColor);
+        container->SetProperty("color", rgba);
+        for (int i = 0; i < container->GetNumChildren(); ++i) {
+            if (auto *child = container->GetChild(i)) {
+                child->SetProperty("color", rgba);
+            }
+        }
+    }
+}
+
+void RmlUiHudScoreboard::setTextScale(float scale) {
+    textScale = scale;
+    const float clamped = std::clamp(textScale, 0.5f, 3.0f);
+    const std::string sizeValue = std::to_string(18.0f * clamped) + "px";
+    if (container) {
+        container->SetProperty("font-size", sizeValue);
+        for (int i = 0; i < container->GetNumChildren(); ++i) {
+            if (auto *child = container->GetChild(i)) {
+                child->SetProperty("font-size", sizeValue);
+            }
+        }
+    }
+}
+
 void RmlUiHudScoreboard::rebuild(Rml::ElementDocument *document) {
     if (!container || !document) {
         return;
@@ -83,6 +113,9 @@ void RmlUiHudScoreboard::rebuild(Rml::ElementDocument *document) {
         auto element = document->CreateElement("div");
         element->SetClass("hud-scoreboard-line", true);
         element->SetInnerRML(emojiMarkup ? emojiMarkup(line) : line);
+        element->SetProperty("color", formatRgba(textColor));
+        const float clamped = std::clamp(textScale, 0.5f, 3.0f);
+        element->SetProperty("font-size", std::to_string(18.0f * clamped) + "px");
         container->AppendChild(std::move(element));
     }
 }

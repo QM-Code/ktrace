@@ -20,7 +20,12 @@ public:
     void clearFocus();
     bool isFocused() const;
 
-    void draw(const ImVec2 &pos, const ImVec2 &size, float inputHeight, const ImVec4 &backgroundColor);
+    void draw(const ImVec2 &pos,
+              const ImVec2 &size,
+              float inputHeight,
+              const ImVec4 &backgroundColor,
+              const ImVec4 &textColor,
+              float textScale);
 
 private:
     std::vector<std::string> consoleLines;

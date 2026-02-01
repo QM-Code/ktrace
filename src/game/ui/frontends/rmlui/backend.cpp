@@ -486,6 +486,8 @@ void RmlUiBackend::update() {
         state->hud->setDialogVisible(!suppressHud && hudModel.dialog.visible);
         state->hud->setChatLines(hudModel.chatLines);
         state->hud->setHudBackgroundColor(hudModel.hudBackgroundColor);
+        state->hud->setHudTextColor(hudModel.hudTextColor);
+        state->hud->setHudTextScale(hudModel.hudTextScale);
         state->hud->setScoreboardVisible(!suppressHud && hudModel.visibility.scoreboard);
         state->hud->setChatVisible(!suppressHud && hudModel.visibility.chat);
         state->hud->setRadarVisible(!suppressHud && hudModel.visibility.radar);
