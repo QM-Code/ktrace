@@ -9,7 +9,7 @@
 #include "ui/models/hud_model.hpp"
 #include "ui/models/hud_render_state.hpp"
 #include "ui/core/types.hpp"
-#include "ui/bridges/renderer_bridge.hpp"
+#include "karma_extras/ui/bridges/renderer_bridge.hpp"
 #include "ui/console/console_interface.hpp"
 
 namespace platform {

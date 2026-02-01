@@ -17,9 +17,9 @@
 #include <cmath>
 
 #if defined(KARMA_RENDER_BACKEND_BGFX)
-#include "karma/ui/platform/rmlui/renderer_bgfx.hpp"
+#include "karma_extras/ui/platform/rmlui/renderer_bgfx.hpp"
 #elif defined(KARMA_RENDER_BACKEND_DILIGENT)
-#include "karma/ui/platform/rmlui/renderer_diligent.hpp"
+#include "karma_extras/ui/platform/rmlui/renderer_diligent.hpp"
 #else
 #error "RmlUi backend requires BGFX or Diligent renderer."
 #endif
@@ -38,7 +38,7 @@
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_store.hpp"
 #include "spdlog/spdlog.h"
-#include "karma/ui/bridges/ui_render_bridge.hpp"
+#include "karma_extras/ui/bridges/ui_render_bridge.hpp"
 #include "ui/fonts/console_fonts.hpp"
 #include "ui/config/input_mapping.hpp"
 #include "ui/config/render_scale.hpp"

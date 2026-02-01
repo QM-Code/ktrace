@@ -35,8 +35,8 @@ These modules are engine‑agnostic or are toolkit glue that should be reusable 
 ### 2) UI toolkit plumbing vs game UI
 - The UI frontends (ImGui/RmlUi) are game‑specific because they encode HUD/Console structure.
 - But render bridges and backend glue are engine‑agnostic:
-  - Move `src/game/ui/bridges/*` into `src/engine/ui/bridges/*`.
-  - Move toolkit platform renderers (`renderer_bgfx/diligent.*`) under `src/engine/ui/platform/`.
+  - Move `src/game/ui/bridges/*` into `src/karma-extras/ui/bridges/*`.
+  - Move toolkit platform renderers (`renderer_bgfx/diligent.*`) under `src/karma-extras/ui/platform/`.
   - Keep `src/game/ui/frontends/*` for layout, panels, HUD widgets.
 
 ### 3) Networking
@@ -50,7 +50,7 @@ These modules are engine‑agnostic or are toolkit glue that should be reusable 
 - Keep action definitions in game; keep binding parsing/serialization in engine.
 
 ### 5) World/content
-- Engine already has generic world backends (`src/engine/world/*`).
+- Engine provides lightweight world helpers in `src/engine/common/` (world content + archive helpers).
 - Game world config + gameplay constraints stay in `src/game/world/*`.
 - Any purely data‑loading logic (mesh/asset extraction) can move to engine.
 

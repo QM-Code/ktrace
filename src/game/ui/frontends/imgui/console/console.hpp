@@ -20,7 +20,7 @@ struct ImFont;
 #include "ui/console/console_interface.hpp"
 #include "ui/controllers/bindings_controller.hpp"
 #include "ui/controllers/settings_controller.hpp"
-#include "ui/frontends/imgui/console/thumbnail_cache.hpp"
+#include "karma_extras/ui/imgui/thumbnail_cache.hpp"
 #include "ui/controllers/console_controller.hpp"
 #include "ui/models/bindings_model.hpp"
 #include "ui/models/console_model.hpp"

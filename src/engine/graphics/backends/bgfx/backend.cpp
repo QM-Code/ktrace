@@ -1,8 +1,4 @@
 #include "karma/graphics/backends/bgfx/backend.hpp"
-#if defined(KARMA_UI_BACKEND_IMGUI)
-#include "karma/ui/platform/imgui/renderer_bgfx.hpp"
-#endif
-
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
@@ -325,9 +321,6 @@ BgfxBackend::BgfxBackend(platform::Window& windowIn)
         bgfx::setViewTransform(0, nullptr, nullptr);
         buildTestResources();
         buildSkyboxResources();
-#if defined(KARMA_UI_BACKEND_IMGUI)
-        uiBridge_ = std::make_unique<BgfxRenderer>();
-#endif
         spdlog::trace("Graphics(Bgfx): init ok renderer={} testReady={}",
                      static_cast<int>(bgfx::getRendererType()),
                      testReady);

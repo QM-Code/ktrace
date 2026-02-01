@@ -4,7 +4,7 @@
 #include "karma/common/i18n.hpp"
 #include "karma/platform/window.hpp"
 #include "spdlog/spdlog.h"
-#include "karma/ui/bridges/ui_render_bridge.hpp"
+#include "karma_extras/ui/bridges/ui_render_bridge.hpp"
 #include "ui/config/input_mapping.hpp"
 #include "ui/fonts/console_fonts.hpp"
 #include "ui/config/render_scale.hpp"

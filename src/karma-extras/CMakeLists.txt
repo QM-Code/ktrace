@@ -7,19 +7,85 @@ else()
     set(KARMA_EXTRAS_VERSION "0.0.0")
 endif()
 
-add_library(karma_extras STATIC
+set(KARMA_EXTRAS_SOURCES
     ${PROJECT_SOURCE_DIR}/src/karma-extras/karma_extras.cpp
-    ${PROJECT_SOURCE_DIR}/src/karma-extras/world/content.cpp
-    ${PROJECT_SOURCE_DIR}/src/karma-extras/world/backend_factory.cpp
-    ${PROJECT_SOURCE_DIR}/src/karma-extras/world/backends/fs/backend.cpp
-    ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/imgui/renderer_bgfx.cpp
-    ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/imgui/renderer_diligent.cpp
-    ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/rmlui/renderer_bgfx.cpp
-    ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/rmlui/renderer_diligent.cpp
 )
+if(KARMA_UI_BACKEND STREQUAL "imgui")
+    if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
+        list(APPEND KARMA_EXTRAS_SOURCES
+            ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/imgui/renderer_bgfx.cpp
+            ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/imgui/thumbnail_cache.cpp
+        )
+    elseif(KARMA_RENDER_BACKEND STREQUAL "diligent")
+        list(APPEND KARMA_EXTRAS_SOURCES
+            ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/imgui/renderer_diligent.cpp
+            ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/imgui/thumbnail_cache.cpp
+        )
+    endif()
+elseif(KARMA_UI_BACKEND STREQUAL "rmlui")
+    if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
+        list(APPEND KARMA_EXTRAS_SOURCES
+            ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/rmlui/renderer_bgfx.cpp
+        )
+    elseif(KARMA_RENDER_BACKEND STREQUAL "diligent")
+        list(APPEND KARMA_EXTRAS_SOURCES
+            ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/rmlui/renderer_diligent.cpp
+        )
+    endif()
+endif()
+
+add_library(karma_extras STATIC ${KARMA_EXTRAS_SOURCES})
 add_library(karma_extras::karma_extras ALIAS karma_extras)
 
 target_link_libraries(karma_extras PUBLIC karma)
+if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
+    target_link_libraries(karma_extras PUBLIC bgfx::bgfx)
+elseif(KARMA_RENDER_BACKEND STREQUAL "diligent")
+    target_link_libraries(karma_extras PUBLIC $<BUILD_INTERFACE:Diligent-GraphicsEngineVk-static>)
+    if(TARGET Diligent-Common)
+        target_link_libraries(karma_extras PUBLIC $<BUILD_INTERFACE:Diligent-Common>)
+    endif()
+    if(TARGET Diligent-GraphicsEngine)
+        target_link_libraries(karma_extras PUBLIC $<BUILD_INTERFACE:Diligent-GraphicsEngine>)
+    endif()
+    if(TARGET Diligent-GraphicsEngineNextGenBase)
+        target_link_libraries(karma_extras PUBLIC $<BUILD_INTERFACE:Diligent-GraphicsEngineNextGenBase>)
+    endif()
+    if(TARGET Diligent-GraphicsAccessories)
+        target_link_libraries(karma_extras PUBLIC $<BUILD_INTERFACE:Diligent-GraphicsAccessories>)
+    endif()
+    if(TARGET Diligent-ShaderTools)
+        target_link_libraries(karma_extras PUBLIC $<BUILD_INTERFACE:Diligent-ShaderTools>)
+    endif()
+    if(TARGET Diligent-PlatformInterface)
+        target_link_libraries(karma_extras PUBLIC $<BUILD_INTERFACE:Diligent-PlatformInterface>)
+    endif()
+    if(TARGET Diligent-TargetPlatform)
+        target_link_libraries(karma_extras PUBLIC $<BUILD_INTERFACE:Diligent-TargetPlatform>)
+    endif()
+    if(DEFINED DiligentEngine_SOURCE_DIR)
+        target_include_directories(karma_extras PUBLIC $<BUILD_INTERFACE:${DiligentEngine_SOURCE_DIR}>)
+        target_include_directories(karma_extras PUBLIC $<BUILD_INTERFACE:${DiligentEngine_SOURCE_DIR}/DiligentCore>)
+        target_include_directories(karma_extras PUBLIC $<BUILD_INTERFACE:${DiligentEngine_SOURCE_DIR}/DiligentTools>)
+    endif()
+    if(UNIX AND NOT APPLE)
+        target_compile_definitions(karma_extras PRIVATE PLATFORM_LINUX=1)
+    endif()
+endif()
+if(KARMA_UI_BACKEND STREQUAL "imgui")
+    target_link_libraries(karma_extras PUBLIC
+        imgui::imgui
+        Freetype::Freetype
+        harfbuzz::harfbuzz
+        PkgConfig::LIBRSVG
+    )
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(karma_extras PUBLIC Fontconfig::Fontconfig)
+    endif()
+endif()
+if(KARMA_UI_BACKEND STREQUAL "rmlui")
+    target_link_libraries(karma_extras PUBLIC RmlUi::RmlUi md4c::md4c)
+endif()
 
 target_include_directories(karma_extras
     PUBLIC

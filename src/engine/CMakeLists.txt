@@ -8,6 +8,8 @@ set(ENGINE_COMMON_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/common/data_dir_override.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/file_utils.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/stb_image_impl.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/world_content.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/world_archive.cpp
 )
 
 include(GNUInstallDirs)
@@ -142,7 +144,7 @@ target_include_directories(karma_server PRIVATE
     ${enet_SOURCE_DIR}/include
 )
 
-target_link_libraries(karma PRIVATE
+target_link_libraries(karma PUBLIC
     ${WINDOW_TARGET}
     glm::glm
     enet_static
@@ -164,27 +166,27 @@ target_link_libraries(karma_server PRIVATE
 )
 
 if(KARMA_RENDER_BACKEND STREQUAL "diligent")
-    target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-GraphicsEngineVk-static>)
+    target_link_libraries(karma PUBLIC $<BUILD_INTERFACE:Diligent-GraphicsEngineVk-static>)
     if(TARGET Diligent-Common)
-        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-Common>)
+        target_link_libraries(karma PUBLIC $<BUILD_INTERFACE:Diligent-Common>)
     endif()
     if(TARGET Diligent-GraphicsEngine)
-        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-GraphicsEngine>)
+        target_link_libraries(karma PUBLIC $<BUILD_INTERFACE:Diligent-GraphicsEngine>)
     endif()
     if(TARGET Diligent-GraphicsEngineNextGenBase)
-        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-GraphicsEngineNextGenBase>)
+        target_link_libraries(karma PUBLIC $<BUILD_INTERFACE:Diligent-GraphicsEngineNextGenBase>)
     endif()
     if(TARGET Diligent-GraphicsAccessories)
-        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-GraphicsAccessories>)
+        target_link_libraries(karma PUBLIC $<BUILD_INTERFACE:Diligent-GraphicsAccessories>)
     endif()
     if(TARGET Diligent-ShaderTools)
-        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-ShaderTools>)
+        target_link_libraries(karma PUBLIC $<BUILD_INTERFACE:Diligent-ShaderTools>)
     endif()
     if(TARGET Diligent-PlatformInterface)
-        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-PlatformInterface>)
+        target_link_libraries(karma PUBLIC $<BUILD_INTERFACE:Diligent-PlatformInterface>)
     endif()
     if(TARGET Diligent-TargetPlatform)
-        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-TargetPlatform>)
+        target_link_libraries(karma PUBLIC $<BUILD_INTERFACE:Diligent-TargetPlatform>)
     endif()
     if(DEFINED DiligentEngine_SOURCE_DIR)
         target_include_directories(karma PRIVATE ${DiligentEngine_SOURCE_DIR})
@@ -195,38 +197,25 @@ if(KARMA_RENDER_BACKEND STREQUAL "diligent")
         target_compile_definitions(karma PRIVATE PLATFORM_LINUX=1)
     endif()
 elseif(KARMA_RENDER_BACKEND STREQUAL "bgfx")
-    target_link_libraries(karma PRIVATE bgfx::bgfx)
+    target_link_libraries(karma PUBLIC bgfx::bgfx)
 endif()
 if(KARMA_PHYSICS_BACKEND STREQUAL "jolt")
-    target_link_libraries(karma PRIVATE Jolt::Jolt)
-    target_link_libraries(karma_server PRIVATE Jolt::Jolt)
+    target_link_libraries(karma PUBLIC Jolt::Jolt)
+    target_link_libraries(karma_server PUBLIC Jolt::Jolt)
 elseif(KARMA_PHYSICS_BACKEND STREQUAL "physx")
-    target_link_libraries(karma PRIVATE unofficial::omniverse-physx-sdk::sdk)
-    target_link_libraries(karma PRIVATE
+    target_link_libraries(karma PUBLIC unofficial::omniverse-physx-sdk::sdk)
+    target_link_libraries(karma PUBLIC
         unofficial::omniverse-physx-sdk::PhysXCharacterKinematic
         unofficial::omniverse-physx-sdk::PhysXExtensions
     )
-    target_link_libraries(karma_server PRIVATE unofficial::omniverse-physx-sdk::sdk)
-    target_link_libraries(karma_server PRIVATE
+    target_link_libraries(karma_server PUBLIC unofficial::omniverse-physx-sdk::sdk)
+    target_link_libraries(karma_server PUBLIC
         unofficial::omniverse-physx-sdk::PhysXCharacterKinematic
         unofficial::omniverse-physx-sdk::PhysXExtensions
     )
-endif()
-if(KARMA_UI_BACKEND STREQUAL "imgui")
-    target_link_libraries(karma PRIVATE
-        imgui::imgui
-        Freetype::Freetype
-        harfbuzz::harfbuzz
-        PkgConfig::LIBRSVG
-    )
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(karma PRIVATE Fontconfig::Fontconfig)
-    endif()
-elseif(KARMA_UI_BACKEND STREQUAL "rmlui")
-    target_link_libraries(karma PRIVATE RmlUi::RmlUi md4c::md4c)
 endif()
 if(KARMA_AUDIO_BACKEND STREQUAL "sdlaudio")
-    target_link_libraries(karma PRIVATE SDL3::SDL3)
+    target_link_libraries(karma PUBLIC SDL3::SDL3)
 endif()
 
 # Install Karma headers and libraries (standalone engine boundary).

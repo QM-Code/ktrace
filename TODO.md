@@ -12,7 +12,7 @@ Focus is on long-term clarity, engine/game separation, and developer velocity.
 ## 2) Rendering & Scene Architecture
 - Create a real render graph / pass scheduler (main scene, radar, UI overlay, post).
 - Formalize a “scene” API: camera, layers, lights, renderables, skybox.
-- Decouple game renderer from backend implementation details.
+- Decouple game renderer and UI from backend implementation details (move bgfx thumbnail cache to engine/extras helper, remove direct backend includes from src/game).
 - Add a minimal debug draw layer (lines, boxes, text) for engine/game diagnostics.
 
 ## 3) Asset & World Pipeline

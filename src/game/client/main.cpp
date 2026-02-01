@@ -9,9 +9,6 @@
 #include "spdlog/spdlog.h"
 #include "karma/app/engine_app.hpp"
 #include "game/engine/client_engine.hpp"
-#if defined(KARMA_RENDER_BACKEND_BGFX)
-#include "karma/graphics/backends/bgfx/backend.hpp"
-#endif
 #include "client/game.hpp"
 #include "client/client_cli_options.hpp"
 #include "client/config_client.hpp"
@@ -19,7 +16,6 @@
 #include "client/server/server_connector.hpp"
 #include "game/net/messages.hpp"
 #include "game/common/data_path_spec.hpp"
-#include "game/ui/core/system.hpp"
 #include "karma_extras/ecs/render_components.h"
 #include "karma/common/data_dir_override.hpp"
 #include "karma/common/data_path_resolver.hpp"
@@ -27,10 +23,8 @@
 #include "karma/common/config_store.hpp"
 #include "karma/common/config_validation.hpp"
 #include "karma/common/i18n.hpp"
-#include "karma/graphics/ui_render_target_bridge.hpp"
 #include "karma/platform/window.hpp"
 #include "ui/config/ui_config.hpp"
-#include "ui/bridges/renderer_bridge.hpp"
 
 namespace components = karma::components;
 
@@ -466,67 +460,6 @@ graphics::MeshData MakeTestCube(float halfExtent) {
     return mesh;
 }
 
-class TestUiBridge final : public ui::RendererBridge {
-public:
-    explicit TestUiBridge(graphics_backend::UiRenderTargetBridge* backendBridge)
-        : backendBridge_(backendBridge) {
-        if (backendBridge_) {
-            uiBridge_ = std::make_unique<RendererUiBridge>(backendBridge_);
-        }
-    }
-
-    graphics::TextureHandle getRadarTexture() const override {
-        return graphics::TextureHandle{};
-    }
-
-    ui::UiRenderTargetBridge* getUiRenderTargetBridge() const override {
-        return uiBridge_.get();
-    }
-
-private:
-    class RendererUiBridge final : public ui::UiRenderTargetBridge {
-    public:
-        explicit RendererUiBridge(graphics_backend::UiRenderTargetBridge* bridge)
-            : bridge_(bridge) {}
-
-        void* toImGuiTextureId(const graphics::TextureHandle& texture) const override {
-            return bridge_ ? bridge_->toImGuiTextureId(texture) : nullptr;
-        }
-
-        void rebuildImGuiFonts(ImFontAtlas* atlas) override {
-            if (bridge_) {
-                bridge_->rebuildImGuiFonts(atlas);
-            }
-        }
-
-        void renderImGuiToTarget(ImDrawData* drawData) override {
-            if (bridge_) {
-                bridge_->renderImGuiToTarget(drawData);
-            }
-        }
-
-        bool isImGuiReady() const override {
-            return bridge_ && bridge_->isImGuiReady();
-        }
-
-        void ensureImGuiRenderTarget(int width, int height) override {
-            if (bridge_) {
-                bridge_->ensureImGuiRenderTarget(width, height);
-            }
-        }
-
-        graphics::TextureHandle getImGuiRenderTarget() const override {
-            return bridge_ ? bridge_->getImGuiRenderTarget() : graphics::TextureHandle{};
-        }
-
-    private:
-        graphics_backend::UiRenderTargetBridge* bridge_ = nullptr;
-    };
-
-    graphics_backend::UiRenderTargetBridge* backendBridge_ = nullptr;
-    std::unique_ptr<RendererUiBridge> uiBridge_;
-};
-
 class Test3DAdapter final : public karma::app::GameInterface {
 public:
     Test3DAdapter(platform::Window &window, bool useWorld)
@@ -703,14 +636,6 @@ int main(int argc, char *argv[]) {
         karma::app::EngineApp app;
         app.context().window = window.get();
         app.context().rendererCore = &rendererCore;
-        std::unique_ptr<UiSystem> testUi;
-        std::unique_ptr<TestUiBridge> testUiBridge;
-        if (cliOptions.test3dUi) {
-            testUi = std::make_unique<UiSystem>(*window);
-            testUiBridge = std::make_unique<TestUiBridge>(rendererCore.device().getUiRenderTargetBridge());
-            testUi->setRendererBridge(testUiBridge.get());
-            app.context().overlay = testUi.get();
-        }
         {
             auto &config = app.config();
             config.enable_ecs_render_sync = true;

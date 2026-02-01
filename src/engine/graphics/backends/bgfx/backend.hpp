@@ -1,10 +1,6 @@
 #pragma once
 
 #include "karma/graphics/backend.hpp"
-#if defined(KARMA_UI_BACKEND_IMGUI)
-#include "karma/ui/platform/imgui/renderer_bgfx.hpp"
-#endif
-
 #include <bgfx/bgfx.h>
 #include <unordered_map>
 
@@ -77,9 +73,6 @@ public:
     glm::mat4 getProjectionMatrix() const override;
     glm::vec3 getCameraPosition() const override;
     glm::vec3 getCameraForward() const override;
-    UiRenderTargetBridge* getUiRenderTargetBridge() override { return uiBridge_.get(); }
-    const UiRenderTargetBridge* getUiRenderTargetBridge() const override { return uiBridge_.get(); }
-
 private:
     struct EntityRecord {
         graphics::LayerId layer = 0;
@@ -196,7 +189,6 @@ private:
     void ensureSceneTarget(int width, int height);
     void destroySceneTarget();
 
-    std::unique_ptr<UiRenderTargetBridge> uiBridge_;
 };
 
 } // namespace graphics_backend

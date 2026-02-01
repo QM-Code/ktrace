@@ -49,7 +49,6 @@ src/
         platform/                      # Window/events abstraction
         renderer/                      # Renderer core and scene orchestration
         ui/                            # UI render bridges and platform renderers
-        world/                         # Content loading + world backends
 
 data/
     common/config.json                 # Shared config layer (assets, network defaults, fonts)

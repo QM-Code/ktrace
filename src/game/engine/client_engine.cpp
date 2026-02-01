@@ -4,7 +4,7 @@
 #include "game/input/bindings.hpp"
 #include "game/input/state.hpp"
 #include "spdlog/spdlog.h"
-#include "ui/bridges/renderer_bridge.hpp"
+#include "karma_extras/ui/bridges/renderer_bridge.hpp"
 #include "karma/common/config_store.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/i18n.hpp"

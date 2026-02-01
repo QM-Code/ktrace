@@ -4,11 +4,9 @@
 #include "game/net/messages.hpp"
 #include "karma/physics/static_body.hpp"
 #include "game/world/config.hpp"
-#include "karma_extras/world/backend.hpp"
-#include "karma_extras/world/content.hpp"
+#include "karma/common/world_content.hpp"
 
 #include <filesystem>
-#include <memory>
 #include "karma/common/json.hpp"
 #include <string>
 #include <vector>
@@ -18,8 +16,6 @@ class Game;
 class ServerWorldSession {
 private:
     Game &game;
-    std::unique_ptr<world_backend::Backend> backend_;
-
     std::string serverName;
     world::WorldContent content_;
     PlayerParameters defaultPlayerParameters_;

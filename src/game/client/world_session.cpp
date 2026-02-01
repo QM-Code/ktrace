@@ -8,11 +8,12 @@
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
+#include "karma/common/world_archive.hpp"
 
 namespace components = karma::components;
 
 ClientWorldSession::ClientWorldSession(Game &game, std::string worldDir)
-        : game(game), backend_(world_backend::CreateWorldBackend()) {
+        : game(game) {
     const auto userConfigPath = karma::config::ConfigStore::Initialized()
         ? karma::config::ConfigStore::UserConfigPath()
         : karma::data::EnsureUserConfigFile("config.json");
@@ -23,11 +24,11 @@ ClientWorldSession::ClientWorldSession(Game &game, std::string worldDir)
         {userConfigPath, "user config", spdlog::level::debug, false}
     };
 
-    content_ = backend_->loadContent(layerSpecs,
-                                     std::nullopt,
-                                     std::filesystem::path(worldDir),
-                                     std::string{},
-                                     "ClientWorldSession");
+    content_ = world::LoadWorldContent(layerSpecs,
+                                       std::nullopt,
+                                       std::filesystem::path(worldDir),
+                                       std::string{},
+                                       "ClientWorldSession");
     defaultPlayerParameters_ = game_world::ExtractDefaultPlayerParameters(content_.config);
 }
 
@@ -77,10 +78,10 @@ void ClientWorldSession::update() {
 
             content_.rootDir = downloadsDir;
 
-            backend_->extractArchive(initMsg.worldData, downloadsDir);
+            world::ExtractWorldArchive(initMsg.worldData, downloadsDir);
 
             const auto worldConfigPath = downloadsDir / "config.json";
-            auto worldConfigOpt = backend_->readJsonFile(worldConfigPath);
+            auto worldConfigOpt = world::ReadWorldJsonFile(worldConfigPath);
             if (worldConfigOpt.has_value()) {
                 if (!worldConfigOpt->is_object()) {
                     spdlog::warn("ClientWorldSession: World config is not a JSON object: {}", worldConfigPath.string());

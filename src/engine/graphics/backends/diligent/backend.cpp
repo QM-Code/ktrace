@@ -1,9 +1,5 @@
 #include "karma/graphics/backends/diligent/backend.hpp"
 #include "karma/graphics/backends/diligent/ui_bridge.hpp"
-#if defined(KARMA_UI_BACKEND_IMGUI)
-#include "karma/ui/platform/imgui/renderer_diligent.hpp"
-#endif
-
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
@@ -271,7 +267,6 @@ DiligentBackend::DiligentBackend(platform::Window& windowIn)
 }
 
 DiligentBackend::~DiligentBackend() {
-    uiBridge_.reset();
     if (uiOverlayToken_ != 0) {
         graphics_backend::diligent_ui::UnregisterExternalTexture(uiOverlayToken_);
         uiOverlayToken_ = 0;
@@ -912,9 +907,6 @@ void DiligentBackend::initDiligent() {
     initialized = true;
     graphics_backend::diligent_ui::SetContext(device_, context_, swapChain_, framebufferWidth, framebufferHeight);
 #if defined(KARMA_UI_BACKEND_IMGUI)
-    if (!uiBridge_) {
-        uiBridge_ = std::make_unique<DiligentRenderer>();
-    }
 #endif
     spdlog::info("Graphics(Diligent): Vulkan initialized");
 }

@@ -14,7 +14,7 @@
 #include "ui/core/validation.hpp"
 #include "ui/console/console_interface.hpp"
 #include "karma/ui/overlay.hpp"
-#include "ui/bridges/renderer_bridge.hpp"
+#include "karma_extras/ui/bridges/renderer_bridge.hpp"
 
 namespace platform {
 class Window;

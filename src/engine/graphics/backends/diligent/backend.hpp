@@ -1,10 +1,6 @@
 #pragma once
 
 #include "karma/graphics/backend.hpp"
-#if defined(KARMA_UI_BACKEND_IMGUI)
-#include "karma/ui/platform/imgui/renderer_diligent.hpp"
-#endif
-
 #include <DiligentCore/Common/interface/RefCntAutoPtr.hpp>
 #include <unordered_map>
 
@@ -81,9 +77,6 @@ public:
     glm::mat4 getProjectionMatrix() const override;
     glm::vec3 getCameraPosition() const override;
     glm::vec3 getCameraForward() const override;
-    UiRenderTargetBridge* getUiRenderTargetBridge() override { return uiBridge_.get(); }
-    const UiRenderTargetBridge* getUiRenderTargetBridge() const override { return uiBridge_.get(); }
-
 private:
     struct EntityRecord {
         graphics::LayerId layer = 0;
@@ -173,7 +166,6 @@ private:
     Diligent::RefCntAutoPtr<Diligent::IBuffer> brightnessVertexBuffer_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer> brightnessConstantBuffer_;
 
-    std::unique_ptr<UiRenderTargetBridge> uiBridge_;
 
     uint64_t configRevision_ = 0;
 

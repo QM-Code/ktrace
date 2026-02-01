@@ -57,7 +57,6 @@ if(KARMA_UI_BACKEND STREQUAL "imgui")
     list(APPEND GAME_CLIENT_SOURCES
         ${PROJECT_SOURCE_DIR}/src/game/ui/frontends/imgui/backend.cpp
         ${PROJECT_SOURCE_DIR}/src/game/ui/frontends/imgui/console/console.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/ui/frontends/imgui/console/thumbnail_cache.cpp
         ${PROJECT_SOURCE_DIR}/src/game/ui/frontends/imgui/console/panels/panel_community.cpp
         ${PROJECT_SOURCE_DIR}/src/game/ui/frontends/imgui/console/panels/panel_settings.cpp
         ${PROJECT_SOURCE_DIR}/src/game/ui/frontends/imgui/console/panels/panel_bindings.cpp
@@ -120,7 +119,6 @@ if(KARMA_BUILD_ENGINEAPP_SAMPLE)
     )
     target_link_libraries(bz3-engineapp-sample PRIVATE
         karma
-        ${WINDOW_TARGET}
         glm::glm
         enet_static
         assimp::assimp
@@ -132,50 +130,6 @@ if(KARMA_BUILD_ENGINEAPP_SAMPLE)
         CURL::libcurl
         OpenSSL::Crypto
     )
-    if(KARMA_RENDER_BACKEND STREQUAL "diligent")
-        target_link_libraries(bz3-engineapp-sample PRIVATE Diligent-GraphicsEngineVk-static)
-        if(TARGET Diligent-Common)
-            target_link_libraries(bz3-engineapp-sample PRIVATE Diligent-Common)
-        endif()
-        if(TARGET Diligent-GraphicsEngine)
-            target_link_libraries(bz3-engineapp-sample PRIVATE Diligent-GraphicsEngine)
-        endif()
-        if(TARGET Diligent-GraphicsEngineNextGenBase)
-            target_link_libraries(bz3-engineapp-sample PRIVATE Diligent-GraphicsEngineNextGenBase)
-        endif()
-        if(TARGET Diligent-GraphicsAccessories)
-            target_link_libraries(bz3-engineapp-sample PRIVATE Diligent-GraphicsAccessories)
-        endif()
-        if(TARGET Diligent-ShaderTools)
-            target_link_libraries(bz3-engineapp-sample PRIVATE Diligent-ShaderTools)
-        endif()
-        if(TARGET Diligent-PlatformInterface)
-            target_link_libraries(bz3-engineapp-sample PRIVATE Diligent-PlatformInterface)
-        endif()
-        if(TARGET Diligent-TargetPlatform)
-            target_link_libraries(bz3-engineapp-sample PRIVATE Diligent-TargetPlatform)
-        endif()
-        if(DEFINED DiligentEngine_SOURCE_DIR)
-            target_include_directories(bz3-engineapp-sample PRIVATE ${DiligentEngine_SOURCE_DIR})
-            target_include_directories(bz3-engineapp-sample PRIVATE ${DiligentEngine_SOURCE_DIR}/DiligentCore)
-            target_include_directories(bz3-engineapp-sample PRIVATE ${DiligentEngine_SOURCE_DIR}/DiligentTools)
-        endif()
-        if(UNIX AND NOT APPLE)
-            target_compile_definitions(bz3-engineapp-sample PRIVATE PLATFORM_LINUX=1)
-        endif()
-    elseif(KARMA_RENDER_BACKEND STREQUAL "bgfx")
-        target_link_libraries(bz3-engineapp-sample PRIVATE bgfx::bgfx)
-        add_dependencies(bz3-engineapp-sample bz3_bgfx_shaders)
-    endif()
-    if(KARMA_PHYSICS_BACKEND STREQUAL "jolt")
-        target_link_libraries(bz3-engineapp-sample PRIVATE Jolt::Jolt)
-    elseif(KARMA_PHYSICS_BACKEND STREQUAL "physx")
-        target_link_libraries(bz3-engineapp-sample PRIVATE unofficial::omniverse-physx-sdk::sdk)
-        target_link_libraries(bz3-engineapp-sample PRIVATE
-            unofficial::omniverse-physx-sdk::PhysXCharacterKinematic
-            unofficial::omniverse-physx-sdk::PhysXExtensions
-        )
-    endif()
     if(KARMA_UI_BACKEND STREQUAL "imgui")
         target_link_libraries(bz3-engineapp-sample PRIVATE
             imgui::imgui
@@ -194,10 +148,6 @@ if(KARMA_BUILD_ENGINEAPP_SAMPLE)
 
     if(KARMA_UI_BACKEND STREQUAL "rmlui")
         target_link_libraries(bz3-engineapp-sample PRIVATE RmlUi::RmlUi md4c::md4c)
-    endif()
-
-    if(KARMA_AUDIO_BACKEND STREQUAL "sdlaudio")
-        target_link_libraries(bz3-engineapp-sample PRIVATE SDL3::SDL3)
     endif()
 
     if (UNIX AND NOT APPLE)
@@ -241,7 +191,7 @@ target_include_directories(bz3-server PRIVATE
 # Link libraries
 target_link_libraries(bz3 PRIVATE
     karma
-    ${WINDOW_TARGET}
+    $<$<BOOL:${KARMA_EXTRAS}>:karma_extras>
     glm::glm
     enet_static
     assimp::assimp
@@ -253,51 +203,6 @@ target_link_libraries(bz3 PRIVATE
     CURL::libcurl
     OpenSSL::Crypto
 )
-if(KARMA_RENDER_BACKEND STREQUAL "diligent")
-    target_link_libraries(bz3 PRIVATE Diligent-GraphicsEngineVk-static)
-    if(TARGET Diligent-Common)
-        target_link_libraries(bz3 PRIVATE Diligent-Common)
-    endif()
-    if(TARGET Diligent-GraphicsEngine)
-        target_link_libraries(bz3 PRIVATE Diligent-GraphicsEngine)
-    endif()
-    if(TARGET Diligent-GraphicsEngineNextGenBase)
-        target_link_libraries(bz3 PRIVATE Diligent-GraphicsEngineNextGenBase)
-    endif()
-    if(TARGET Diligent-GraphicsAccessories)
-        target_link_libraries(bz3 PRIVATE Diligent-GraphicsAccessories)
-    endif()
-    if(TARGET Diligent-ShaderTools)
-        target_link_libraries(bz3 PRIVATE Diligent-ShaderTools)
-    endif()
-    if(TARGET Diligent-PlatformInterface)
-        target_link_libraries(bz3 PRIVATE Diligent-PlatformInterface)
-    endif()
-    if(TARGET Diligent-TargetPlatform)
-        target_link_libraries(bz3 PRIVATE Diligent-TargetPlatform)
-    endif()
-    if(DEFINED DiligentEngine_SOURCE_DIR)
-        target_include_directories(bz3 PRIVATE ${DiligentEngine_SOURCE_DIR})
-        target_include_directories(bz3 PRIVATE ${DiligentEngine_SOURCE_DIR}/DiligentCore)
-        target_include_directories(bz3 PRIVATE ${DiligentEngine_SOURCE_DIR}/DiligentTools)
-    endif()
-    if(UNIX AND NOT APPLE)
-        target_compile_definitions(bz3 PRIVATE PLATFORM_LINUX=1)
-    endif()
-elseif(KARMA_RENDER_BACKEND STREQUAL "bgfx")
-    target_link_libraries(bz3 PRIVATE bgfx::bgfx)
-    add_dependencies(bz3 bz3_bgfx_shaders)
-endif()
-if(KARMA_PHYSICS_BACKEND STREQUAL "jolt")
-    target_link_libraries(bz3 PRIVATE Jolt::Jolt)
-elseif(KARMA_PHYSICS_BACKEND STREQUAL "physx")
-    target_link_libraries(bz3 PRIVATE unofficial::omniverse-physx-sdk::sdk)
-    # Ensure static lib link order resolves PhysX character controller deps.
-    target_link_libraries(bz3 PRIVATE
-        unofficial::omniverse-physx-sdk::PhysXCharacterKinematic
-        unofficial::omniverse-physx-sdk::PhysXExtensions
-    )
-endif()
 if(KARMA_UI_BACKEND STREQUAL "imgui")
     target_link_libraries(bz3 PRIVATE
         imgui::imgui
@@ -319,12 +224,9 @@ if(KARMA_UI_BACKEND STREQUAL "rmlui")
     target_link_libraries(bz3 PRIVATE RmlUi::RmlUi md4c::md4c)
 endif()
 
-if(KARMA_AUDIO_BACKEND STREQUAL "sdlaudio")
-    target_link_libraries(bz3 PRIVATE SDL3::SDL3)
-endif()
-
 target_link_libraries(bz3-server PRIVATE
     karma_server
+    $<$<BOOL:${KARMA_EXTRAS}>:karma_extras>
     glm::glm
     enet_static
     assimp::assimp
@@ -336,16 +238,6 @@ target_link_libraries(bz3-server PRIVATE
     proto_lib
     CURL::libcurl
 )
-if(KARMA_PHYSICS_BACKEND STREQUAL "jolt")
-    target_link_libraries(bz3-server PRIVATE Jolt::Jolt)
-elseif(KARMA_PHYSICS_BACKEND STREQUAL "physx")
-    target_link_libraries(bz3-server PRIVATE unofficial::omniverse-physx-sdk::sdk)
-    # Ensure static lib link order resolves PhysX character controller deps.
-    target_link_libraries(bz3-server PRIVATE
-        unofficial::omniverse-physx-sdk::PhysXCharacterKinematic
-        unofficial::omniverse-physx-sdk::PhysXExtensions
-    )
-endif()
 
 # System libraries (platform-specific)
 if (UNIX AND NOT APPLE)

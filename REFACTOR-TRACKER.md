@@ -13,7 +13,8 @@ Each phase should keep the build working at a defined checkpoint.
   - Input: game-owned input gating in `src/game/engine/client_engine.*`.
   - Physics: game uses engine physics types in world/player.
   - Audio: game uses engine audio types in player/client.
-  - Network: game uses engine transport API in ENet backend.
+- Network: game uses engine transport API in ENet backend.
+- Game still uses backend-specific UI hooks (bgfx thumbnail cache, ImGui/RmlUi renderers in karma-extras). Plan: move thumbnail cache to engine/extras graphics helpers and remove any direct backend includes from src/game so game is backend-agnostic.
   - Config/data/i18n: widespread `karma/common/*` usage in client/server/ui/world.
 - Orchestration hotspots:
   - Client loop: `src/game/client/main.cpp`.

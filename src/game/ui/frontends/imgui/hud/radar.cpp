@@ -3,7 +3,7 @@
 #include <imgui.h>
 #include <cstdint>
 
-#include "karma/ui/imgui/texture_utils.hpp"
+#include "karma_extras/ui/imgui/texture_utils.hpp"
 
 namespace ui {
 

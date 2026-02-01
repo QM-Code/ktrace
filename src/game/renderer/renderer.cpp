@@ -3,6 +3,14 @@
 #include "karma/graphics/ui_render_target_bridge.hpp"
 #include "karma/graphics/resources.hpp"
 
+#if defined(KARMA_UI_BACKEND_IMGUI)
+#if defined(KARMA_RENDER_BACKEND_BGFX)
+#include "karma_extras/ui/platform/imgui/renderer_bgfx.hpp"
+#elif defined(KARMA_RENDER_BACKEND_DILIGENT)
+#include "karma_extras/ui/platform/imgui/renderer_diligent.hpp"
+#endif
+#endif
+
 #include "karma/platform/window.hpp"
 #include "spdlog/spdlog.h"
 #include <cmath>
@@ -57,9 +65,16 @@ Renderer::Renderer(platform::Window &windowIn)
     : window(&windowIn) {
     core_ = std::make_unique<engine::renderer::RendererCore>(windowIn);
     radarRenderer_ = std::make_unique<game::renderer::RadarRenderer>(core_->device(), core_->scene());
-    if (auto* backendBridge = core_->device().getUiRenderTargetBridge()) {
-        uiRenderTargetBridge_ = std::make_unique<RendererUiBridge>(backendBridge);
+#if defined(KARMA_UI_BACKEND_IMGUI)
+#if defined(KARMA_RENDER_BACKEND_BGFX)
+    imguiBridge_ = std::make_unique<graphics_backend::BgfxRenderer>();
+#elif defined(KARMA_RENDER_BACKEND_DILIGENT)
+    imguiBridge_ = std::make_unique<graphics_backend::DiligentRenderer>();
+#endif
+    if (imguiBridge_) {
+        uiRenderTargetBridge_ = std::make_unique<RendererUiBridge>(imguiBridge_.get());
     }
+#endif
 
 }
 

@@ -1,5 +1,5 @@
 #include "ui/frontends/imgui/console/console.hpp"
-#include "karma/ui/imgui/texture_utils.hpp"
+#include "karma_extras/ui/imgui/texture_utils.hpp"
 
 #include <algorithm>
 #include <cctype>

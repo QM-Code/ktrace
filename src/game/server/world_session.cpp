@@ -3,6 +3,7 @@
 #include "server/game.hpp"
 #include "spdlog/spdlog.h"
 #include "karma/common/data_path_resolver.hpp"
+#include "karma/common/world_archive.hpp"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -17,7 +18,6 @@ ServerWorldSession::ServerWorldSession(Game &game,
                                        std::string worldDir,
                                        bool enableWorldZipping)
         : game(game),
-          backend_(world_backend::CreateWorldBackend()),
           serverName(std::move(serverNameIn)),
           archiveOnStartup(enableWorldZipping) {
     const std::vector<karma::data::ConfigLayerSpec> baseSpecs = {
@@ -26,11 +26,11 @@ ServerWorldSession::ServerWorldSession(Game &game,
     };
 
     const std::optional<karma::json::Value> configOpt = worldConfig.is_null() ? std::nullopt : std::optional<karma::json::Value>(std::move(worldConfig));
-    content_ = backend_->loadContent(baseSpecs,
-                                     configOpt,
-                                     std::filesystem::path(worldDir),
-                                     std::move(worldName),
-                                     "ServerWorldSession");
+    content_ = world::LoadWorldContent(baseSpecs,
+                                       configOpt,
+                                       std::filesystem::path(worldDir),
+                                       std::move(worldName),
+                                       "ServerWorldSession");
     defaultPlayerParameters_ = game_world::ExtractDefaultPlayerParameters(content_.config);
 
     if (archiveOnStartup) {
@@ -56,7 +56,7 @@ world::ArchiveBytes ServerWorldSession::buildArchive() {
         return archiveCache;
     }
 
-    archiveCache = backend_->buildArchive(content_.rootDir);
+    archiveCache = world::BuildWorldArchive(content_.rootDir);
     archiveCached = true;
     return archiveCache;
 }

@@ -189,7 +189,6 @@ These CMake cache variables select backends at build time:
 - `KARMA_AUDIO_BACKEND=miniaudio|sdlaudio`
 - `KARMA_RENDER_BACKEND=bgfx|diligent`
 - `KARMA_NETWORK_BACKEND=enet`
-- `KARMA_WORLD_BACKEND=fs`
 
 Engine/Game build modes:
 
@@ -214,15 +213,14 @@ cmake --build build-game-only
 Example:
 
 ```bash
-cmake -S . -B build-sdl3-rmlui-sdlaudio-bgfx-enet-fs \
+cmake -S . -B build-sdl3-rmlui-sdlaudio-bgfx-enet \
   -DKARMA_WINDOW_BACKEND=sdl3 \
   -DKARMA_UI_BACKEND=rmlui \
   -DKARMA_PHYSICS_BACKEND=jolt \
   -DKARMA_AUDIO_BACKEND=sdlaudio \
   -DKARMA_RENDER_BACKEND=bgfx \
-  -DKARMA_NETWORK_BACKEND=enet \
-  -DKARMA_WORLD_BACKEND=fs
-cmake --build build-sdl3-rmlui-sdlaudio-bgfx-enet-fs
+  -DKARMA_NETWORK_BACKEND=enet
+cmake --build build-sdl3-rmlui-sdlaudio-bgfx-enet
 ```
 
 ## Input bindings
