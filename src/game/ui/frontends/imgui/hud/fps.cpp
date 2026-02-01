@@ -36,10 +36,11 @@ void ImGuiHudFps::draw(ImGuiIO &io,
     fg.z = std::clamp(fg.z, 0.0f, 1.0f);
     fg.w = std::clamp(fg.w, 0.0f, 1.0f);
     const float scale = std::clamp(textScale, 0.5f, 3.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, bg);
     ImGui::PushStyleColor(ImGuiCol_Text, fg);
     const ImVec2 labelSize = ImGui::CalcTextSize("FPS: 999");
-    const float width = labelSize.x * scale + (ImGui::GetStyle().WindowPadding.x * 2.0f) + 6.0f;
+    const float width = labelSize.x * scale + (ImGui::GetStyle().WindowPadding.x * 2.0f) + 10.0f;
     ImGui::SetNextWindowSizeConstraints(ImVec2(width, 0.0f), ImVec2(width, FLT_MAX));
     ImGui::Begin("##FPSOverlay", nullptr,
         ImGuiWindowFlags_NoTitleBar |
@@ -59,6 +60,7 @@ void ImGuiHudFps::draw(ImGuiIO &io,
     ImGui::TextUnformatted(fpsText.c_str());
     ImGui::End();
     ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar();
 }
 
 } // namespace ui

@@ -6,7 +6,7 @@ Focus is on long-term clarity, engine/game separation, and developer velocity.
 ## 1) Engine/Game Split (Highest Priority)
 - Make `src/engine` fully standalone (no game headers, no game data dependencies).
 - Split build into two phases: build Karma as libs → build BZ3 against them.
-- Replace `src/engine/karma/` forwarders with real installed headers once split.
+- Install/export public headers when Karma is split into its own repo.
 - Create a Karma build script (parallel to `bzbuild.py`) once it is a separate repo.
 
 ## 2) Rendering & Scene Architecture

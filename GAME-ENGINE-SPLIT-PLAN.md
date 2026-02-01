@@ -115,7 +115,7 @@ Use this as a step‑by‑step cutover guide for separating the repos without gu
 
 1) **Engine repo extraction**
    - Copy `src/engine/` into new repo (karma).
-   - Keep `src/engine/karma/` forwarders and ensure include root is `src/engine`.
+   - Export public headers under `include/karma/` and ensure include root exposes them.
    - Retain engine dependencies and CMake options (`KARMA_*` macros/env vars).
    - Verify engine builds as libraries (or object libs) with no `src/game` references.
 

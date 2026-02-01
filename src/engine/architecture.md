@@ -33,7 +33,7 @@ For subsystem-level architecture, see each subdirectory’s `architecture.md`.
 - **Physics ↔ Game**: physics backends provide a consistent API; game code uses
   physics objects without knowing which backend is selected.
 
-## Forwarder layer
-`src/engine/karma/` is an **adapter layer** that mirrors the intended public API
-for the engine repo. Once Karma is split out, these forwarders will be replaced
-by real installed headers.
+## Public headers
+Public engine headers live under `include/karma/` and point directly at
+`src/engine/...`. When Karma is split out, these headers become the installed
+API surface.

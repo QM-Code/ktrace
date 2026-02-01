@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/geometry/mesh_loader.hpp"
+#include "engine/geometry/mesh_loader.hpp"

@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/ecs/systems/procedural_mesh_sync_system.hpp"
+#include "engine/ecs/systems/procedural_mesh_sync_system.hpp"

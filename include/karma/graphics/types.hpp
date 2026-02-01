@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/graphics/types.hpp"
+#include "engine/graphics/types.hpp"

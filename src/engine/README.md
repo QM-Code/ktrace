@@ -5,8 +5,8 @@ rendering, input mapping, physics, audio, windowing, networking transport, and
 UI bridges.
 
 This subtree is designed to be extracted into its own repo. While it lives in
-this mono-repo, BZ3 consumes it through `karma/...` include paths (forwarders
-under `src/engine/karma/`).
+this mono-repo, BZ3 consumes it through `karma/...` include paths (public
+headers live under `include/karma/` and point directly at engine headers).
 
 ## What Karma does not contain
 - Game rules or gameplay logic

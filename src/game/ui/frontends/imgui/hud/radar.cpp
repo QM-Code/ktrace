@@ -14,7 +14,7 @@ void ImGuiHudRadar::setTexture(const graphics::TextureHandle& texture) {
 void ImGuiHudRadar::draw(const ImVec2 &pos, const ImVec2 &size, const ImVec4 &backgroundColor) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleColor(ImGuiCol_WindowBg, backgroundColor);
 

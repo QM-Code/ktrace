@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/renderer/scene_renderer.hpp"
+#include "engine/renderer/scene_renderer.hpp"

@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/physics/static_body.hpp"
+#include "engine/physics/static_body.hpp"

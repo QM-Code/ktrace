@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/ecs/registry.hpp"
+#include "engine/ecs/registry.hpp"

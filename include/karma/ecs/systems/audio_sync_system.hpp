@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/ecs/systems/audio_sync_system.hpp"
+#include "engine/ecs/systems/audio_sync_system.hpp"

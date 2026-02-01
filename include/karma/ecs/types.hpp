@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/ecs/types.hpp"
+#include "engine/ecs/types.hpp"

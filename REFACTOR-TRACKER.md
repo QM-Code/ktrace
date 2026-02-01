@@ -137,6 +137,10 @@ Checklist:
 - Install/export headers under `include/karma/`.
 - Remove direct engine source compilation from game targets.
 - Build checkpoint: compile + run client/server.
+ - Engine now builds as static libraries (`karma`, `karma_server`).
+ - Game targets now link `karma` / `karma_server` instead of object libraries.
+ - `include/karma/*` forwarders now point directly at `src/engine/*`.
+ - Removed in-tree forwarder headers under `src/engine/karma`.
 
 ## Phase 9 - Cleanup & Docs
 

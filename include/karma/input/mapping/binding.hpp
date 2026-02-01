@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/input/mapping/binding.hpp"
+#include "engine/input/mapping/binding.hpp"

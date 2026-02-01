@@ -193,7 +193,7 @@ void RmlUiHud::setHudTextScale(float scale) {
     if (fpsElement) {
         const float clamped = std::clamp(hudTextScale, 0.5f, 3.0f);
         fpsElement->SetProperty("font-size", std::to_string(14.0f * clamped) + "px");
-        const float baseWidth = 80.0f;
+        const float baseWidth = 76.0f;
         fpsElement->SetProperty("min-width", std::to_string(baseWidth * clamped) + "px");
         fpsElement->SetProperty("text-align", "center");
     }

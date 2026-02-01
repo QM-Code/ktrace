@@ -1,3 +1,3 @@
 #pragma once
 
-#include "engine/karma/graphics/resources.hpp"
+#include "engine/graphics/resources.hpp"

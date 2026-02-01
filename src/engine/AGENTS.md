@@ -3,7 +3,7 @@
 Read `src/AGENTS.md` first. This file describes the **Karma engine** subtree.
 Everything here is intended to be **game-agnostic** and eventually moved into its
 own repository. While Karma is still in-tree, BZ3 includes it via `karma/...`
-forwarders in `src/engine/karma/`.
+headers under `include/karma/`.
 
 ## What Karma provides
 Karma is a modular runtime that owns:
@@ -32,10 +32,9 @@ BZ3 uses these engine services to implement gameplay and UI.
 - **Network transport** → `src/engine/network/AGENTS.md`
 - **World content loading** → `src/engine/world/AGENTS.md`
 
-## Forwarders and namespacing
-- `src/engine/karma/` is a **header forwarder** tree.
-- Game code includes `karma/...` headers; in the future these will come from the
-  engine repo. Right now they forward to `src/engine/...`.
+## Public headers
+- Game code includes `karma/...` headers; these live in `include/karma/` and
+  point directly at `src/engine/...`.
 
 ## Cascading rule
 Every subdirectory under `src/engine/` has its own `AGENTS.md`, `README.md`,
@@ -61,7 +60,7 @@ and `architecture.md`. Read from the top down:
 - `renderer/` — renderer core and scene orchestration
 - `ui/` — UI bridges and platform renderers
 - `world/` — content and world backend factories
-- `karma/` — forwarder headers (temporary while in-tree)
+
 
 If you’re unsure, read the subsystem’s `README.md` for a human-level overview,
 then `architecture.md` for structure, then `AGENTS.md` for detailed guidance.

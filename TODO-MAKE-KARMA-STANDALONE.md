@@ -23,7 +23,7 @@ This is a concrete checklist to make `src/engine/` fully standalone in a future 
 - Or replace with submodules + `find_package` logic.
 
 ## 5) Install/Export
-- Install headers (including `src/engine/karma/` forwarders).
+- Install/export headers under `include/karma/`.
 - Install engine data (config + assets).
 - Provide a `karmaConfig.cmake` for downstream game builds.
 

@@ -14,7 +14,7 @@ own repository**. The structure and naming already reflect that goal:
 
 - Engine code uses the `karma::` namespace and lives under `src/engine/`.
 - Game code uses `game::` or `ui::` and lives under `src/game/`.
-- `src/engine/karma/` contains **forwarder headers** so game code can include
+- `include/karma/` contains **public headers** so game code can include
   `karma/...` even while Karma is still in-tree.
 
 ## The engine/game boundary (mental model)
