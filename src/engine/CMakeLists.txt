@@ -10,6 +10,15 @@ set(ENGINE_COMMON_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/common/stb_image_impl.cpp
 )
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+if(PROJECT_VERSION)
+    set(KARMA_VERSION "${PROJECT_VERSION}")
+else()
+    set(KARMA_VERSION "0.0.0")
+endif()
+
 ## Separate engine sources for client and server to avoid over-linking
 set(ENGINE_CLIENT_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_app.cpp
@@ -125,20 +134,22 @@ add_library(karma_server STATIC ${ENGINE_SERVER_SOURCES})
 target_compile_definitions(karma_server PRIVATE KARMA_SERVER)
 
 target_include_directories(karma PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/engine
-    ${enet_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/engine>
+    $<INSTALL_INTERFACE:include>
 )
 target_include_directories(karma PRIVATE
     ${PROJECT_SOURCE_DIR}/src
+    ${enet_SOURCE_DIR}/include
 )
 target_include_directories(karma_server PUBLIC
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_SOURCE_DIR}/src/engine
-    ${enet_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/engine>
+    $<INSTALL_INTERFACE:include>
 )
 target_include_directories(karma_server PRIVATE
     ${PROJECT_SOURCE_DIR}/src
+    ${enet_SOURCE_DIR}/include
 )
 
 target_link_libraries(karma PRIVATE
@@ -163,27 +174,27 @@ target_link_libraries(karma_server PRIVATE
 )
 
 if(KARMA_RENDER_BACKEND STREQUAL "diligent")
-    target_link_libraries(karma PRIVATE Diligent-GraphicsEngineVk-static)
+    target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-GraphicsEngineVk-static>)
     if(TARGET Diligent-Common)
-        target_link_libraries(karma PRIVATE Diligent-Common)
+        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-Common>)
     endif()
     if(TARGET Diligent-GraphicsEngine)
-        target_link_libraries(karma PRIVATE Diligent-GraphicsEngine)
+        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-GraphicsEngine>)
     endif()
     if(TARGET Diligent-GraphicsEngineNextGenBase)
-        target_link_libraries(karma PRIVATE Diligent-GraphicsEngineNextGenBase)
+        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-GraphicsEngineNextGenBase>)
     endif()
     if(TARGET Diligent-GraphicsAccessories)
-        target_link_libraries(karma PRIVATE Diligent-GraphicsAccessories)
+        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-GraphicsAccessories>)
     endif()
     if(TARGET Diligent-ShaderTools)
-        target_link_libraries(karma PRIVATE Diligent-ShaderTools)
+        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-ShaderTools>)
     endif()
     if(TARGET Diligent-PlatformInterface)
-        target_link_libraries(karma PRIVATE Diligent-PlatformInterface)
+        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-PlatformInterface>)
     endif()
     if(TARGET Diligent-TargetPlatform)
-        target_link_libraries(karma PRIVATE Diligent-TargetPlatform)
+        target_link_libraries(karma PRIVATE $<BUILD_INTERFACE:Diligent-TargetPlatform>)
     endif()
     if(DEFINED DiligentEngine_SOURCE_DIR)
         target_include_directories(karma PRIVATE ${DiligentEngine_SOURCE_DIR})
@@ -227,3 +238,34 @@ endif()
 if(KARMA_AUDIO_BACKEND STREQUAL "sdlaudio")
     target_link_libraries(karma PRIVATE SDL3::SDL3)
 endif()
+
+# Install Karma headers and libraries (standalone engine boundary).
+install(TARGETS karma karma_server
+    EXPORT karmaTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/karma
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+install(EXPORT karmaTargets
+    NAMESPACE karma::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/karma
+)
+
+configure_package_config_file(
+    ${PROJECT_SOURCE_DIR}/cmake/karma-config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/karma-config.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/karma
+)
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/karma-config-version.cmake
+    VERSION ${KARMA_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/karma-config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/karma-config-version.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/karma
+)

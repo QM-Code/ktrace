@@ -127,6 +127,22 @@ Other
 - **Game** (BZ3-specific rules, UI, and gameplay) lives under `src/game/`.
 - The game configures engine data/asset discovery via `src/game/common/data_path_spec.*`.
 
+## Engine library (Karma)
+
+The engine is exported as a standalone library with public headers under
+`include/karma/`. After install, consumers can use `find_package(karma)` and
+link against `karma::karma`.
+
+Example:
+
+```cmake
+find_package(karma REQUIRED)
+add_executable(my_game main.cpp)
+target_link_libraries(my_game PRIVATE karma::karma)
+```
+
+See `examples/karma_find_package/` for a minimal CMake + main.cpp.
+
 ## Backends and entry points
 
 BZ3 uses a consistent interface → backend pattern for several subsystems. Engine-side public interfaces live in `src/engine/<subsystem>/` and delegate to backend implementations under `src/engine/<subsystem>/backends/<name>/`.
@@ -135,9 +151,9 @@ Entry points (public interfaces)
 - Audio: `Audio` in `src/engine/audio/audio.hpp`
 - Windowing: `Window` in `src/engine/platform/window.hpp`
 - Graphics: `GraphicsDevice` in `src/engine/graphics/device.hpp`
-- Renderer orchestration: `Render` in `src/game/renderer/render.hpp`
+- Renderer orchestration: `Renderer` in `src/game/renderer/renderer.hpp`
 - UI: `UiSystem` in `src/game/ui/core/system.hpp`
-- UI render bridge: `ui::RenderBridge` in `src/game/ui/bridges/render_bridge.hpp`
+- UI render bridge: `ui::RendererBridge` in `src/game/ui/bridges/renderer_bridge.hpp`
 - Physics: `PhysicsWorld` in `src/engine/physics/physics_world.hpp`
 - Networking: `ClientNetwork` and `ServerNetwork` in `src/game/net/` (message-level); transports live in `src/engine/network/`
 - World runtime: `ClientWorldSession` and `ServerWorldSession` in `src/game/client/` and `src/game/server/`
@@ -174,6 +190,26 @@ These CMake cache variables select backends at build time:
 - `KARMA_RENDER_BACKEND=bgfx|diligent`
 - `KARMA_NETWORK_BACKEND=enet`
 - `KARMA_WORLD_BACKEND=fs`
+
+Engine/Game build modes:
+
+- `KARMA_ENGINE_ONLY=ON` to build and install only the engine libraries.
+- `BZ3_GAME_ONLY=ON` to build only the game (requires an installed Karma package; set `CMAKE_PREFIX_PATH`).
+
+Example (engine-only build + install):
+
+```bash
+cmake -S . -B build-engine-only -DKARMA_ENGINE_ONLY=ON
+cmake --build build-engine-only
+cmake --install build-engine-only --prefix /opt/karma
+```
+
+Example (game-only build using installed engine):
+
+```bash
+cmake -S . -B build-game-only -DBZ3_GAME_ONLY=ON -DCMAKE_PREFIX_PATH=/opt/karma
+cmake --build build-game-only
+```
 
 Example:
 

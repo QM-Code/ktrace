@@ -41,7 +41,7 @@ CMakeLists). Only these combinations are valid now:
 - Audio: `miniaudio` or `sdlaudio`
 - Window: `sdl3` (sdl2 stub exists)
 
-If you see code for Forge or Bullet, it should not exist anymore.
+If you see code for Forge or Bullet, it should not exist anymore. The supported physics backends are Jolt and PhysX.
 
 ## Cascading rule (important)
 Each subdirectory contains its own `AGENTS.md`, `README.md`, and `architecture.md`.

@@ -13,6 +13,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 enable_language(ASM)
 
+option(KARMA_ENGINE_ONLY "Build only the Karma engine libraries" OFF)
+option(KARMA_EXTRAS "Build the Karma extras layer" ON)
+option(BZ3_GAME_ONLY "Build only the BZ3 game (requires installed Karma)" OFF)
+if(KARMA_ENGINE_ONLY AND BZ3_GAME_ONLY)
+    message(FATAL_ERROR "KARMA_ENGINE_ONLY and BZ3_GAME_ONLY are mutually exclusive.")
+endif()
+if(KARMA_ENGINE_ONLY)
+    set(KARMA_EXTRAS OFF)
+endif()
+
 set(KARMA_UI_BACKEND "imgui" CACHE STRING "UI backend (imgui or rmlui)")
 set_property(CACHE KARMA_UI_BACKEND PROPERTY STRINGS imgui rmlui)
 if(KARMA_UI_BACKEND STREQUAL "imgui")
@@ -88,12 +98,14 @@ include(FetchContent)
 
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-FetchContent_Declare(
-    pybind11
-    GIT_REPOSITORY https://github.com/pybind/pybind11.git
-    GIT_TAG v2.11.1
-)
-FetchContent_MakeAvailable(pybind11)
+if(NOT KARMA_ENGINE_ONLY)
+    FetchContent_Declare(
+        pybind11
+        GIT_REPOSITORY https://github.com/pybind/pybind11.git
+        GIT_TAG v2.11.1
+    )
+    FetchContent_MakeAvailable(pybind11)
+endif()
 
 if(KARMA_RENDER_BACKEND STREQUAL "diligent")
     set(DILIGENT_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
@@ -153,7 +165,9 @@ elseif(KARMA_PHYSICS_BACKEND STREQUAL "physx")
     find_package(unofficial-omniverse-physx-sdk CONFIG REQUIRED)
 endif()
 find_package(assimp REQUIRED)
-find_package(cxxopts REQUIRED)
+if(NOT KARMA_ENGINE_ONLY)
+    find_package(cxxopts REQUIRED)
+endif()
 if(KARMA_UI_BACKEND STREQUAL "imgui")
     find_package(imgui REQUIRED)
 elseif(KARMA_UI_BACKEND STREQUAL "rmlui")
@@ -166,7 +180,9 @@ endif()
 find_package(spdlog REQUIRED)
 find_package(miniz REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(Protobuf REQUIRED)
+if(NOT KARMA_ENGINE_ONLY)
+    find_package(Protobuf REQUIRED)
+endif()
 find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
@@ -279,12 +295,14 @@ set(PROTO_OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${PROTO_OUTPUT_DIR})
 
 # Generate protobuf sources
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${PROTO_FILES})
+if(NOT KARMA_ENGINE_ONLY)
+    protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${PROTO_FILES})
 
-# Create a library for proto files
-add_library(proto_lib STATIC ${PROTO_SRCS} ${PROTO_HDRS})
-target_link_libraries(proto_lib PUBLIC protobuf::libprotobuf)
-target_include_directories(proto_lib PUBLIC ${CMAKE_BINARY_DIR})
+    # Create a library for proto files
+    add_library(proto_lib STATIC ${PROTO_SRCS} ${PROTO_HDRS})
+    target_link_libraries(proto_lib PUBLIC protobuf::libprotobuf)
+    target_include_directories(proto_lib PUBLIC ${CMAKE_BINARY_DIR})
+endif()
 
 if(KARMA_UI_BACKEND STREQUAL "imgui")
     find_package(Freetype REQUIRED)
@@ -298,18 +316,42 @@ if(KARMA_UI_BACKEND STREQUAL "imgui")
     pkg_check_modules(LIBRSVG REQUIRED IMPORTED_TARGET librsvg-2.0)
 endif()
 
-add_subdirectory(src/engine)
-add_subdirectory(src/game)
+if(BZ3_GAME_ONLY)
+    find_package(karma REQUIRED)
+    if(NOT TARGET karma)
+        add_library(karma ALIAS karma::karma)
+    endif()
+    if(NOT TARGET karma_server)
+        add_library(karma_server ALIAS karma::karma_server)
+    endif()
+    if(KARMA_EXTRAS)
+        find_package(karma_extras REQUIRED)
+        if(NOT TARGET karma_extras)
+            add_library(karma_extras ALIAS karma_extras::karma_extras)
+        endif()
+    endif()
+else()
+    add_subdirectory(src/engine)
+    if(KARMA_EXTRAS)
+        add_subdirectory(src/karma-extras)
+    endif()
+endif()
 
-install(TARGETS bz3 BUNDLE DESTINATION .)
-install(TARGETS bz3-server
-    RUNTIME DESTINATION bin
-)
+if(NOT KARMA_ENGINE_ONLY)
+    add_subdirectory(src/game)
+endif()
 
-# Install data folder
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/data/
-    DESTINATION share/${PROJECT_NAME}/data
-)
+if(NOT KARMA_ENGINE_ONLY)
+    install(TARGETS bz3 BUNDLE DESTINATION .)
+    install(TARGETS bz3-server
+        RUNTIME DESTINATION bin
+    )
+
+    # Install data folder
+    install(DIRECTORY ${PROJECT_SOURCE_DIR}/data/
+        DESTINATION share/${PROJECT_NAME}/data
+    )
+endif()
 
 # CPack configuration
 set(CPACK_PACKAGE_NAME "bz3")

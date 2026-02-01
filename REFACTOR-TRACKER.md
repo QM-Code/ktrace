@@ -141,6 +141,8 @@ Checklist:
  - Game targets now link `karma` / `karma_server` instead of object libraries.
  - `include/karma/*` forwarders now point directly at `src/engine/*`.
  - Removed in-tree forwarder headers under `src/engine/karma`.
+ - Added install rules for `karma` libraries and `include/karma` headers.
+ - Added CMake package export (`karmaTargets`, `karma-config.cmake`).
 
 ## Phase 9 - Cleanup & Docs
 
@@ -150,3 +152,4 @@ Checklist:
 - Remove old entry points and shims.
 - Update README / architecture / AGENTS / CONFIG-SCHEMA as needed.
 - Add minimal example mirroring Karma `examples/main.cpp`.
+ - Added top-level engine-only and game-only build modes.

@@ -4,94 +4,60 @@ This repo builds a networked 3D client/server game (a BZFlag-inspired prototype)
 
 At runtime there are two programs:
 
-- **Client**: creates the window (GLFW/OpenGL), renders via threepp, runs local input/audio/UI, and syncs gameplay state to/from a server.
+- **Client**: creates the window (SDL3), renders via bgfx/Diligent, runs local input/audio/UI, and syncs gameplay state to/from a server.
 - **Server**: authoritative simulation of players/shots/world + chat + plugin callbacks, with LAN discovery support.
 
-The code is organized around a small **engine layer** (orchestrators) and a **gameplay layer** (World/Player/Shot/Game/Chat/etc.) that uses the subsystem modules (renderer/physics/network/input/audio/ui).
+The code is organized around a small **engine layer** (game-agnostic systems) and a **gameplay layer** (World/Player/Shot/Game/Chat/etc.) that uses the engine subsystems (renderer/physics/network/input/audio/ui).
 
 ## Important directories (highlighted tree)
 
 ```
 src/
-    client/
-        main.cpp                       # Client startup + main loop
-        game.{hpp,cpp}                 # Orchestrates gameplay objects on the client
-        world.{hpp,cpp}                # Receives world from server, merges config/assets, builds render+physics
-        player.{hpp,cpp}               # Local player input -> physics + sends network updates
-        shot.{hpp,cpp}                 # Local + replicated shots (visual + raycast ricochet)
-        console.{hpp,cpp}              # Chat/console glue to UiSystem
+    game/
+        client/
+            main.cpp                   # Client startup + main loop
+            game.{hpp,cpp}             # Orchestrates gameplay objects on the client
+            world_session.*            # Receives world from server, merges config/assets, builds render+physics
+            player.*                   # Local player input -> physics + sends network updates
+            shot.*                     # Local + replicated shots (visual + raycast ricochet)
+            console.*                  # Chat/console glue to UiSystem
+            server/                    # Client-side discovery + connect flow
         server/
-            community_browser_controller.*  # Orchestrates LAN scan + remote server lists + connect requests
-            server_connector.*           # Connects, constructs Game on success
-            server_discovery.*           # Client-side LAN discovery scanning (UDP broadcast)
-            server_list_fetcher.*        # Remote server list fetch via HTTP (libcurl)
-
-    server/
-        main.cpp                       # Server startup + main loop + plugin boot
-        game.{hpp,cpp}                 # Authoritative orchestration (clients, shots, chat, world)
-        world.{hpp,cpp}                # Loads world config/assets + optionally zips world directory for clients
-        client.{hpp,cpp}               # Per-client authoritative state + replication
-        shot.{hpp,cpp}                 # Authoritative shot creation/expiry + hit checks
-        chat.{hpp,cpp}                 # Chat routing + plugin hook
-        plugin.{hpp,cpp}               # Embedded Python (pybind11) plugin API and callback registration
-        server_discovery.*             # Server-side LAN discovery responder beacon
-        terminal_commands.*            # Server stdin commands
-        server_cli_options.*           # Server CLI parsing
+            main.cpp                   # Server startup + main loop + plugin boot
+            game.{hpp,cpp}             # Authoritative orchestration (clients, shots, chat, world)
+            world_session.*            # Loads world config/assets + bundles world for clients
+            client.*                   # Per-client authoritative state + replication
+            shot.*                     # Authoritative shot creation/expiry + hit checks
+            chat.*                     # Chat routing + plugin hook
+            plugin.*                   # Embedded Python (pybind11) plugin API and callback registration
+        engine/                        # BZ3-specific engine orchestrators
+        net/                           # Game protocol and message networking
+        renderer/                      # Game render orchestration (radar, ECS sync)
+        ui/                            # HUD/console + UI frontends
+        protos/                        # Protobuf wire schema
 
     engine/
-        client_engine.*                # Owns client systems and update ordering
-        server_engine.*                # Owns server systems and update ordering
-
-    core/
-        types.hpp                      # Shared types + ids + thresholds
-
-    platform/
-        glfw_user_pointer.hpp          # GLFW callback indirection
-
-    engine/graphics/
-        device.*                       # engine-agnostic graphics API + backend selection
-        backends/threepp/*             # threepp backend implementation
-
-    game/renderer/
-        render.*                       # BZ3 render orchestration (radar, models, camera)
-
-    geometry/
-        mesh_loader.*                  # Assimp mesh loading helpers
-        particle_effect_system.*       # Client particle effects
-
-    audio/
-        audio.*                        # miniaudio engine + pooled clip instances
-
-    input/
-        input.*                        # Action-agnostic input mapping wrapper
-
-    physics/
-        physics_world.*                # Bullet world + body creation + raycasts
-        rigid_body.*                   # Rigid body wrapper
-        static_body.*                  # Static collision bodies
-        player_controller.*            # Player physics control
-
-    ui/
-        system.*                      # UI entry point + backend selection
-        console/                      # Console interface + types
-        backends/                     # RmlUi + ImGui implementations
-
-    common/
-        data_path_resolver.*           # Data root + config layering + asset lookup (configured by game)
-
-    game/protos/
-        messages.proto                 # Protobuf wire schema (ClientMsg/ServerMsg)
-
-    game/net/
-        discovery_protocol.hpp         # UDP LAN discovery packet format
+        app/                           # EngineApp + lifecycle
+        audio/                         # Audio system + backends
+        common/                        # Config, data paths, i18n
+        ecs/                           # ECS primitives + systems
+        geometry/                      # Mesh loading utilities
+        graphics/                      # Graphics device + backends (bgfx, Diligent)
+        input/                         # Action-agnostic input mapping
+        network/                       # Transport layer (ENet)
+        physics/                       # Physics system + backends
+        platform/                      # Window/events abstraction
+        renderer/                      # Renderer core and scene orchestration
+        ui/                            # UI render bridges and platform renderers
+        world/                         # Content loading + world backends
 
 data/
-    common/config.json               # Shared config layer (assets, network defaults, fonts)
-    client/config.json               # Client config layer (graphics/audio/gui/server lists)
-    server/config.json               # Server config layer (plugins, server defaults)
-    common/{models,shaders,fonts}/   # Shared assets
-    server/worlds/                   # Bundled worlds
-    plugins/                         # Python plugins and bzapi helpers
+    common/config.json                 # Shared config layer (assets, network defaults, fonts)
+    client/config.json                 # Client config layer (graphics/audio/gui/server lists)
+    server/config.json                 # Server config layer (plugins, server defaults)
+    common/{models,shaders,fonts}/     # Shared assets
+    server/worlds/                     # Bundled worlds
+    plugins/                           # Python plugins and bzapi helpers
 ```
 
 ## Core concepts
@@ -144,7 +110,7 @@ The client loop lives in `src/game/client/main.cpp`.
 High-level per-frame ordering:
 
 1. `engine.earlyUpdate(dt)`
-     - `Input::update()` reads keys and polls GLFW events.
+     - Input polls SDL events and updates action mappings.
      - `ClientNetwork::update()` pumps ENet and queues decoded protobuf messages.
 2. Handle fullscreen toggle / disconnect events.
 3. Either update the server browser (if not connected) or update gameplay.
@@ -153,13 +119,13 @@ High-level per-frame ordering:
          - If world initialized, ensure local `Player` exists.
          - Consume a *subset* of network messages via `peekMessage<T>()` (join/leave/shot create/remove).
 4. `engine.step(dt)`
-     - `PhysicsWorld::update()` (Bullet stepping).
+     - `PhysicsWorld::update()` (Jolt/PhysX stepping).
 5. `Game::lateUpdate(dt)`
      - Local player sends `ClientMsg_PlayerLocation` when position/rotation change.
      - Update remote clients and shots.
      - Update scoreboard names.
 6. `engine.lateUpdate(dt)`
-     - `Render::update()` draws the scene.
+     - `Renderer` draws the scene.
      - `UiSystem::update()` draws the active UI backend (HUD or console).
      - `ClientNetwork::flushPeekedMessages()` frees/destroys any messages that were peeked.
 
@@ -180,7 +146,7 @@ High-level per-frame ordering:
      - Handle shot creation and update shots (expiry + hit checks).
      - World update sends init payload to newly-connected clients.
 4. `engine.lateUpdate(dt)`
-     - `PhysicsWorld::update()` (Bullet stepping).
+     - `PhysicsWorld::update()` (Jolt/PhysX stepping).
      - `ServerNetwork::flushPeekedMessages()` frees/destroys peeked messages.
 
 ## Networking
@@ -238,7 +204,7 @@ If `worldData` is present:
 
 Then world initialization builds:
 
-- Render model: `Render::create(asset("world"))`
+- Render model: ECS `MeshComponent` for `asset("world")`
 - Static collision: `PhysicsWorld::createStaticMesh(asset("world"), 0.0f)`
 
 ### Key end-to-end flows
@@ -272,11 +238,11 @@ If you see “connected but nothing happens”, follow this exact chain and veri
 
 ### Render (client)
 
-`src/game/renderer/render.*` owns BZ3 render orchestration on top of the engine graphics device:
+`src/game/renderer/renderer.*` owns BZ3 render orchestration on top of the engine graphics device:
 
 - `GraphicsDevice` (engine) exposes an engine-agnostic render API.
-- The threepp backend owns the scene/cameras and model loading.
-- `Render` manages radar targets, layers, and gameplay-facing `render_id`s.
+- The bgfx/Diligent backends own the renderer and model loading.
+- `Renderer` manages radar targets, layers, and gameplay-facing `render_id`s.
 
 Gameplay stores a `render_id` per object and updates transforms each frame.
 
@@ -295,14 +261,14 @@ Fonts are loaded via `ResolveConfiguredAsset(...)` using configured font keys.
 
 ### Audio (client)
 
-`src/engine/audio.*` wraps miniaudio:
+`src/engine/audio.*` wraps miniaudio or SDL audio:
 
 - `Audio::loadClip(path, maxInstances)` pools multiple instances to avoid “dropouts” when many events occur (e.g. rapid firing).
 - Listener position and direction are updated from the local player each frame.
 
 ### Physics (client + server)
 
-`src/engine/physics/physics_world.*` wraps Bullet.
+`src/engine/physics/physics_world.*` wraps Jolt or PhysX.
 
 - The world steps at fixed timestep substeps.
 - `createStaticMesh()` loads a GLB and builds convex hull shapes per mesh.
