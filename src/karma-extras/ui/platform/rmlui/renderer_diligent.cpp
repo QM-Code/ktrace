@@ -5,6 +5,7 @@
 #include "karma_extras/ui/platform/rmlui/renderer_diligent.hpp"
 
 #include "karma/graphics/backends/diligent/ui_bridge.hpp"
+#include "karma/app/ui_context.h"
 
 #include <DiligentCore/Common/interface/BasicMath.hpp>
 #include <DiligentCore/Graphics/GraphicsEngine/interface/Buffer.h>
@@ -60,10 +61,15 @@ void RenderInterface_Diligent::SetViewport(int width, int height, int offset_x, 
                                              static_cast<float>(viewport_height), 0,
                                              -10000, 10000);
     transform = projection;
-    ensureRenderTarget(viewport_width, viewport_height);
+    if (!draw_ctx) {
+        ensureRenderTarget(viewport_width, viewport_height);
+    }
 }
 
 void RenderInterface_Diligent::BeginFrame() {
+    if (draw_ctx) {
+        return;
+    }
     ensurePipeline();
     ensureRenderTarget(viewport_width, viewport_height);
     auto ctx = graphics_backend::diligent_ui::GetContext();
@@ -78,10 +84,17 @@ void RenderInterface_Diligent::BeginFrame() {
 }
 
 void RenderInterface_Diligent::EndFrame() {
+    if (draw_ctx) {
+        return;
+    }
     if (debug_frame % 120 == 0) {
         spdlog::info("RmlUi(Diligent): frame {} draw_calls={} tris={}",
                      debug_frame, debug_draw_calls, debug_triangles);
     }
+}
+
+void RenderInterface_Diligent::SetDrawDataTarget(karma::app::UIContext* ctx) {
+    draw_ctx = ctx;
 }
 
 Rml::CompiledGeometryHandle RenderInterface_Diligent::CompileGeometry(Rml::Span<const Rml::Vertex> vertices,
@@ -113,6 +126,8 @@ Rml::CompiledGeometryHandle RenderInterface_Diligent::CompileGeometry(Rml::Span<
 
     auto* geometry = new GeometryData();
     geometry->indexCount = static_cast<uint32_t>(packed_indices.size());
+    geometry->cpuVertices.assign(vertices.begin(), vertices.end());
+    geometry->cpuIndices = packed_indices;
 
     Diligent::BufferDesc vbDesc;
     vbDesc.Name = "RmlUi Diligent VB";
@@ -149,6 +164,80 @@ void RenderInterface_Diligent::RenderGeometry(Rml::CompiledGeometryHandle handle
         return;
     }
 
+    if (texture == TexturePostprocess) {
+        return;
+    }
+
+    GeometryData* geometry = reinterpret_cast<GeometryData*>(handle);
+    if (draw_ctx) {
+        if (texture != TextureEnableWithoutBinding) {
+            last_texture = texture;
+        }
+        ensureWhiteTexture();
+        auto &out = draw_ctx->drawData();
+        out.premultiplied_alpha = true;
+
+        const uint32_t vertexOffset = static_cast<uint32_t>(out.vertices.size());
+        const uint32_t indexOffset = static_cast<uint32_t>(out.indices.size());
+        out.vertices.reserve(out.vertices.size() + geometry->cpuVertices.size());
+        out.indices.reserve(out.indices.size() + geometry->cpuIndices.size());
+
+        const float tx = translation.x;
+        const float ty = translation.y;
+        const float *mat = has_local_transform ? local_transform_matrix.data() : nullptr;
+
+        for (const auto &vtx : geometry->cpuVertices) {
+            float x = vtx.position.x + tx;
+            float y = vtx.position.y + ty;
+            if (mat) {
+                const float nx = mat[0] * x + mat[4] * y + mat[12];
+                const float ny = mat[1] * x + mat[5] * y + mat[13];
+                x = nx;
+                y = ny;
+            }
+            karma::app::UIVertex outVtx{};
+            outVtx.x = x;
+            outVtx.y = y;
+            outVtx.u = vtx.tex_coord.x;
+            outVtx.v = vtx.tex_coord.y;
+            outVtx.rgba = packColor(vtx.colour);
+            out.vertices.push_back(outVtx);
+        }
+
+        for (uint32_t idx : geometry->cpuIndices) {
+            out.indices.push_back(idx + vertexOffset);
+        }
+
+        graphics::TextureHandle gfxTexture = resolveTextureHandle(texture);
+        if (!gfxTexture.valid()) {
+            gfxTexture = whiteGfxHandle_;
+        }
+        const auto texHandle = draw_ctx->registerExternalTexture(gfxTexture);
+        if (texHandle == 0) {
+            return;
+        }
+
+        karma::app::UIDrawCmd cmd{};
+        cmd.index_offset = indexOffset;
+        cmd.index_count = static_cast<uint32_t>(geometry->cpuIndices.size());
+        cmd.texture = texHandle;
+        if (scissor_enabled && scissor_region.Valid()) {
+            const int x = std::max(0, scissor_region.p0.x);
+            const int y = std::max(0, scissor_region.p0.y);
+            const int w = std::max(0, scissor_region.Width());
+            const int h = std::max(0, scissor_region.Height());
+            if (w > 0 && h > 0) {
+                cmd.scissor_enabled = true;
+                cmd.scissor_x = x;
+                cmd.scissor_y = y;
+                cmd.scissor_w = w;
+                cmd.scissor_h = h;
+            }
+        }
+        out.commands.push_back(cmd);
+        return;
+    }
+
     auto ctx = graphics_backend::diligent_ui::GetContext();
     if (!ctx.device || !ctx.context || !pipeline_) {
         return;
@@ -157,17 +246,11 @@ void RenderInterface_Diligent::RenderGeometry(Rml::CompiledGeometryHandle handle
         return;
     }
 
-    if (texture == TexturePostprocess) {
-        return;
-    }
-
     ensureWhiteTexture();
 
-    GeometryData* geometry = reinterpret_cast<GeometryData*>(handle);
     if (!geometry->vertexBuffer || !geometry->indexBuffer || geometry->indexCount == 0) {
         return;
     }
-
     const Diligent::Uint64 vbOffset = 0;
     Diligent::IBuffer* vbs[] = {geometry->vertexBuffer};
     ctx.context->SetVertexBuffers(0, 1, vbs, &vbOffset, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
@@ -280,6 +363,11 @@ Rml::TextureHandle RenderInterface_Diligent::LoadTexture(Rml::Vector2i& texture_
         entry.external = true;
         entry.width = width;
         entry.height = height;
+        entry.token = token;
+        entry.gfx_handle.id = token;
+        entry.gfx_handle.width = static_cast<uint32_t>(width);
+        entry.gfx_handle.height = static_cast<uint32_t>(height);
+        entry.gfx_handle.format = graphics::TextureFormat::RGBA8_UNORM;
         entry.srv = graphics_backend::diligent_ui::ResolveExternalTexture(token);
         if (!entry.srv) {
             return {};
@@ -368,6 +456,11 @@ Rml::TextureHandle RenderInterface_Diligent::GenerateTexture(Rml::Span<const Rml
     if (!data.srv) {
         return {};
     }
+    data.token = graphics_backend::diligent_ui::RegisterExternalTexture(data.srv);
+    data.gfx_handle.id = data.token;
+    data.gfx_handle.width = static_cast<uint32_t>(data.width);
+    data.gfx_handle.height = static_cast<uint32_t>(data.height);
+    data.gfx_handle.format = graphics::TextureFormat::RGBA8_UNORM;
 
     const Rml::TextureHandle handle = next_texture_id++;
     textures.emplace(handle, data);
@@ -375,11 +468,24 @@ Rml::TextureHandle RenderInterface_Diligent::GenerateTexture(Rml::Span<const Rml
 }
 
 void RenderInterface_Diligent::ReleaseTexture(Rml::TextureHandle texture_handle) {
-    textures.erase(texture_handle);
+    auto it = textures.find(texture_handle);
+    if (it == textures.end()) {
+        return;
+    }
+    if (!it->second.external && it->second.token != 0) {
+        graphics_backend::diligent_ui::UnregisterExternalTexture(it->second.token);
+    }
+    textures.erase(it);
 }
 
 void RenderInterface_Diligent::SetTransform(const Rml::Matrix4f* new_transform) {
     transform = (new_transform ? (projection * (*new_transform)) : projection);
+    if (new_transform) {
+        local_transform_matrix = *new_transform;
+        has_local_transform = true;
+    } else {
+        has_local_transform = false;
+    }
 }
 
 void RenderInterface_Diligent::ensurePipeline() {
@@ -537,6 +643,9 @@ void RenderInterface_Diligent::ensureRenderTarget(int width, int height) {
     if (!ctx.device || !ctx.swapChain) {
         return;
     }
+    if (draw_ctx) {
+        return;
+    }
     if (width <= 0 || height <= 0) {
         if (uiToken_ != 0) {
             graphics_backend::diligent_ui::UnregisterExternalTexture(uiToken_);
@@ -617,6 +726,13 @@ void RenderInterface_Diligent::ensureWhiteTexture() {
     ctx.device->CreateTexture(desc, &initData, &whiteTexture_);
     if (whiteTexture_) {
         whiteTextureView_ = whiteTexture_->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+        if (whiteTextureView_) {
+            whiteToken_ = graphics_backend::diligent_ui::RegisterExternalTexture(whiteTextureView_);
+            whiteGfxHandle_.id = whiteToken_;
+            whiteGfxHandle_.width = 1;
+            whiteGfxHandle_.height = 1;
+            whiteGfxHandle_.format = graphics::TextureFormat::RGBA8_UNORM;
+        }
     }
 }
 
@@ -626,4 +742,18 @@ const RenderInterface_Diligent::TextureData* RenderInterface_Diligent::lookupTex
         return nullptr;
     }
     return &it->second;
+}
+
+graphics::TextureHandle RenderInterface_Diligent::resolveTextureHandle(Rml::TextureHandle handle) {
+    if (handle == TextureEnableWithoutBinding) {
+        handle = last_texture;
+    }
+    if (handle == 0) {
+        return whiteGfxHandle_;
+    }
+    const TextureData* tex = lookupTexture(handle);
+    if (!tex) {
+        return whiteGfxHandle_;
+    }
+    return tex->gfx_handle.valid() ? tex->gfx_handle : whiteGfxHandle_;
 }

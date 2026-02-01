@@ -166,8 +166,12 @@ void BgfxRenderer::rebuildImGuiFonts(ImFontAtlas* atlas) {
         return;
     }
 
-    const uint64_t texId = static_cast<uint64_t>(fontTexture_.idx + 1);
-    atlas->SetTexID(ui::ToImGuiTextureId(texId));
+    graphics::TextureHandle handle{};
+    handle.id = static_cast<uint64_t>(fontTexture_.idx + 1);
+    handle.width = static_cast<uint32_t>(width);
+    handle.height = static_cast<uint32_t>(height);
+    handle.format = graphics::TextureFormat::RGBA8_UNORM;
+    atlas->SetTexID(ui::ToImGuiTextureId(handle));
     fontsReady_ = true;
 }
 

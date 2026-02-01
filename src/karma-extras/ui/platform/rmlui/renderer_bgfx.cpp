@@ -39,6 +39,7 @@
 
 #include "common/data_path_resolver.hpp"
 #include "common/file_utils.hpp"
+#include "karma/app/ui_context.h"
 #include "spdlog/spdlog.h"
 
 namespace {
@@ -172,11 +173,16 @@ void RenderInterface_BGFX::SetViewport(int width, int height, int offset_x, int 
                                              -10000, 10000);
     transform = projection;
     transform_dirty = true;
-    ensureRenderTarget(viewport_width, viewport_height);
+    if (!draw_ctx) {
+        ensureRenderTarget(viewport_width, viewport_height);
+    }
 }
 
 void RenderInterface_BGFX::BeginFrame() {
     if (!ready || viewport_width <= 0 || viewport_height <= 0) {
+        return;
+    }
+    if (draw_ctx) {
         return;
     }
     ensureRenderTarget(viewport_width, viewport_height);
@@ -198,8 +204,15 @@ void RenderInterface_BGFX::BeginFrame() {
 void RenderInterface_BGFX::EndFrame() {
 }
 
+void RenderInterface_BGFX::SetDrawDataTarget(karma::app::UIContext* ctx) {
+    draw_ctx = ctx;
+}
+
 void RenderInterface_BGFX::ensureRenderTarget(int width, int height) {
     if (!bgfx::getCaps()) {
+        return;
+    }
+    if (draw_ctx) {
         return;
     }
     if (width <= 0 || height <= 0) {
@@ -270,6 +283,8 @@ Rml::CompiledGeometryHandle RenderInterface_BGFX::CompileGeometry(Rml::Span<cons
 
     GeometryData* geometry = new GeometryData();
     geometry->index_count = static_cast<uint32_t>(packed_indices.size());
+    geometry->cpu_vertices.assign(vertices.begin(), vertices.end());
+    geometry->cpu_indices = packed_indices;
 
     const bgfx::Memory* vmem = bgfx::copy(packed_vertices.data(),
                                           static_cast<uint32_t>(packed_vertices.size() * sizeof(RmlUiVertex)));
@@ -305,7 +320,76 @@ void RenderInterface_BGFX::RenderGeometry(Rml::CompiledGeometryHandle handle,
     }
 
     GeometryData* geometry = reinterpret_cast<GeometryData*>(handle);
-    if (!bgfx::isValid(geometry->vbh) || !bgfx::isValid(geometry->ibh)) {
+    if (!draw_ctx && (!bgfx::isValid(geometry->vbh) || !bgfx::isValid(geometry->ibh))) {
+        return;
+    }
+
+    if (draw_ctx) {
+        if (texture != TextureEnableWithoutBinding) {
+            last_texture = texture;
+        }
+        ensureWhiteTexture();
+        auto &out = draw_ctx->drawData();
+        out.premultiplied_alpha = true;
+
+        const uint32_t vertexOffset = static_cast<uint32_t>(out.vertices.size());
+        const uint32_t indexOffset = static_cast<uint32_t>(out.indices.size());
+        out.vertices.reserve(out.vertices.size() + geometry->cpu_vertices.size());
+        out.indices.reserve(out.indices.size() + geometry->cpu_indices.size());
+
+        const float tx = translation.x;
+        const float ty = translation.y;
+        const float *mat = has_local_transform ? local_transform_matrix.data() : nullptr;
+
+        for (const auto &vtx : geometry->cpu_vertices) {
+            float x = vtx.position.x + tx;
+            float y = vtx.position.y + ty;
+            if (mat) {
+                const float nx = mat[0] * x + mat[4] * y + mat[12];
+                const float ny = mat[1] * x + mat[5] * y + mat[13];
+                x = nx;
+                y = ny;
+            }
+            karma::app::UIVertex outVtx{};
+            outVtx.x = x;
+            outVtx.y = y;
+            outVtx.u = vtx.tex_coord.x;
+            outVtx.v = vtx.tex_coord.y;
+            outVtx.rgba = toAbgr(vtx.colour);
+            out.vertices.push_back(outVtx);
+        }
+
+        for (uint32_t idx : geometry->cpu_indices) {
+            out.indices.push_back(idx + vertexOffset);
+        }
+
+        graphics::TextureHandle gfxTexture = resolveTextureHandle(texture);
+        if (!gfxTexture.valid()) {
+            gfxTexture = white_texture.gfx_handle;
+        }
+        const auto texHandle = draw_ctx->registerExternalTexture(gfxTexture);
+        if (texHandle == 0) {
+            return;
+        }
+
+        karma::app::UIDrawCmd cmd{};
+        cmd.index_offset = indexOffset;
+        cmd.index_count = static_cast<uint32_t>(geometry->cpu_indices.size());
+        cmd.texture = texHandle;
+        if (scissor_enabled && scissor_region.Valid()) {
+            const int x = std::max(0, scissor_region.p0.x);
+            const int y = std::max(0, scissor_region.p0.y);
+            const int w = std::max(0, scissor_region.Width());
+            const int h = std::max(0, scissor_region.Height());
+            if (w > 0 && h > 0) {
+                cmd.scissor_enabled = true;
+                cmd.scissor_x = x;
+                cmd.scissor_y = y;
+                cmd.scissor_w = w;
+                cmd.scissor_h = h;
+            }
+        }
+        out.commands.push_back(cmd);
         return;
     }
 
@@ -407,6 +491,10 @@ Rml::TextureHandle RenderInterface_BGFX::LoadTexture(Rml::Vector2i& texture_dime
         entry.width = width;
         entry.height = height;
         entry.external = true;
+        entry.gfx_handle.id = tex_token;
+        entry.gfx_handle.width = static_cast<uint32_t>(width);
+        entry.gfx_handle.height = static_cast<uint32_t>(height);
+        entry.gfx_handle.format = graphics::TextureFormat::RGBA8_UNORM;
         const Rml::TextureHandle handle = static_cast<Rml::TextureHandle>(next_texture_id++);
         textures.emplace(handle, entry);
         texture_dimensions.x = entry.width;
@@ -468,6 +556,10 @@ Rml::TextureHandle RenderInterface_BGFX::LoadTexture(Rml::Vector2i& texture_dime
     entry.width = width;
     entry.height = height;
     entry.external = false;
+    entry.gfx_handle.id = static_cast<uint64_t>(tex.idx + 1);
+    entry.gfx_handle.width = static_cast<uint32_t>(width);
+    entry.gfx_handle.height = static_cast<uint32_t>(height);
+    entry.gfx_handle.format = graphics::TextureFormat::RGBA8_UNORM;
 
     const Rml::TextureHandle handle = static_cast<Rml::TextureHandle>(next_texture_id++);
     textures.emplace(handle, entry);
@@ -505,6 +597,10 @@ Rml::TextureHandle RenderInterface_BGFX::GenerateTexture(Rml::Span<const Rml::by
     entry.width = source_dimensions.x;
     entry.height = source_dimensions.y;
     entry.external = false;
+    entry.gfx_handle.id = static_cast<uint64_t>(tex.idx + 1);
+    entry.gfx_handle.width = static_cast<uint32_t>(source_dimensions.x);
+    entry.gfx_handle.height = static_cast<uint32_t>(source_dimensions.y);
+    entry.gfx_handle.format = graphics::TextureFormat::RGBA8_UNORM;
 
     const Rml::TextureHandle handle = static_cast<Rml::TextureHandle>(next_texture_id++);
     textures.emplace(handle, entry);
@@ -536,6 +632,12 @@ void RenderInterface_BGFX::SetScissorRegion(Rml::Rectanglei region) {
 
 void RenderInterface_BGFX::SetTransform(const Rml::Matrix4f* new_transform) {
     transform = (new_transform ? (projection * (*new_transform)) : projection);
+    if (new_transform) {
+        local_transform_matrix = *new_transform;
+        has_local_transform = true;
+    } else {
+        has_local_transform = false;
+    }
     transform_dirty = true;
 }
 
@@ -553,4 +655,40 @@ const RenderInterface_BGFX::TextureData* RenderInterface_BGFX::lookupTexture(Rml
         return nullptr;
     }
     return &it->second;
+}
+
+void RenderInterface_BGFX::ensureWhiteTexture() {
+    if (white_texture.handle.idx != 0 && bgfx::isValid(white_texture.handle)) {
+        return;
+    }
+    if (!bgfx::getCaps()) {
+        return;
+    }
+    const uint32_t white = 0xffffffffu;
+    const bgfx::Memory* mem = bgfx::copy(&white, sizeof(white));
+    white_texture.handle = bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::RGBA8,
+                                                 BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, mem);
+    white_texture.width = 1;
+    white_texture.height = 1;
+    white_texture.external = false;
+    if (bgfx::isValid(white_texture.handle)) {
+        white_texture.gfx_handle.id = static_cast<uint64_t>(white_texture.handle.idx + 1);
+        white_texture.gfx_handle.width = 1;
+        white_texture.gfx_handle.height = 1;
+        white_texture.gfx_handle.format = graphics::TextureFormat::RGBA8_UNORM;
+    }
+}
+
+graphics::TextureHandle RenderInterface_BGFX::resolveTextureHandle(Rml::TextureHandle handle) {
+    if (handle == TextureEnableWithoutBinding) {
+        handle = last_texture;
+    }
+    if (handle == 0) {
+        return white_texture.gfx_handle;
+    }
+    const TextureData* tex = lookupTexture(handle);
+    if (!tex) {
+        return white_texture.gfx_handle;
+    }
+    return tex->gfx_handle.valid() ? tex->gfx_handle : white_texture.gfx_handle;
 }

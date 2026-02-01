@@ -33,6 +33,7 @@ public:
     void handleEvents(const std::vector<platform::Event> &events) override;
     void update() override;
     void reloadFonts() override;
+    bool buildDrawData(karma::app::UIContext &ctx) override;
 
     void setHudModel(const ui::HudModel &model) override;
     void addConsoleLine(const std::string &playerName, const std::string &line) override;

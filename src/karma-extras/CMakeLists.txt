@@ -15,11 +15,13 @@ if(KARMA_UI_BACKEND STREQUAL "imgui")
         list(APPEND KARMA_EXTRAS_SOURCES
             ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/imgui/renderer_bgfx.cpp
             ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/imgui/thumbnail_cache.cpp
+            ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/imgui/texture_registry.cpp
         )
     elseif(KARMA_RENDER_BACKEND STREQUAL "diligent")
         list(APPEND KARMA_EXTRAS_SOURCES
             ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/platform/imgui/renderer_diligent.cpp
             ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/imgui/thumbnail_cache.cpp
+            ${PROJECT_SOURCE_DIR}/src/karma-extras/ui/imgui/texture_registry.cpp
         )
     endif()
 elseif(KARMA_UI_BACKEND STREQUAL "rmlui")

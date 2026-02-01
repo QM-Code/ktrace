@@ -15,6 +15,7 @@
 #include "ui/console/console_interface.hpp"
 #include "karma_extras/ui/overlay.hpp"
 #include "karma_extras/ui/bridges/renderer_bridge.hpp"
+#include "karma/app/ui_context.h"
 
 namespace platform {
 class Window;
@@ -62,6 +63,7 @@ public:
     bool consumeKeybindingsReloadRequest();
     void setRendererBridge(const ui::RendererBridge *bridge);
     ui::RenderOutput getRenderOutput() const;
+    bool buildDrawData(karma::app::UIContext &ctx);
     float getRenderBrightness() const;
     bool isUiInputEnabled() const;
     bool isGameplayInputEnabled() const;

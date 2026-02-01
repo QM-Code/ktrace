@@ -32,6 +32,12 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
+#include "karma/graphics/texture_handle.hpp"
+
+namespace karma::app {
+class UIContext;
+}
 
 class RenderInterface_BGFX : public Rml::RenderInterface {
 public:
@@ -44,6 +50,7 @@ public:
     void SetViewport(int viewport_width, int viewport_height, int viewport_offset_x = 0, int viewport_offset_y = 0);
     void BeginFrame();
     void EndFrame();
+    void SetDrawDataTarget(karma::app::UIContext* ctx);
 
     void Clear() {}
     void SetPresentToBackbuffer(bool) {}
@@ -88,6 +95,8 @@ private:
         bgfx::VertexBufferHandle vbh = BGFX_INVALID_HANDLE;
         bgfx::IndexBufferHandle ibh = BGFX_INVALID_HANDLE;
         uint32_t index_count = 0;
+        std::vector<Rml::Vertex> cpu_vertices;
+        std::vector<uint32_t> cpu_indices;
     };
 
     struct TextureData {
@@ -95,6 +104,7 @@ private:
         int width = 0;
         int height = 0;
         bool external = false;
+        graphics::TextureHandle gfx_handle{};
     };
 
     void destroyPrograms();
@@ -117,6 +127,8 @@ private:
 
     Rml::Matrix4f projection;
     Rml::Matrix4f transform;
+    Rml::Matrix4f local_transform_matrix;
+    bool has_local_transform = false;
     bool transform_dirty = true;
 
     bool scissor_enabled = false;
@@ -125,12 +137,16 @@ private:
     Rml::TextureHandle last_texture = {};
     std::unordered_map<Rml::TextureHandle, TextureData> textures;
     uintptr_t next_texture_id = 1;
+    TextureData white_texture;
     bgfx::TextureHandle uiTargetTexture = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle uiTargetFrameBuffer = BGFX_INVALID_HANDLE;
     int uiWidth = 0;
     int uiHeight = 0;
     unsigned int outputTextureId = 0;
+    karma::app::UIContext* draw_ctx = nullptr;
 
+    void ensureWhiteTexture();
+    graphics::TextureHandle resolveTextureHandle(Rml::TextureHandle handle);
 };
 
 #endif

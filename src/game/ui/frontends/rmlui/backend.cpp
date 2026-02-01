@@ -550,7 +550,6 @@ void RmlUiBackend::update() {
             state->hud->hide();
         }
     }
-
     if (state->hud) {
         lastHudRenderState.hudVisible = state->hud->isVisible();
         if (lastHudRenderState.hudVisible) {
@@ -586,11 +585,6 @@ void RmlUiBackend::update() {
             state->hud->update();
         }
         state->context->Update();
-        state->renderInterface.BeginFrame();
-        if (!std::getenv("KARMA_RMLUI_DISABLE_RENDER")) {
-            state->context->Render();
-        }
-        state->renderInterface.EndFrame();
     }
 
     if (state->reloadArmed) {
@@ -607,6 +601,26 @@ void RmlUiBackend::update() {
         loadHudDocument();
         loadConsoleDocument();
     }
+}
+
+bool RmlUiBackend::buildDrawData(karma::app::UIContext &ctx) {
+    if (!state || !state->context) {
+        return false;
+    }
+    const bool hasVisible = (state->document && state->document->IsVisible())
+        || (state->hud && state->hud->isVisible());
+    state->outputVisible = hasVisible;
+    if (!hasVisible || state->reloadRequested || state->reloadArmed) {
+        return false;
+    }
+
+    state->renderInterface.SetDrawDataTarget(&ctx);
+    state->renderInterface.BeginFrame();
+    state->context->Render();
+    state->renderInterface.EndFrame();
+    state->renderInterface.SetDrawDataTarget(nullptr);
+
+    return !ctx.drawData().commands.empty();
 }
 
 void RmlUiBackend::reloadFonts() {

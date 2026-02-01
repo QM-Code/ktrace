@@ -368,7 +368,12 @@ void DiligentRenderer::rebuildImGuiFonts(ImFontAtlas* atlas) {
     }
 
     fontToken_ = graphics_backend::diligent_ui::RegisterExternalTexture(fontSrv_);
-    atlas->SetTexID(ui::ToImGuiTextureId(fontToken_));
+    graphics::TextureHandle handle{};
+    handle.id = fontToken_;
+    handle.width = static_cast<uint32_t>(width);
+    handle.height = static_cast<uint32_t>(height);
+    handle.format = graphics::TextureFormat::RGBA8_UNORM;
+    atlas->SetTexID(ui::ToImGuiTextureId(handle));
 }
 
 void DiligentRenderer::renderImGuiToTarget(ImDrawData* drawData) {

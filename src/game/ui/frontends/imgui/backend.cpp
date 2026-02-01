@@ -5,6 +5,8 @@
 #include "karma/platform/window.hpp"
 #include "spdlog/spdlog.h"
 #include "karma_extras/ui/bridges/ui_render_bridge.hpp"
+#include "karma_extras/ui/imgui/texture_utils.hpp"
+#include "karma_extras/ui/imgui/texture_registry.hpp"
 #include "ui/config/input_mapping.hpp"
 #include "ui/fonts/console_fonts.hpp"
 #include "ui/config/render_scale.hpp"
@@ -165,8 +167,6 @@ void ImGuiBackend::update() {
         window->getFramebufferSize(fbWidth, fbHeight);
     }
     const float renderScale = ui::GetUiRenderScale();
-    const int targetWidth = std::max(1, static_cast<int>(std::lround(fbWidth * renderScale)));
-    const int targetHeight = std::max(1, static_cast<int>(std::lround(fbHeight * renderScale)));
     io.DisplaySize = ImVec2(static_cast<float>(fbWidth), static_cast<float>(fbHeight));
     io.DisplayFramebufferScale = ImVec2(renderScale, renderScale);
 
@@ -174,10 +174,6 @@ void ImGuiBackend::update() {
     if (window) {
         window->setCursorVisible(!io.MouseDrawCursor);
     }
-    if (uiBridge) {
-        uiBridge->ensureImGuiRenderTarget(targetWidth, targetHeight);
-    }
-
     if (uiBridge && fontsDirty) {
         uiBridge->rebuildImGuiFonts(io.Fonts);
         io.FontDefault = io.Fonts->Fonts.empty() ? nullptr : io.Fonts->Fonts[0];
@@ -268,9 +264,6 @@ void ImGuiBackend::update() {
     ImGui::Render();
     ImDrawData* drawData = ImGui::GetDrawData();
     outputVisible = (consoleVisible || hudVisible) && hasOutputDrawData(drawData);
-    if (uiBridge && outputVisible) {
-        uiBridge->renderImGuiToTarget(drawData);
-    }
 }
 
 void ImGuiBackend::reloadFonts() {
@@ -347,22 +340,100 @@ void ImGuiBackend::setRendererBridge(const ui::RendererBridge *bridge) {
     }
 }
 
-ui::RenderOutput ImGuiBackend::getRenderOutput() const {
-    if (!uiBridge) {
-        return {};
+bool ImGuiBackend::buildDrawData(karma::app::UIContext &ctx) {
+    if (!outputVisible) {
+        return false;
     }
-    const graphics::TextureHandle texture = uiBridge->getImGuiRenderTarget();
-    if (outputVisible && !texture.valid()) {
-        static bool loggedOnce = false;
-        if (!loggedOnce) {
-            spdlog::warn("ImGui: output texture invalid while outputVisible=true (id={}, size={}x{}).",
-                         static_cast<unsigned long long>(texture.id),
-                         texture.width,
-                         texture.height);
-            loggedOnce = true;
+    ImDrawData* drawData = ImGui::GetDrawData();
+    if (!drawData || drawData->CmdListsCount == 0) {
+        return false;
+    }
+
+    ImGuiIO &io = ImGui::GetIO();
+    drawData->ScaleClipRects(io.DisplayFramebufferScale);
+
+    auto &out = ctx.drawData();
+    out.clear();
+    out.premultiplied_alpha = false;
+
+    const int totalVtx = drawData->TotalVtxCount;
+    const int totalIdx = drawData->TotalIdxCount;
+    if (totalVtx <= 0 || totalIdx <= 0) {
+        return false;
+    }
+    out.vertices.reserve(static_cast<size_t>(totalVtx));
+    out.indices.reserve(static_cast<size_t>(totalIdx));
+
+    uint32_t vertexOffset = 0;
+    uint32_t indexOffset = 0;
+
+    for (int listIndex = 0; listIndex < drawData->CmdListsCount; ++listIndex) {
+        const ImDrawList* cmdList = drawData->CmdLists[listIndex];
+        for (int vtxIndex = 0; vtxIndex < cmdList->VtxBuffer.Size; ++vtxIndex) {
+            const ImDrawVert& vtx = cmdList->VtxBuffer[vtxIndex];
+            karma::app::UIVertex vertex{};
+            vertex.x = vtx.pos.x;
+            vertex.y = vtx.pos.y;
+            vertex.u = vtx.uv.x;
+            vertex.v = vtx.uv.y;
+            vertex.rgba = vtx.col;
+            out.vertices.push_back(vertex);
         }
+
+        const ImDrawIdx* idxSrc = cmdList->IdxBuffer.Data;
+        const int idxCount = cmdList->IdxBuffer.Size;
+        for (int idx = 0; idx < idxCount; ++idx) {
+            out.indices.push_back(static_cast<uint32_t>(idxSrc[idx]) + vertexOffset);
+        }
+
+        for (int cmdIndex = 0; cmdIndex < cmdList->CmdBuffer.Size; ++cmdIndex) {
+            const ImDrawCmd* pcmd = &cmdList->CmdBuffer[cmdIndex];
+            if (pcmd->UserCallback) {
+                pcmd->UserCallback(cmdList, pcmd);
+                continue;
+            }
+
+            const ImVec4 clip = pcmd->ClipRect;
+            const int clipX = static_cast<int>(clip.x);
+            const int clipY = static_cast<int>(clip.y);
+            const int clipW = static_cast<int>(clip.z - clip.x);
+            const int clipH = static_cast<int>(clip.w - clip.y);
+            if (clipW <= 0 || clipH <= 0) {
+                continue;
+            }
+
+            const uint64_t texId = ui::FromImGuiTextureId(pcmd->TextureId);
+            graphics::TextureHandle texture{};
+            if (!ui::LookupImGuiTexture(texId, texture)) {
+                continue;
+            }
+            const auto handle = ctx.registerExternalTexture(texture);
+            if (handle == 0) {
+                continue;
+            }
+
+            karma::app::UIDrawCmd cmd{};
+            cmd.index_offset = indexOffset + static_cast<uint32_t>(pcmd->IdxOffset);
+            cmd.index_count = static_cast<uint32_t>(pcmd->ElemCount);
+            cmd.texture = handle;
+            cmd.scissor_enabled = true;
+            cmd.scissor_x = clipX;
+            cmd.scissor_y = clipY;
+            cmd.scissor_w = clipW;
+            cmd.scissor_h = clipH;
+            out.commands.push_back(cmd);
+        }
+
+        vertexOffset += static_cast<uint32_t>(cmdList->VtxBuffer.Size);
+        indexOffset += static_cast<uint32_t>(cmdList->IdxBuffer.Size);
     }
-    return ui::UiRenderBridge::MakeOutput(texture, outputVisible);
+
+    return !out.commands.empty();
+}
+
+ui::RenderOutput ImGuiBackend::getRenderOutput() const {
+    (void)outputVisible;
+    return {};
 }
 
 bool ImGuiBackend::isRenderBrightnessDragActive() const {

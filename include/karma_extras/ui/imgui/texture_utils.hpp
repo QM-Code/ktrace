@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include "karma/graphics/texture_handle.hpp"
+#include "karma_extras/ui/imgui/texture_registry.hpp"
 
 namespace ui {
 
@@ -25,6 +26,7 @@ inline uint64_t FromImGuiTextureId(ImTextureID textureId) {
 }
 
 inline ImTextureID ToImGuiTextureId(const graphics::TextureHandle& texture) {
+    RegisterImGuiTexture(texture);
     return ToImGuiTextureId(texture.id);
 }
 

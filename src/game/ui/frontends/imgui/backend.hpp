@@ -38,6 +38,7 @@ public:
     bool consumeKeybindingsReloadRequest() override;
     std::optional<ui::QuickMenuAction> consumeQuickMenuAction() override;
     void setRendererBridge(const ui::RendererBridge *bridge) override;
+    bool buildDrawData(karma::app::UIContext &ctx) override;
     ui::RenderOutput getRenderOutput() const override;
     float getRenderBrightness() const override { return consoleView.getRenderBrightness(); }
     bool isRenderBrightnessDragActive() const override;

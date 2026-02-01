@@ -20,6 +20,10 @@ void UiLayerAdapter::onFrame(karma::app::UIContext &ctx) {
     auto &draw = ctx.drawData();
     draw.clear();
 
+    if (system_.buildDrawData(ctx)) {
+        return;
+    }
+
     const auto output = system_.getRenderOutput();
     if (!output.valid()) {
         return;

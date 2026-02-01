@@ -10,6 +10,7 @@
 #include "ui/models/hud_render_state.hpp"
 #include "ui/core/types.hpp"
 #include "karma_extras/ui/bridges/renderer_bridge.hpp"
+#include "karma/app/ui_context.h"
 #include "ui/console/console_interface.hpp"
 
 namespace platform {
@@ -37,6 +38,7 @@ public:
     virtual bool consumeKeybindingsReloadRequest() = 0;
     virtual std::optional<ui::QuickMenuAction> consumeQuickMenuAction() = 0;
     virtual void setRendererBridge(const ui::RendererBridge *bridge) = 0;
+    virtual bool buildDrawData(karma::app::UIContext &ctx) { (void)ctx; return false; }
     virtual ui::RenderOutput getRenderOutput() const { return {}; }
     virtual float getRenderBrightness() const { return 1.0f; }
     virtual bool isRenderBrightnessDragActive() const { return false; }

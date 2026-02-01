@@ -127,6 +127,13 @@ ui::RenderOutput UiSystem::getRenderOutput() const {
     return backend ? backend->getRenderOutput() : ui::RenderOutput{};
 }
 
+bool UiSystem::buildDrawData(karma::app::UIContext &ctx) {
+    if (!backend) {
+        return false;
+    }
+    return backend->buildDrawData(ctx);
+}
+
 float UiSystem::getRenderBrightness() const {
     if (!backend) {
         return 1.0f;
