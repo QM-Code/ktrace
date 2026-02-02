@@ -9,6 +9,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -19,7 +20,7 @@ struct ImFont;
 #include "ui/console/console_interface.hpp"
 #include "ui/controllers/bindings_controller.hpp"
 #include "ui/controllers/settings_controller.hpp"
-#include "ui/frontends/imgui/console/thumbnail_cache.hpp"
+#include "karma_extras/ui/imgui/thumbnail_cache.hpp"
 #include "ui/controllers/console_controller.hpp"
 #include "ui/models/bindings_model.hpp"
 #include "ui/models/console_model.hpp"
@@ -93,6 +94,7 @@ private:
     void drawBindingsPanel(const MessageColors &colors);
     void drawDocumentationPanel(const MessageColors &colors) const;
     void drawStartServerPanel(const MessageColors &colors);
+    void drawPanelHeader(std::string_view tabKey) const;
     void drawPlaceholderPanel(const char *heading, const char *body, const MessageColors &colors) const;
     void drawCommunityPanel(const MessageColors &colors);
     void handleConfigChanged();
@@ -135,7 +137,6 @@ private:
 
     std::array<char, 64> usernameBuffer{};
     std::array<char, 128> passwordBuffer{};
-    bool showNewCommunityInput = false;
     std::array<char, 512> listUrlBuffer{};
     int lastCredentialsListIndex = -1;
     std::string storedPasswordHash;

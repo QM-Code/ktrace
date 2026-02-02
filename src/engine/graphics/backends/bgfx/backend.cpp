@@ -1,8 +1,4 @@
 #include "karma/graphics/backends/bgfx/backend.hpp"
-#if defined(KARMA_UI_BACKEND_IMGUI)
-#include "karma/ui/platform/imgui/renderer_bgfx.hpp"
-#endif
-
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
@@ -34,7 +30,7 @@
 #endif
 
 namespace {
-constexpr bgfx::ViewId kUiOverlayView = 253;
+constexpr bgfx::ViewId kUiOverlayView = 255;
 constexpr bgfx::ViewId kBrightnessView = 252;
 
 struct NativeWindowInfo {
@@ -231,6 +227,27 @@ glm::vec3 readVec3ConfigRequired(const char* path) {
     return out;
 }
 
+glm::vec4 readVec4ConfigRequired(const char* path) {
+    const auto* value = karma::config::ConfigStore::Get(path);
+    if (!value || !value->is_array() || value->size() < 4) {
+        throw std::runtime_error(std::string("Missing required vec4 config: ") + path);
+    }
+    glm::vec4 out(0.0f);
+    for (size_t i = 0; i < 4; ++i) {
+        const auto& v = (*value)[i];
+        if (v.is_number_float()) {
+            out[static_cast<int>(i)] = static_cast<float>(v.get<double>());
+        } else if (v.is_number_integer()) {
+            out[static_cast<int>(i)] = static_cast<float>(v.get<int64_t>());
+        } else if (v.is_number_unsigned()) {
+            out[static_cast<int>(i)] = static_cast<float>(v.get<uint64_t>());
+        } else {
+            throw std::runtime_error(std::string("Invalid vec4 config type at: ") + path);
+        }
+    }
+    return out;
+}
+
 struct TestVertex {
     float x;
     float y;
@@ -304,9 +321,6 @@ BgfxBackend::BgfxBackend(platform::Window& windowIn)
         bgfx::setViewTransform(0, nullptr, nullptr);
         buildTestResources();
         buildSkyboxResources();
-#if defined(KARMA_UI_BACKEND_IMGUI)
-        uiBridge_ = std::make_unique<BgfxRenderer>();
-#endif
         spdlog::trace("Graphics(Bgfx): init ok renderer={} testReady={}",
                      static_cast<int>(bgfx::getRendererType()),
                      testReady);
@@ -549,6 +563,9 @@ void BgfxBackend::setEntityModel(graphics::EntityId entity,
                     slot = isGrass ? "grass" : (isEmbeddedBuildingTop ? "building-top" : "building");
                     spdlog::trace("Graphics(Bgfx): submesh tex='{}' grass={} theme='{}' slot='{}'",
                                  submesh.albedo->key, isGrass, themeName, slot);
+                    if (isGrass) {
+                        meshIt->second.isWorldGrass = true;
+                    }
                 }
                 if (!slot.empty()) {
                     handle = loadThemeTexture(slot);
@@ -821,6 +838,10 @@ void BgfxBackend::renderLayer(graphics::LayerId layer, graphics::RenderTargetId 
     const glm::mat4 view = getViewMatrix();
     const glm::mat4 proj = getProjectionMatrix();
     const uint16_t viewId = static_cast<uint16_t>(layer);
+    if (viewId == kUiOverlayView) {
+        spdlog::debug("BGFX: renderLayer collision with UI view (layer={})", layer);
+    }
+    bgfx::setViewMode(viewId, bgfx::ViewMode::Sequential);
     bgfx::setViewTransform(viewId, glm::value_ptr(view), glm::value_ptr(proj));
     if (targetRecord) {
         bgfx::setViewFrameBuffer(viewId, targetRecord->frameBuffer);
@@ -832,8 +853,11 @@ void BgfxBackend::renderLayer(graphics::LayerId layer, graphics::RenderTargetId 
                           static_cast<uint16_t>(framebufferWidth),
                           static_cast<uint16_t>(framebufferHeight));
     }
+    const bool offscreenPass = (target != graphics::kDefaultRenderTarget && layer != 0);
     const bool renderSkybox = (target == graphics::kDefaultRenderTarget);
-    const uint32_t clearColor = (renderSkybox ? 0x0d1620ff : 0xff000000);
+    const uint32_t clearColor = renderSkybox
+        ? 0x0d1620ff
+        : (offscreenPass ? 0x00000000 : 0xff000000);
     bgfx::setViewClear(viewId, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, clearColor, 1.0f, 0);
     bgfx::touch(viewId);
 
@@ -858,8 +882,6 @@ void BgfxBackend::renderLayer(graphics::LayerId layer, graphics::RenderTargetId 
         cachedSunColor = readVec3ConfigRequired("graphics.lighting.SunColor");
     }
 
-    // Treat only the radar layer as "radar pass" even when rendering to offscreen targets.
-    const bool radarPass = (target != graphics::kDefaultRenderTarget && layer != 0);
     auto renderEntity = [&](const EntityRecord& entity) {
         if (entity.layer != layer || !entity.visible) {
             return;
@@ -876,7 +898,7 @@ void BgfxBackend::renderLayer(graphics::LayerId layer, graphics::RenderTargetId 
                                   materials.count(entity.material) &&
                                   materials.at(entity.material).transparent);
         uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS;
-        if (radarPass) {
+        if (offscreenPass) {
             state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A;
             if (transparent) {
                 state |= BGFX_STATE_BLEND_ALPHA;
@@ -914,6 +936,9 @@ void BgfxBackend::renderLayer(graphics::LayerId layer, graphics::RenderTargetId 
             if (!bgfx::isValid(mesh.vertexBuffer)) {
                 return;
             }
+            if (offscreenPass && mesh.isWorldGrass) {
+                return;
+            }
 
             bgfx::setVertexBuffer(0, mesh.vertexBuffer);
             if (bgfx::isValid(mesh.indexBuffer) && mesh.indexCount > 0) {
@@ -939,7 +964,7 @@ void BgfxBackend::renderLayer(graphics::LayerId layer, graphics::RenderTargetId 
                 bgfx::setTexture(0, meshSamplerUniform, tex);
             }
             if (bgfx::isValid(meshUnlitUniform)) {
-                const glm::vec4 unlit = (isShot || radarPass) ? glm::vec4(1.0f) : glm::vec4(0.0f);
+                const glm::vec4 unlit = (isShot || offscreenPass) ? glm::vec4(1.0f) : glm::vec4(0.0f);
                 bgfx::setUniform(meshUnlitUniform, glm::value_ptr(unlit));
             }
 
@@ -984,6 +1009,7 @@ void BgfxBackend::renderLayer(graphics::LayerId layer, graphics::RenderTargetId 
             bgfx::setViewRect(kBrightnessView, 0, 0,
                               static_cast<uint16_t>(width),
                               static_cast<uint16_t>(height));
+            bgfx::setViewClear(kBrightnessView, BGFX_CLEAR_COLOR, 0x00000000, 1.0f, 0);
             bgfx::setUniform(brightnessScaleBias, scaleBias);
             bgfx::setUniform(brightnessValue, brightnessData);
             bgfx::setTexture(0, brightnessSampler, sceneTarget.colorTexture);
@@ -1137,10 +1163,130 @@ void BgfxBackend::renderUiOverlay() {
     indices[5] = 3;
 
     bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
-                   BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA));
+                   BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_INV_SRC_ALPHA));
     bgfx::setVertexBuffer(0, &tvb);
     bgfx::setIndexBuffer(&tib);
     bgfx::submit(kUiOverlayView, uiOverlayProgram);
+}
+
+void BgfxBackend::renderUiDrawData(
+    const karma::app::UIDrawData& drawData,
+    const std::function<bool(karma::app::UITextureHandle, graphics::TextureHandle&)>& resolveTexture,
+    int viewportW,
+    int viewportH,
+    float /*dpiScale*/) {
+    if (!initialized) {
+        return;
+    }
+    if (viewportW <= 0 || viewportH <= 0) {
+        return;
+    }
+    if (drawData.commands.empty()) {
+        return;
+    }
+    ensureUiOverlayResources();
+    if (!bgfx::isValid(uiOverlayProgram) || !bgfx::isValid(uiOverlaySampler)
+        || !bgfx::isValid(uiOverlayScaleBias)) {
+        return;
+    }
+
+    const uint32_t vertexCount = static_cast<uint32_t>(drawData.vertices.size());
+    const uint32_t indexCount = static_cast<uint32_t>(drawData.indices.size());
+    if (vertexCount == 0 || indexCount == 0) {
+        return;
+    }
+
+    bool use32bit = false;
+    for (uint32_t idx : drawData.indices) {
+        if (idx > 0xFFFFu) {
+            use32bit = true;
+            break;
+        }
+    }
+
+    if (bgfx::getAvailTransientVertexBuffer(vertexCount, uiOverlayLayout) < vertexCount ||
+        bgfx::getAvailTransientIndexBuffer(indexCount, use32bit) < indexCount) {
+        return;
+    }
+
+    bgfx::TransientVertexBuffer tvb;
+    bgfx::TransientIndexBuffer tib;
+    bgfx::allocTransientVertexBuffer(&tvb, vertexCount, uiOverlayLayout);
+    bgfx::allocTransientIndexBuffer(&tib, indexCount, use32bit);
+
+    struct UiVertex {
+        float x;
+        float y;
+        float u;
+        float v;
+        uint32_t abgr;
+    };
+
+    auto* verts = reinterpret_cast<UiVertex*>(tvb.data);
+    for (uint32_t i = 0; i < vertexCount; ++i) {
+        const auto &src = drawData.vertices[i];
+        verts[i] = {src.x, src.y, src.u, src.v, src.rgba};
+    }
+
+    if (use32bit) {
+        auto* idx = reinterpret_cast<uint32_t*>(tib.data);
+        for (uint32_t i = 0; i < indexCount; ++i) {
+            idx[i] = drawData.indices[i];
+        }
+    } else {
+        auto* idx = reinterpret_cast<uint16_t*>(tib.data);
+        for (uint32_t i = 0; i < indexCount; ++i) {
+            idx[i] = static_cast<uint16_t>(drawData.indices[i]);
+        }
+    }
+
+    const float scaleBias[4] = {
+        2.0f / static_cast<float>(viewportW),
+        -2.0f / static_cast<float>(viewportH),
+        -1.0f,
+        1.0f
+    };
+    bgfx::setViewMode(kUiOverlayView, bgfx::ViewMode::Sequential);
+    bgfx::setViewTransform(kUiOverlayView, nullptr, nullptr);
+    bgfx::setViewFrameBuffer(kUiOverlayView, BGFX_INVALID_HANDLE);
+    bgfx::setViewRect(kUiOverlayView, 0, 0,
+                      static_cast<uint16_t>(viewportW),
+                      static_cast<uint16_t>(viewportH));
+    bgfx::setUniform(uiOverlayScaleBias, scaleBias);
+
+    const uint64_t blendState = drawData.premultiplied_alpha
+        ? BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_INV_SRC_ALPHA)
+        : BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    const uint64_t baseState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | blendState;
+
+    for (const auto &cmd : drawData.commands) {
+        graphics::TextureHandle texture{};
+        if (!resolveTexture(cmd.texture, texture) || !texture.valid()) {
+            continue;
+        }
+        bgfx::TextureHandle handle;
+        handle.idx = bgfx_utils::ToBgfxTextureHandle(texture.id);
+        if (!bgfx::isValid(handle)) {
+            continue;
+        }
+
+        if (cmd.scissor_enabled) {
+            bgfx::setScissor(static_cast<uint16_t>(cmd.scissor_x),
+                             static_cast<uint16_t>(cmd.scissor_y),
+                             static_cast<uint16_t>(cmd.scissor_w),
+                             static_cast<uint16_t>(cmd.scissor_h));
+        } else {
+            bgfx::setScissor(0, 0,
+                             static_cast<uint16_t>(viewportW),
+                             static_cast<uint16_t>(viewportH));
+        }
+
+        bgfx::setState(baseState);
+        bgfx::setTexture(0, uiOverlaySampler, handle);
+        bgfx::setVertexBuffer(0, &tvb, 0, vertexCount);
+        bgfx::setIndexBuffer(&tib, cmd.index_offset, cmd.index_count);
+        bgfx::submit(kUiOverlayView, uiOverlayProgram);
+    }
 }
 
 void BgfxBackend::setBrightness(float brightness) {

@@ -441,24 +441,12 @@ bool ConsoleView::launchLocalServer(LocalServerProcess &server, std::string &err
 
 void ConsoleView::drawStartServerPanel(const MessageColors &colors) {
     auto &i18n = karma::i18n::Get();
-    const bool hasHeadingFont = (headingFont != nullptr);
-    if (hasHeadingFont) {
-        ImGui::PushFont(headingFont);
-    }
-    ImGui::TextUnformatted(i18n.get("ui.console.start_server.title").c_str());
-    if (hasHeadingFont) {
-        ImGui::PopFont();
-    }
-    ImGui::Spacing();
 
     const std::string serverBinary = findServerBinary();
     if (serverBinary.empty()) {
         ImGui::TextColored(colors.error, "%s", i18n.get("ui.console.start_server.server_binary_missing").c_str());
+        ImGui::Spacing();
     }
-
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
 
     if (serverAdvertiseHostBuffer[0] == '\0') {
         std::string advertiseHost = ui::config::GetRequiredString("network.ServerAdvertiseHost");
@@ -481,15 +469,10 @@ void ConsoleView::drawStartServerPanel(const MessageColors &colors) {
     };
 
     const ImGuiStyle &style = ImGui::GetStyle();
-    const float totalWidth = ImGui::GetContentRegionAvail().x;
-    const float ipWidth = std::max(90.0f, totalWidth * 0.12f);
-    const float portWidth = 120.0f;
-    const float communityWidth = std::max(260.0f, totalWidth * 0.32f);
-    const float loggingWidth = 90.0f;
-    const float actionWidth = 110.0f;
-    const float spacing = style.ItemSpacing.x;
-    const float available = totalWidth - (ipWidth + portWidth + communityWidth + loggingWidth + actionWidth) - (spacing * 7.0f);
-    const float worldWidth = std::max(160.0f, available);
+    const float ipWidth = 120.0f;
+    const float portWidth = 90.0f;
+    const float loggingWidth = 100.0f;
+    const float actionWidth = 120.0f;
     auto &listOptions = consoleModel.community.listOptions;
 
     static const char *kLogLevels[] = {"trace", "debug", "info", "warn", "err", "critical", "off"};
@@ -499,11 +482,11 @@ void ConsoleView::drawStartServerPanel(const MessageColors &colors) {
     }
 
     ImGui::TextUnformatted(i18n.get("ui.console.start_server.new_server").c_str());
-    if (ImGui::BeginTable("NewServerForm", 6, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersOuter)) {
+    if (ImGui::BeginTable("NewServerForm", 6, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersOuter)) {
         ImGui::TableSetupColumn(i18n.get("ui.console.start_server.ip_address").c_str(), ImGuiTableColumnFlags_WidthFixed, ipWidth);
         ImGui::TableSetupColumn(i18n.get("ui.console.start_server.port").c_str(), ImGuiTableColumnFlags_WidthFixed, portWidth);
-        ImGui::TableSetupColumn(i18n.get("ui.console.start_server.community").c_str(), ImGuiTableColumnFlags_WidthFixed, communityWidth);
-        ImGui::TableSetupColumn(i18n.get("ui.console.start_server.world_directory").c_str(), ImGuiTableColumnFlags_WidthFixed, worldWidth);
+        ImGui::TableSetupColumn(i18n.get("ui.console.start_server.community").c_str(), ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn(i18n.get("ui.console.start_server.world_directory").c_str(), ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn(i18n.get("ui.console.start_server.logging").c_str(), ImGuiTableColumnFlags_WidthFixed, loggingWidth);
         ImGui::TableSetupColumn(i18n.get("ui.console.start_server.action").c_str(), ImGuiTableColumnFlags_WidthFixed, actionWidth);
         ImGui::TableHeadersRow();

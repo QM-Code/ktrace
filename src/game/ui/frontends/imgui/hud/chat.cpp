@@ -2,6 +2,8 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+
 namespace ui {
 
 void ImGuiHudChat::addLine(const std::string &playerName, const std::string &line) {
@@ -37,10 +39,28 @@ bool ImGuiHudChat::isFocused() const {
     return chatFocus;
 }
 
-void ImGuiHudChat::draw(const ImVec2 &pos, const ImVec2 &size, float inputHeight) {
+void ImGuiHudChat::draw(const ImVec2 &pos,
+                        const ImVec2 &size,
+                        float inputHeight,
+                        const ImVec4 &backgroundColor,
+                        const ImVec4 &textColor,
+                        float textScale) {
+    ImVec4 bg = backgroundColor;
+    bg.x = std::clamp(bg.x, 0.0f, 1.0f);
+    bg.y = std::clamp(bg.y, 0.0f, 1.0f);
+    bg.z = std::clamp(bg.z, 0.0f, 1.0f);
+    bg.w = std::clamp(bg.w, 0.0f, 1.0f);
+    ImVec4 fg = textColor;
+    fg.x = std::clamp(fg.x, 0.0f, 1.0f);
+    fg.y = std::clamp(fg.y, 0.0f, 1.0f);
+    fg.z = std::clamp(fg.z, 0.0f, 1.0f);
+    fg.w = std::clamp(fg.w, 0.0f, 1.0f);
+    const float scale = std::clamp(textScale, 0.5f, 3.0f);
     ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.70f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, bg);
+    ImGui::PushStyleColor(ImGuiCol_Text, fg);
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
@@ -49,12 +69,14 @@ void ImGuiHudChat::draw(const ImVec2 &pos, const ImVec2 &size, float inputHeight
         ImGuiWindowFlags_NoSavedSettings;
 
     ImGui::Begin("##BottomConsole", nullptr, flags);
+    ImGui::SetWindowFontScale(scale);
 
     const float footer = inputHeight;
     ImGui::BeginChild("##ConsoleScroll",
                       ImVec2(0, -footer),
                       true,
                       ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::SetWindowFontScale(scale);
 
     const float scrollY = ImGui::GetScrollY();
     const float scrollMaxY = ImGui::GetScrollMaxY();
@@ -88,7 +110,6 @@ void ImGuiHudChat::draw(const ImVec2 &pos, const ImVec2 &size, float inputHeight
     }
 
     ImGui::PushItemWidth(-1);
-    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.75f);
     bool submitted = ImGui::InputTextWithHint(
         "##ChatHint",
         "press T to type",
@@ -103,10 +124,11 @@ void ImGuiHudChat::draw(const ImVec2 &pos, const ImVec2 &size, float inputHeight
         chatFocus = false;
     }
     
-    ImGui::PopStyleVar();
     ImGui::PopItemWidth();
 
     ImGui::End();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar();
 
     if (submitted) {
         submittedInputBuffer = std::string(chatInputBuffer.data());

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "karma/ecs/components.hpp"
-#include "karma/ecs/world.hpp"
+#include "karma/components/mesh.h"
+#include "karma/components/transform.h"
+#include "karma/ecs/world.h"
 #include "karma/renderer/renderer_context.hpp"
 #include "karma/renderer/renderer_core.hpp"
 #include "karma/renderer/scene_renderer.hpp"
-#include "game/renderer/radar_renderer.hpp"
-#include "karma/core/types.hpp"
-#include "ui/core/types.hpp"
+#include "renderer/radar_renderer.hpp"
+#include "karma_extras/ui/bridges/ui_render_target_bridge.hpp"
 
 #include <filesystem>
 #include <glm/glm.hpp>
@@ -22,11 +22,9 @@ namespace platform {
 class Window;
 }
 namespace graphics {
-class ResourceRegistry;
 }
 
 class Renderer {
-    friend class ClientEngine;
 
 private:
     std::unique_ptr<engine::renderer::RendererCore> core_;
@@ -35,61 +33,33 @@ private:
     render_id nextId = 1;
 
     std::unique_ptr<game::renderer::RadarRenderer> radarRenderer_;
-    std::unordered_map<render_id, ecs::EntityId> ecsEntities;
+    std::unique_ptr<ui::UiRenderTargetBridge> imguiBridge_;
+    struct RadarEcsEntry {
+        render_id id = 0;
+        std::string mesh_key{};
+    };
+    std::unordered_map<karma::ecs::Entity, RadarEcsEntry> radarEcsEntities_;
+    struct RadarEcsCircleEntry {
+        render_id id = 0;
+        float radius = 1.0f;
+    };
+    std::unordered_map<karma::ecs::Entity, RadarEcsCircleEntry> radarEcsCircles_;
 
-    ecs::World *ecsWorld = nullptr;
-    graphics::ResourceRegistry *contextResources_ = nullptr;
+    karma::ecs::World *ecsWorld = nullptr;
+    bool ecsRadarSyncEnabled = true;
 
-    int lastFramebufferWidth = 0;
-    int lastFramebufferHeight = 0;
-    float lastAspect = 1.0f;
 
-    Renderer(platform::Window &window);
-    ~Renderer();
-
-    void update();
-    void resizeCallback(int width, int height);
-
-    void registerEcsEntity(render_id id);
-    ecs::Transform *getEcsTransform(render_id id);
-    graphics::EntityId getEcsGraphicsEntity(render_id id) const;
-    void setEcsRenderMesh(render_id id, const std::filesystem::path& modelPath);
+    void syncEcsRadar();
 
 public:
-    render_id create();
-    render_id create(std::string modelPath, bool addToRadar = true);
-    void setModel(render_id id, const std::filesystem::path& modelPath, bool addToRadar = true);
-    void setRadarCircleGraphic(render_id id, float radius = 1.0f);
-    void setRadarFOVLinesAngle(float fovDegrees);
-    void setEcsWorld(ecs::World *world);
-    void setResourceRegistry(graphics::ResourceRegistry *resources);
+    Renderer(platform::Window &window);
+    ~Renderer();
+    void renderRadar(const glm::vec3 &cameraPosition, const glm::quat &cameraRotation);
+    void setEcsWorld(karma::ecs::World *world);
     void setMainLayer(graphics::LayerId layer) { if (core_) { core_->context().mainLayer = layer; } }
-    engine::renderer::RendererContext &mainContext() { return core_->context(); }
-    const engine::renderer::RendererContext &mainContext() const { return core_->context(); }
-
-    void destroy(render_id id);
-    void setPosition(render_id id, const glm::vec3 &position);
-    void setRotation(render_id id, const glm::quat &rotation);
-    void setScale(render_id id, const glm::vec3 &scale);
-    void setVisible(render_id id, bool visible);
-    void setTransparency(render_id id, bool transparency);
-    void setCameraPosition(const glm::vec3 &position);
-    void setCameraRotation(const glm::quat &rotation);
-    void setUiOverlayTexture(const ui::RenderOutput& output);
-    void renderUiOverlay();
-    void setBrightness(float brightness);
-    void present();
-
     graphics::TextureHandle getRadarTexture() const;
-    graphics_backend::UiRenderTargetBridge* getUiRenderTargetBridge() const;
-    void setRadarShaderPath(const std::filesystem::path& vertPath,
-                            const std::filesystem::path& fragPath);
-    graphics::GraphicsDevice *getGraphicsDevice() const { return core_ ? &core_->device() : nullptr; }
+    ui::UiRenderTargetBridge* getUiRenderTargetBridge() const;
+    void configureRadar(const game::renderer::RadarConfig& config);
     engine::renderer::RendererCore *getRendererCore() const { return core_.get(); }
 
-    glm::mat4 getViewProjectionMatrix() const;
-    glm::mat4 getViewMatrix() const;
-    glm::mat4 getProjectionMatrix() const;
-    glm::vec3 getCameraPosition() const;
-    glm::vec3 getCameraForward() const;
 };

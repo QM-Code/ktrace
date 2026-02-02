@@ -21,3 +21,6 @@ This directory implements the **ImGui-based UI frontend**.
 ## Gotchas
 - Input capture rules are subtle (e.g., in-game text boxes losing focus).
 - Keep parity with RmlUi features.
+- ImGui has no implicit font fallback. If headings show `?` for non-Latin text,
+  the heading/title fonts are missing glyphs. Merge fallback glyphs into every
+  UI font atlas (regular/heading/title) to match RmlUi behavior.

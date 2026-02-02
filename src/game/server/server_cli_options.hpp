@@ -19,6 +19,7 @@ struct ServerCLIOptions {
     bool timestampLogging = false;
     std::string community;
     bool communityExplicit = false;
+    bool strictConfig = true;
 };
 
 ServerCLIOptions ParseServerCLIOptions(int argc, char *argv[]);

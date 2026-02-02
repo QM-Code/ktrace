@@ -1,7 +1,6 @@
 #include "game/engine/server_engine.hpp"
 #include "karma/core/types.hpp"
 #include "game/net/messages.hpp"
-#include "karma/common/config_store.hpp"
 #include <functional>
 
 ServerEngine::ServerEngine(uint16_t serverPort) {
@@ -21,5 +20,4 @@ void ServerEngine::earlyUpdate(TimeUtils::duration deltaTime) {
 void ServerEngine::lateUpdate(TimeUtils::duration deltaTime) {
     physics->update(deltaTime);
     network->flushPeekedMessages();
-    karma::config::ConfigStore::Tick();
 }

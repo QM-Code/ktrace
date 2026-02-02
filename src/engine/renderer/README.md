@@ -1,3 +1,4 @@
 # src/engine/renderer/README.md
 
-Renderer core and render context used by the game renderer.
+Engine renderer core headers and scene interfaces. This is the engine-owned
+rendering API used by game-level orchestration and ECS systems.

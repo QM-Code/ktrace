@@ -12,6 +12,7 @@
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
+#include "karma/common/config_validation.hpp"
 #include "karma/common/json.hpp"
 #include <pybind11/embed.h>
 #include <csignal>
@@ -84,11 +85,7 @@ public:
           game_(game),
           heartbeat_(heartbeat) {}
 
-    bool onInit(karma::app::EngineContext &) override { return true; }
-
-    void onShutdown(karma::app::EngineContext &) override {}
-
-    void onUpdate(karma::app::EngineContext &, float dt) override {
+    void onUpdate(float dt) override {
         if (dt < MIN_FRAME_HZ) {
             TimeUtils::sleep(MIN_FRAME_HZ - dt);
             return;
@@ -112,8 +109,6 @@ public:
         engine_.lateUpdate(dt);
         heartbeat_.update(game_);
     }
-
-    void onRender(karma::app::EngineContext &) override {}
 
     bool shouldQuit() const override { return !g_running.load(); }
 
@@ -147,6 +142,24 @@ int main(int argc, char *argv[]) {
     } catch (const std::exception &ex) {
         spdlog::error("Failed to parse server command line options: {}", ex.what());
         return 1;
+    }
+    const auto configIssues = karma::config::ValidateRequiredKeys(karma::config::ServerRequiredKeys());
+    if (!configIssues.empty()) {
+        if (cliOptions.strictConfig) {
+            spdlog::error("Config validation failed:");
+        } else {
+            spdlog::warn("Config validation reported issues:");
+        }
+        for (const auto &issue : configIssues) {
+            if (cliOptions.strictConfig) {
+                spdlog::error("  {}: {}", issue.path, issue.message);
+            } else {
+                spdlog::warn("  {}: {}", issue.path, issue.message);
+            }
+        }
+        if (cliOptions.strictConfig) {
+            return 1;
+        }
     }
 
     const spdlog::level::level_enum logLevel = cliOptions.logLevelExplicit
@@ -246,8 +259,15 @@ int main(int argc, char *argv[]) {
     ServerLoopAdapter adapter(engine, game, communityHeartbeat);
     karma::app::EngineApp app;
     app.context().physics = engine.physics;
-    app.setGame(&adapter);
-    const int result = app.run();
+    int result = 0;
+    spdlog::info("EngineApp loop enabled (start/tick)");
+    if (!app.start(adapter, app.config())) {
+        result = 1;
+    } else {
+        while (app.isRunning()) {
+            app.tick();
+        }
+    }
     spdlog::info("Server shutdown complete");
     return result;
 }

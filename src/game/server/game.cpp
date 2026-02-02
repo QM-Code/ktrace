@@ -69,12 +69,64 @@ Game::~Game() {
 }
 
 void Game::update(TimeUtils::duration deltaTime) {
+    for (const auto &reqMsg : engine.network->consumeMessages<ClientMsg_JoinRequest>()) {
+        spdlog::debug("Game::update: Join request from id {} (name='{}')",
+                      reqMsg.clientId,
+                      reqMsg.name);
+        bool nameTaken = getClientByName(reqMsg.name) != nullptr;
+        if (!nameTaken) {
+            for (const auto &entry : pendingJoinNames_) {
+                if (entry.second == reqMsg.name) {
+                    nameTaken = true;
+                    break;
+                }
+            }
+        }
+
+        ServerMsg_JoinResponse response{};
+        if (reqMsg.protocolVersion != NET_PROTOCOL_VERSION) {
+            response.accepted = false;
+            response.reason = "Protocol version mismatch.";
+            engine.network->send<ServerMsg_JoinResponse>(reqMsg.clientId, &response);
+            engine.network->disconnectClient(reqMsg.clientId, response.reason);
+            continue;
+        }
+        if (nameTaken) {
+            response.accepted = false;
+            response.reason = "Name already in use.";
+            engine.network->send<ServerMsg_JoinResponse>(reqMsg.clientId, &response);
+            engine.network->disconnectClient(reqMsg.clientId, response.reason);
+            continue;
+        }
+
+        response.accepted = true;
+        response.reason = "";
+        engine.network->send<ServerMsg_JoinResponse>(reqMsg.clientId, &response);
+        approvedJoinIds_.insert(reqMsg.clientId);
+        pendingJoinNames_.insert({reqMsg.clientId, reqMsg.name});
+    }
+
     for (const auto &connMsg : engine.network->consumeMessages<ClientMsg_PlayerJoin>()) {
         spdlog::debug("Game::update: New client connection with id {} from IP {}",
                       connMsg.clientId,
                       connMsg.ip);
+        if (approvedJoinIds_.find(connMsg.clientId) == approvedJoinIds_.end()) {
+            engine.network->disconnectClient(connMsg.clientId, "Join request required.");
+            continue;
+        }
+        auto pendingIt = pendingJoinNames_.find(connMsg.clientId);
+        if (pendingIt == pendingJoinNames_.end() || pendingIt->second != connMsg.name) {
+            engine.network->disconnectClient(connMsg.clientId, "Join request mismatch.");
+            approvedJoinIds_.erase(connMsg.clientId);
+            if (pendingIt != pendingJoinNames_.end()) {
+                pendingJoinNames_.erase(pendingIt);
+            }
+            continue;
+        }
+        pendingJoinNames_.erase(pendingIt);
+        approvedJoinIds_.erase(connMsg.clientId);
         if (getClientByName(connMsg.name)) {
-            engine.network->disconnectClient(connMsg.clientId, "Client ID already in use.");
+            engine.network->disconnectClient(connMsg.clientId, "Name already in use.");
             continue;
         }
 
@@ -110,6 +162,8 @@ void Game::update(TimeUtils::duration deltaTime) {
 
     for (const auto &disconnMsg : engine.network->consumeMessages<ClientMsg_PlayerLeave>()) {
         spdlog::info("Game::update: Client with id {} disconnected", disconnMsg.clientId);
+        pendingJoinNames_.erase(disconnMsg.clientId);
+        approvedJoinIds_.erase(disconnMsg.clientId);
         removeClient(disconnMsg.clientId);
 
         Event_PlayerLeave event;

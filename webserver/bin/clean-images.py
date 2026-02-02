@@ -20,8 +20,8 @@ def main():
     if root_dir not in sys.path:
         sys.path.insert(0, root_dir)
 
-    from bz3web import cli
-    from bz3web.tools import clean_images as tool
+    from karma import cli
+    from karma.tools import clean_images as tool
 
     cli.bootstrap(directory, "usage: clean-images.py <community-directory> [--dry-run]")
 

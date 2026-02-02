@@ -24,7 +24,8 @@
         "settings": "설정",
         "documentation": "문서",
         "start_server": "서버 시작",
-        "bindings": "Bindings"
+        "bindings": "바인딩",
+        "help": "도움말"
       },
       "start_server": {
         "title": "서버 시작",
@@ -43,10 +44,21 @@
     "hud": {
       "chat_placeholder": "T를 눌러 입력",
       "fps_label": "FPS: {value}",
-      "spawn_hint": "{binding}를 눌러 스폰"
+      "spawn_hint": "{binding}를 눌러 스폰",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
     },
     "settings": {
-      "language_label": "언어"
+      "language_label": "언어",
+      "hud_background_label": "배경",
+      "hud_background_edit": "편집",
+      "hud_text_color_label": "텍스트 색상",
+      "hud_text_size_label": "텍스트 크기"
     }
   }
 }

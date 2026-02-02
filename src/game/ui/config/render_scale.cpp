@@ -10,19 +10,14 @@ namespace ui {
 
 float GetUiRenderScale() {
     static uint64_t lastRevision = 0;
-    static float cachedScale = UiConfig::kDefaultRenderScale;
+    static float cachedScale = UiConfig::GetRenderScale();
     const uint64_t revision = karma::config::ConfigStore::Revision();
     if (revision != lastRevision) {
         lastRevision = revision;
-        const auto value = UiConfig::TryGetRenderScale();
-        if (!value) {
-            spdlog::error("Config 'ui.RenderScale' is missing");
-            cachedScale = UiConfig::kDefaultRenderScale;
-            return cachedScale;
-        }
-        const float clamped = std::clamp(*value, UiConfig::kMinRenderScale, UiConfig::kMaxRenderScale);
-        if (clamped != *value) {
-            spdlog::warn("Config 'ui.RenderScale' clamped from {} to {}", *value, clamped);
+        const float value = UiConfig::GetRenderScale();
+        const float clamped = std::clamp(value, UiConfig::kMinRenderScale, UiConfig::kMaxRenderScale);
+        if (clamped != value) {
+            spdlog::warn("Config 'ui.RenderScale' clamped from {} to {}", value, clamped);
         }
         cachedScale = clamped;
     }

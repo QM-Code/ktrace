@@ -12,11 +12,13 @@
 #include <vector>
 
 class ServerNetwork {
-    friend class ServerEngine;
 
 private:
     std::unique_ptr<game::net::ServerBackend> backend_;
 
+    void sendImpl(client_id clientId, const ServerMsg &input, bool flush);
+
+public:
     ServerNetwork(
         uint16_t port,
         int maxClients = 50,
@@ -26,9 +28,7 @@ private:
 
     void flushPeekedMessages();
     void update();
-    void sendImpl(client_id clientId, const ServerMsg &input, bool flush);
 
-public:
     template<typename T> T* peekMessage(std::function<bool(const T&)> predicate = [](const T&) { return true; }) {
         static_assert(std::is_base_of_v<ClientMsg, T>, "T must be a subclass of ClientMsg");
 

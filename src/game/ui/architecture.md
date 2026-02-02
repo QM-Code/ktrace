@@ -12,7 +12,7 @@ The UI subsystem exposes a single backend interface (`ui::Backend`) and two fron
 
 The UI is split into two surfaces:
 - **Console**: multi-tab UI (Community, Start Server, Settings, Bindings, ?)
-- **HUD**: gameplay overlay (chat, radar, scoreboard, crosshair, FPS, dialog)
+- **HUD**: gameplay overlay (chat, radar, scoreboard, crosshair, FPS, dialog, quick menu)
 
 Both frontends render HUD first, then Console (so the console overlays the HUD). The HUD can be forced off while the console is visible, depending on connection state.
 
@@ -24,13 +24,16 @@ Both frontends render HUD first, then Console (so the console overlays the HUD).
   - Reads `ConfigStore::Revision()` and updates HUD visibility flags from config.
   - Sets `hudModel.visibility.hud` based on connection + console visibility.
   - Sends the model to the backend and calls `backend->update()`.
+- Optional parity tooling:
+  - `ui.Validate` (config) enables HUD visibility self-checks per backend.
+  - `--ui-smoke` (client CLI) toggles HUD elements on a timer for quick manual parity checks.
 
 ### `ui::Backend` (`src/game/ui/core/backend.hpp`)
 Key responsibilities:
 - Console interface access: `console()` returns `ui::ConsoleInterface`.
 - Receives HUD state: `setHudModel(const ui::HudModel &)`.
 - Exposes render output: `getRenderOutput()` and `getRenderBrightness()`.
-- Handles input events and UI update loop.
+- Handles input events and UI update loop (driven by `EngineApp`).
 
 ### `ui::ConsoleInterface` (`src/game/ui/console/console_interface.hpp`)
 - Abstracts console operations (show/hide, list options, refresh requests, selections, status).
@@ -48,18 +51,21 @@ Key responsibilities:
 ## 4) Rendering + render outputs
 
 ### ImGui path
-- Uses `ui::RendererBridge` and `engine/graphics/ui_render_target_bridge.hpp` to render into a texture.
-- Platform renderers live under `src/engine/ui/platform/imgui/renderer_{bgfx,diligent}.*`.
+- Uses `ui::RendererBridge` and `ui::UiRenderTargetBridge` to render into a texture.
+- Platform renderers live under `src/karma-extras/ui/platform/imgui/renderer_{bgfx,diligent}.*`.
 - `ImGuiBackend::getRenderOutput()` returns a valid texture + visibility when the console or HUD drew.
 
 ### RmlUi path
-- Uses RmlUi `RenderInterface` implementations in `src/engine/ui/platform/rmlui/renderer_{bgfx,diligent}`.
+- Uses RmlUi `RenderInterface` implementations in `src/karma-extras/ui/platform/rmlui/renderer_{bgfx,diligent}`.
 - `RenderOutput` is provided by both frontends and is always composited by the renderer.
 
 ## 5) Input handling
 
 - Each backend maps `platform::Event` into its UI system.
 - Mapping logic is duplicated between ImGui and RmlUi and should be unified (`TODO.md`).
+- Gameplay input is suppressed when UI input is active (console visible or chat focused).
+  - The UI still receives input, and “global” actions (chat/escape/quick quit/fullscreen) remain active.
+  - See `src/game/engine/client_engine.cpp` for the input gating rules.
 
 ## 6) Config and persistence
 
@@ -73,6 +79,7 @@ Important: UI code should not load or write JSON files directly (except the Star
 
 - **Console**: tabbed UI with panels implemented separately per frontend.
 - **HUD**: overlay components (chat/radar/scoreboard/crosshair/fps/dialog).
+- **Quick menu**: modal HUD overlay (resume/disconnect/quit), toggled by Escape.
 - The HUD is suppressed behind the console when **not connected**.
 - Crosshair is explicitly disabled while the console is visible to avoid a "white square" leak.
 
@@ -117,6 +124,7 @@ Any frontend changes that add UI elements generally require editing these asset 
    - Draws HUD first (if visible), then Console.
    - Renders to UI render target via `RendererBridge`.
 3. Renderer composites `ui::RenderOutput` texture onto the frame.
+   - bgfx UI overlay uses premultiplied blending (`ONE / INV_SRC_ALPHA`).
 
 ### RmlUi path (per frame)
 1. `UiSystem::update()` updates `HudModel` and calls `RmlUiBackend::setHudModel()`.

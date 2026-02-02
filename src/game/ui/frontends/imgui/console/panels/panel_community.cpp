@@ -1,5 +1,5 @@
 #include "ui/frontends/imgui/console/console.hpp"
-#include "karma/ui/imgui/texture_utils.hpp"
+#include "karma_extras/ui/imgui/texture_utils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -366,12 +366,25 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
         listSelectedIndex = -1;
     }
     const bool hasActiveServers = !entries.empty();
-
-    const float newCommunityButtonWidth =
-        ImGui::CalcTextSize("New Community").x + style.FramePadding.x * 2.0f;
-    float selectorWidth = ImGui::GetContentRegionAvail().x - newCommunityButtonWidth - style.ItemSpacing.x;
-    if (selectorWidth < 0.0f) {
-        selectorWidth = 0.0f;
+    const auto &connectionState = consoleModel.connectionState;
+    std::vector<CommunityBrowserEntry> connectedEntries;
+    const std::vector<CommunityBrowserEntry> *displayEntries = &entries;
+    int displaySelectedIndex = selectedIndex;
+    bool useConnectedEntry = false;
+    if (entries.empty() && connected && !connectionState.host.empty()) {
+        ui::CommunityBrowserEntry entry;
+        entry.label = connectionState.host + ":" + std::to_string(connectionState.port);
+        entry.host = connectionState.host;
+        entry.port = connectionState.port;
+        entry.description = "Connected server";
+        entry.displayHost = connectionState.host;
+        entry.longDescription = entry.description;
+        entry.activePlayers = -1;
+        entry.maxPlayers = -1;
+        connectedEntries.push_back(std::move(entry));
+        displayEntries = &connectedEntries;
+        displaySelectedIndex = 0;
+        useConnectedEntry = true;
     }
 
     std::string comboLabel = "No communities";
@@ -379,109 +392,50 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
         comboLabel = formatListLabel(listOptions[listSelectedIndex]);
     }
 
-    ImGui::SetNextItemWidth(selectorWidth);
-    if (ImGui::BeginCombo("##ServerListSelector", comboLabel.c_str())) {
-        for (int i = 0; i < static_cast<int>(listOptions.size()); ++i) {
-            const auto &option = listOptions[i];
-            std::string optionLabel = formatListLabel(option);
-            bool selected = (i == listSelectedIndex);
-            if (ImGui::Selectable(optionLabel.c_str(), selected)) {
-                if (!selected) {
-                    listSelectedIndex = i;
-                    consoleController.queueListSelection(i);
+    if (ImGui::BeginTable("##CommunitySelectorRow", 3, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("##CommunityLabel", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##CommunityCombo", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##CommunityInfo", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Community");
+
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::BeginCombo("##ServerListSelector", comboLabel.c_str())) {
+            for (int i = 0; i < static_cast<int>(listOptions.size()); ++i) {
+                const auto &option = listOptions[i];
+                std::string optionLabel = formatListLabel(option);
+                bool selected = (i == listSelectedIndex);
+                if (ImGui::Selectable(optionLabel.c_str(), selected)) {
+                    if (!selected) {
+                        listSelectedIndex = i;
+                        consoleController.queueListSelection(i);
+                    }
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
                 }
             }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
+            ImGui::EndCombo();
         }
-        ImGui::EndCombo();
-    }
 
-    ImGui::SameLine(0.0f, style.ItemSpacing.x);
-    float rightAlignOffset = ImGui::GetContentRegionAvail().x - newCommunityButtonWidth;
-    if (rightAlignOffset > 0.0f) {
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + rightAlignOffset);
-    }
-    if (hasButtonFont) {
-        ImGui::PushFont(buttonFont);
-    }
-    ImGui::PushStyleColor(ImGuiCol_Text, buttonColor);
-    ImGui::BeginDisabled(showNewCommunityInput);
-    if (ImGui::Button("New Community")) {
-        showNewCommunityInput = true;
-    }
-    ImGui::EndDisabled();
-    ImGui::PopStyleColor();
-    if (hasButtonFont) {
-        ImGui::PopFont();
-    }
-
-    if (showNewCommunityInput) {
-        bool focusHostInput = ImGui::IsItemActivated();
-        ImGui::Spacing();
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextUnformatted("Community Host");
-        ImGui::SameLine();
-        const float addButtonWidth = ImGui::CalcTextSize("Add").x + style.FramePadding.x * 2.0f;
-        const float cancelButtonWidth = ImGui::CalcTextSize("Cancel").x + style.FramePadding.x * 2.0f;
-        const float buttonsWidth = addButtonWidth + cancelButtonWidth + style.ItemSpacing.x;
-        float inputAvailable = ImGui::GetContentRegionAvail().x - buttonsWidth - style.ItemSpacing.x;
-        if (inputAvailable < 0.0f) {
-            inputAvailable = 0.0f;
-        }
-        ImGui::SetNextItemWidth(inputAvailable);
-        if (focusHostInput) {
-            ImGui::SetKeyboardFocusHere();
-        }
-        ImGui::InputTextWithHint(
-            "##CommunityHostInput",
-            "http://host[:port]",
-            listUrlBuffer.data(),
-            listUrlBuffer.size());
-
-        bool saveListClicked = false;
-        ImGui::SameLine();
-        float addAlignOffset = ImGui::GetContentRegionAvail().x - buttonsWidth;
-        if (addAlignOffset > 0.0f) {
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + addAlignOffset);
-        }
+        ImGui::TableSetColumnIndex(2);
         if (hasButtonFont) {
             ImGui::PushFont(buttonFont);
         }
         ImGui::PushStyleColor(ImGuiCol_Text, buttonColor);
-        if (ImGui::Button("Add")) {
-            saveListClicked = true;
+        if (ImGui::Button("?")) {
+            selectedIndex = -1;
         }
         ImGui::PopStyleColor();
         if (hasButtonFont) {
             ImGui::PopFont();
         }
 
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
-            showNewCommunityInput = false;
-            listUrlBuffer.fill('\0');
-            listStatusText.clear();
-            listStatusIsError = false;
-        }
-        if (saveListClicked) {
-            std::string urlValue(listUrlBuffer.data());
-            if (urlValue.empty()) {
-                listStatusText = "Enter a host before saving.";
-                listStatusIsError = true;
-            } else {
-                listStatusText.clear();
-                listStatusIsError = false;
-                consoleController.queueNewListRequest(ServerListOption{std::string{}, urlValue});
-            }
-        }
-
-        if (!listStatusText.empty()) {
-            ImGui::Spacing();
-            ImVec4 listColor = listStatusIsError ? messageColors.error : messageColors.action;
-            ImGui::TextColored(listColor, "%s", listStatusText.c_str());
-        }
+        ImGui::EndTable();
     }
 
     ImGui::Spacing();
@@ -501,39 +455,39 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
     const float quitInlineWidth = ImGui::CalcTextSize("Quit").x + style.FramePadding.x * 2.0f;
     const float joinButtonsWidth = joinInlineWidth + roamInlineWidth + style.ItemSpacing.x;
     const float labelSpacing = style.ItemSpacing.x * 2.0f;
-    const float inputWidth = 150.0f;
-    const float buttonWidth = connected ? quitInlineWidth : joinButtonsWidth;
-    float rowWidth = ImGui::GetContentRegionAvail().x - buttonWidth - style.ItemSpacing.x;
-    float contentWidth = inputWidth + ImGui::CalcTextSize("Username").x + style.ItemInnerSpacing.x;
-    if (!isLanCommunity) {
-        contentWidth += labelSpacing;
-        contentWidth += ImGui::CalcTextSize("Password").x + style.ItemInnerSpacing.x + inputWidth;
-    }
+    if (ImGui::BeginTable("##CommunityCredentialsRow", 4, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("##UserLabel", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##UserInput", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##PassLabel", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##PassInput", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableNextRow();
 
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Username");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(inputWidth);
-    const bool usernameEdited = ImGui::InputText(
-        "##Username",
-        usernameBuffer.data(),
-        usernameBuffer.size(),
-        ImGuiInputTextFlags_EnterReturnsTrue);
-    if (!connected) {
-        joinRequested |= usernameEdited;
-    }
-    usernameChanged |= usernameEdited;
-    if (usernameEdited) {
-        storedPasswordHash.clear();
-        passwordChanged = true;
-    }
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Username");
 
-    if (!isLanCommunity) {
-        ImGui::SameLine(0.0f, labelSpacing);
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1.0f);
+        const bool usernameEdited = ImGui::InputText(
+            "##Username",
+            usernameBuffer.data(),
+            usernameBuffer.size(),
+            ImGuiInputTextFlags_EnterReturnsTrue);
+        if (!connected) {
+            joinRequested |= usernameEdited;
+        }
+        usernameChanged |= usernameEdited;
+        if (usernameEdited) {
+            storedPasswordHash.clear();
+            passwordChanged = true;
+        }
+
+        ImGui::TableSetColumnIndex(2);
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Password");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(inputWidth);
+
+        ImGui::TableSetColumnIndex(3);
+        ImGui::SetNextItemWidth(-1.0f);
         const char *passwordHint = storedPasswordHash.empty() ? "" : "stored";
         const bool passwordEdited = ImGui::InputTextWithHint(
             "##Password",
@@ -548,46 +502,8 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
             storedPasswordHash.clear();
             passwordChanged = true;
         }
-    }
 
-    if (rowWidth > contentWidth) {
-        ImGui::SameLine(0.0f, rowWidth - contentWidth);
-    } else {
-        ImGui::SameLine();
-    }
-    if (hasButtonFont) {
-        ImGui::PushFont(buttonFont);
-    }
-    ImGui::PushStyleColor(ImGuiCol_Text, buttonColor);
-    if (connected) {
-        if (ImGui::Button("Quit")) {
-            pendingQuitRequest = true;
-        }
-    } else {
-        ImGui::BeginDisabled(!hasActiveServers);
-        if (ImGui::Button("Join")) {
-            joinRequested = true;
-        }
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!hasActiveServers);
-        if (ImGui::Button("Roam")) {
-            roamRequested = true;
-        }
-        ImGui::EndDisabled();
-    }
-    ImGui::PopStyleColor();
-    if (hasButtonFont) {
-        ImGui::PopFont();
-    }
-
-    if (!hasActiveServers) {
-        joinRequested = false;
-        roamRequested = false;
-    }
-    if (connected) {
-        joinRequested = false;
-        roamRequested = false;
+        ImGui::EndTable();
     }
 
     if (usernameChanged || passwordChanged) {
@@ -630,7 +546,14 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
         ImGuiTableFlags_BordersOuter |
         ImGuiTableFlags_ScrollY;
 
-    float tableHeight = ImGui::GetContentRegionAvail().y;
+    float footerHeight = ImGui::GetFrameHeight();
+    footerHeight += ImGui::GetTextLineHeightWithSpacing();
+    footerHeight += style.ItemSpacing.y * 2.0f;
+    if (!listStatusText.empty()) {
+        footerHeight += ImGui::GetTextLineHeightWithSpacing();
+    }
+
+    float tableHeight = ImGui::GetContentRegionAvail().y - footerHeight;
     if (tableHeight < 0.0f) {
         tableHeight = 0.0f;
     }
@@ -677,7 +600,7 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
         lineBottom = std::max(lineBottom, ImGui::GetCursorPosY());
         ImGui::SetCursorPosY(lineBottom);
 
-        if (entries.empty()) {
+        if (displayEntries->empty()) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             if (!communityStatusText.empty()) {
@@ -699,9 +622,9 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
                 ImGui::TextDisabled("No servers available.");
             }
         } else {
-            for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
-                const auto &entry = entries[i];
-                bool selected = (i == selectedIndex);
+            for (int i = 0; i < static_cast<int>(displayEntries->size()); ++i) {
+                const auto &entry = (*displayEntries)[i];
+                bool selected = (i == displaySelectedIndex);
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
 
@@ -712,7 +635,9 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
 
                 if (ImGui::Selectable(label.c_str(), selected,
                                       ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick)) {
-                    selectedIndex = i;
+                    if (!useConnectedEntry) {
+                        selectedIndex = i;
+                    }
                     if (!connected && ImGui::IsMouseDoubleClicked(0)) {
                         consoleController.queueSelection(CommunityBrowserSelection{
                             entry.host,
@@ -751,12 +676,67 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
         ImGui::EndTable();
     }
 
+    ImGui::Spacing();
+    bool saveListClicked = false;
+    if (ImGui::BeginTable("##CommunityAddRow", 3, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("##AddLabel", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableSetupColumn("##AddInput", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##AddButton", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(0);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("New Community");
+
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputTextWithHint(
+            "##CommunityHostInput",
+            "http://host[:port]",
+            listUrlBuffer.data(),
+            listUrlBuffer.size());
+
+        ImGui::TableSetColumnIndex(2);
+        if (hasButtonFont) {
+            ImGui::PushFont(buttonFont);
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, buttonColor);
+        if (ImGui::Button("Add")) {
+            saveListClicked = true;
+        }
+        ImGui::PopStyleColor();
+        if (hasButtonFont) {
+            ImGui::PopFont();
+        }
+
+        ImGui::EndTable();
+    }
+    if (saveListClicked) {
+        std::string urlValue(listUrlBuffer.data());
+        if (urlValue.empty()) {
+            listStatusText = "Enter a host before saving.";
+            listStatusIsError = true;
+        } else {
+            listStatusText.clear();
+            listStatusIsError = false;
+            consoleController.queueNewListRequest(ServerListOption{std::string{}, urlValue});
+            listUrlBuffer.fill('\0');
+        }
+    }
+    if (!listStatusText.empty()) {
+        ImGui::Spacing();
+        ImVec4 listColor = listStatusIsError ? messageColors.error : messageColors.action;
+        ImGui::TextColored(listColor, "%s", listStatusText.c_str());
+    }
+
     ImGui::EndChild();
 
     ImGui::SameLine();
 
     const CommunityBrowserEntry *selectedEntry = nullptr;
-    if (selectedIndex >= 0 && selectedIndex < static_cast<int>(entries.size())) {
+    if (useConnectedEntry && !connectedEntries.empty()) {
+        selectedEntry = &connectedEntries[0];
+    } else if (selectedIndex >= 0 && selectedIndex < static_cast<int>(entries.size())) {
         selectedEntry = &entries[selectedIndex];
     }
 
@@ -770,47 +750,76 @@ void ConsoleView::drawCommunityPanel(const MessageColors &messageColors) {
     const float smallcapsScale = baseScale * 0.6f;
 
     ImGui::BeginChild("CommunityBrowserDetailsPane", ImVec2(0, 0), true);
-    if (hasHeadingFont) {
-        ImGui::PushFont(headingFont);
+    const bool showDelete = (!selectedEntry && !isLanCommunity && !activeCommunityHost.empty());
+    float headerButtonsWidth = (connected && selectedEntry) ? quitInlineWidth : (selectedEntry ? joinButtonsWidth : 0.0f);
+    if (showDelete) {
+        headerButtonsWidth = headerButtonsWidth > 0.0f
+            ? headerButtonsWidth + style.ItemSpacing.x + ImGui::CalcTextSize("Delete").x + style.FramePadding.x * 2.0f
+            : ImGui::CalcTextSize("Delete").x + style.FramePadding.x * 2.0f;
     }
-    ImGui::PushStyleColor(ImGuiCol_Text, headingColor);
-    ImGui::TextUnformatted(selectedEntry ? "Server Details" : "Community Details");
-    ImGui::PopStyleColor();
-    if (hasHeadingFont) {
-        ImGui::PopFont();
-    }
-    if (selectedEntry) {
-        ImGui::SameLine();
-        const float infoButtonWidth = ImGui::CalcTextSize("Community Info").x + style.FramePadding.x * 2.0f;
-        const float infoButtonOffset = std::max(0.0f, ImGui::GetContentRegionAvail().x - infoButtonWidth);
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + infoButtonOffset);
+    if (ImGui::BeginTable("##CommunityDetailsHeader", 2, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("##Title", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("##Actions", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableNextRow();
+
+        ImGui::TableSetColumnIndex(0);
+        if (hasHeadingFont) {
+            ImGui::PushFont(headingFont);
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, headingColor);
+        ImGui::TextUnformatted(selectedEntry ? "Server Details" : "Community Details");
+        ImGui::PopStyleColor();
+        if (hasHeadingFont) {
+            ImGui::PopFont();
+        }
+
+        ImGui::TableSetColumnIndex(1);
+        if (headerButtonsWidth > 0.0f) {
+            const float columnWidth = ImGui::GetColumnWidth();
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, columnWidth - headerButtonsWidth));
+        }
         if (hasButtonFont) {
             ImGui::PushFont(buttonFont);
         }
         ImGui::PushStyleColor(ImGuiCol_Text, buttonColor);
-        if (ImGui::Button("Community Info")) {
-            selectedIndex = -1;
+        if (connected && selectedEntry) {
+            if (ImGui::Button("Quit")) {
+                pendingQuitRequest = true;
+            }
+        } else if (selectedEntry) {
+            ImGui::BeginDisabled(!hasActiveServers);
+            if (ImGui::Button("Join")) {
+                joinRequested = true;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!hasActiveServers);
+            if (ImGui::Button("Roam")) {
+                roamRequested = true;
+            }
+            ImGui::EndDisabled();
+        }
+        if (showDelete) {
+            ImGui::SameLine();
+            if (ImGui::Button("Delete")) {
+                ImGui::OpenPopup("Delete Community?");
+            }
         }
         ImGui::PopStyleColor();
         if (hasButtonFont) {
             ImGui::PopFont();
         }
-    } else if (!isLanCommunity && !activeCommunityHost.empty()) {
-        ImGui::SameLine();
-        const float deleteButtonWidth = ImGui::CalcTextSize("Delete").x + style.FramePadding.x * 2.0f;
-        const float deleteButtonOffset = std::max(0.0f, ImGui::GetContentRegionAvail().x - deleteButtonWidth);
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + deleteButtonOffset);
-        if (hasButtonFont) {
-            ImGui::PushFont(buttonFont);
-        }
-        ImGui::PushStyleColor(ImGuiCol_Text, buttonColor);
-        if (ImGui::Button("Delete")) {
-            ImGui::OpenPopup("Delete Community?");
-        }
-        ImGui::PopStyleColor();
-        if (hasButtonFont) {
-            ImGui::PopFont();
-        }
+
+        ImGui::EndTable();
+    }
+
+    if (!hasActiveServers) {
+        joinRequested = false;
+        roamRequested = false;
+    }
+    if (connected) {
+        joinRequested = false;
+        roamRequested = false;
     }
 
     if (ImGui::IsPopupOpen("Delete Community?")) {

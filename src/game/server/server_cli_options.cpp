@@ -57,6 +57,7 @@ ServerCLIOptions ParseServerCLIOptions(int argc, char *argv[]) {
         ("d,data-dir", "Data directory (overrides KARMA_DATA_DIR)", cxxopts::value<std::string>())
         ("c,config", "User config file path", cxxopts::value<std::string>())
         ("C,community", "Community server (http://host:port or host:port)", cxxopts::value<std::string>())
+        ("strict-config", "Fail startup if required config keys are missing", cxxopts::value<bool>()->default_value("true"))
         ("v,verbose", "Enable verbose logging (-v=debug, -vv=trace)")
         ("L,log-level", "Logging level (trace, debug, info, warn, err, critical, off)", cxxopts::value<std::string>())
         ("T,timestamp-logging", "Enable timestamped logging output")
@@ -117,6 +118,7 @@ ServerCLIOptions ParseServerCLIOptions(int argc, char *argv[]) {
     parsed.timestampLogging = result.count("timestamp-logging") > 0;
     parsed.community = result.count("community") ? result["community"].as<std::string>() : std::string();
     parsed.communityExplicit = result.count("community") > 0;
+    parsed.strictConfig = result["strict-config"].as<bool>();
     if (parsed.logLevelExplicit && !IsValidLogLevel(parsed.logLevel)) {
         std::cerr << "Error: invalid --log-level value '" << parsed.logLevel << "'.\n";
         std::cerr << options.help() << std::endl;

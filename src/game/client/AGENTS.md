@@ -37,3 +37,4 @@ This directory contains the **client-side gameplay runtime**.
 ## Gotchas
 - Roaming mode should never spawn a player body.
 - Player camera overrides engine renderer camera each frame when in play mode.
+- UI tooling: `--ui-smoke` toggles HUD elements on a timer for quick parity checks.

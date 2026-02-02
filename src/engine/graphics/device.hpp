@@ -1,11 +1,11 @@
 #pragma once
 
 #include "karma/graphics/backend.hpp"
+#include <functional>
 
 namespace graphics {
 
 class GraphicsDevice {
-    friend class ClientEngine;
 
 public:
     explicit GraphicsDevice(platform::Window& window);
@@ -48,8 +48,12 @@ public:
     void setUiOverlayTexture(const TextureHandle& texture);
     void setUiOverlayVisible(bool visible);
     void renderUiOverlay();
+    void renderUiDrawData(const karma::app::UIDrawData& drawData,
+                          const std::function<bool(karma::app::UITextureHandle, graphics::TextureHandle&)>& resolveTexture,
+                          int viewportW,
+                          int viewportH,
+                          float dpiScale);
     void setBrightness(float brightness);
-    graphics_backend::UiRenderTargetBridge* getUiRenderTargetBridge() const;
 
     void setPosition(EntityId entity, const glm::vec3& position);
     void setRotation(EntityId entity, const glm::quat& rotation);

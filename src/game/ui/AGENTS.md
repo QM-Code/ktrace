@@ -43,15 +43,15 @@ and what to tackle next.
   - `hud/`: RmlUi HUD document and components.
 
 ### Rendering bridges (BGFX/Diligent)
-- ImGui uses `engine/graphics/ui_bridge.hpp` and backend-specific bridges under
-  `src/engine/graphics/backends/*`.
-- RmlUi uses render interfaces in `src/engine/ui/platform/rmlui/renderer_{bgfx,diligent}.*`.
-- RmlUi renderers expose output textures for the shared render bridge; see `engine/ui/bridges/` + RmlUi platform renderers.
+- ImGui render targets are provided by `src/karma-extras/ui/platform/imgui/renderer_*` and should stay out of core engine.
+- RmlUi uses render interfaces in `src/karma-extras/ui/platform/rmlui/renderer_{bgfx,diligent}.*`.
+- RmlUi renderers expose output textures for the shared render bridge; see `src/karma-extras/ui/bridges/` + RmlUi platform renderers.
+- Backend-agnostic goal: avoid direct bgfx/diligent/jolt/physx usage in `src/game/`. UI thumbnail cache is the main remaining exception to remove later.
 
 ## Console vs HUD
 
 - The **Console** is the in-game UI with tabs (Community, Start Server, Settings, Bindings, ?).
-- The **HUD** is gameplay overlay (chat, radar, scoreboard, crosshair, fps, dialog).
+- The **HUD** is gameplay overlay (chat, radar, scoreboard, crosshair, fps, dialog, quick menu).
 - The HUD draws beneath the console when connected; when not connected and the console is open,
   the HUD is hidden. This is enforced in `UiSystem::update` and backend draw logic.
 - Crosshair is explicitly suppressed when the console is visible to avoid the “white square” leak.
@@ -89,11 +89,20 @@ and what to tackle next.
 - Rendering order: HUD then Console. Console visibility affects crosshair drawing.
 - `console/console.cpp` owns tab layout; `panel_*` files implement UI.
 - Community refresh should trigger on tab activation or click.
+- Fonts: ImGui does **not** do runtime font fallback like RmlUi. Every font used
+  for headings/body must have fallback glyphs merged into its atlas, or non-Latin
+  text will render as `?`. Keep heading/title fonts merged with the same fallback
+  glyph ranges as the regular font.
 
 ### RmlUi
 - Document load order: HUD document is loaded before console to ensure HUD renders beneath.
 - Panels are instantiated in `backend.cpp` and registered to console view.
 - RML layout lives in `data/client/ui/*.rml` and styles in `*.rcss`.
+
+### ImGui/RmlUi parity
+- UI changes should be mirrored in **both** ImGui and RmlUi, in both directions.
+- Exceptions are allowed only for backend-specific bugs or feature gaps.
+- When in doubt about parity, ask before implementing.
 
 ## Known TODOs
 
@@ -104,5 +113,5 @@ and what to tackle next.
 - Console visibility and HUD visibility are deliberately coupled in `UiSystem::update`.
 - ConfigStore has save/merge intervals and revision tracking; use `Revision()` to resync UI state.
 - Start Server panels still write a JSON override file for server instances (left as-is for now).
-- Radar uses an offscreen render target; failures affect both ImGui/RmlUi equally.
+- Radar uses an overlay render target; failures affect both ImGui/RmlUi equally.
 - Radar visibility/orientation was recently stabilized (world mesh on radar + overlayed blips/FOV + horizontal flip); avoid undoing those changes unless you re-test both UI backends.

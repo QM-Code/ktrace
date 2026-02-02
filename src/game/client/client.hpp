@@ -5,6 +5,7 @@
 #include <glm/vec3.hpp>
 #include "karma/audio/audio.hpp"
 #include "actor.hpp"
+#include "karma/ecs/entity.h"
 
 #include <string>
 
@@ -14,7 +15,7 @@ class AudioClip;
 class Client : public Actor {
 private:
     AudioClip dieAudio;
-    render_id renderId;
+    karma::ecs::Entity ecsEntity{};
     bool justSpawned = false;
     glm::vec3 lastSpawnPosition{0.0f};
 

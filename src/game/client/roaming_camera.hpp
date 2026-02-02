@@ -6,10 +6,11 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "karma/core/types.hpp"
+#include "karma/ecs/entity.h"
+#include "karma/ecs/world.h"
 #include "karma/platform/events.hpp"
 
 class Input;
-class Renderer;
 
 namespace platform {
 class Window;
@@ -27,7 +28,7 @@ struct RoamingCameraSettings {
 
 class RoamingCameraController {
 public:
-    void syncFromRenderer(const Renderer &renderer);
+    void syncFromEcs(const karma::ecs::World &world, karma::ecs::Entity entity);
     void setPose(const glm::vec3 &position, const glm::vec3 &target, float yawOffsetDeg);
     void resetMouse();
     void update(TimeUtils::duration deltaTime,
@@ -35,7 +36,7 @@ public:
                 const std::vector<platform::Event> &events,
                 const RoamingCameraSettings &settings,
                 bool allowInput);
-    void apply(Renderer &renderer) const;
+    void applyToEcs(karma::ecs::World &world, karma::ecs::Entity entity) const;
 
 private:
     void updateRotation();

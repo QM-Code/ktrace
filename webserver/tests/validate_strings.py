@@ -122,7 +122,7 @@ def _check_unused(path, master_data):
 def _code_roots():
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     return [
-        os.path.join(root_dir, "bz3web"),
+        os.path.join(root_dir, "karma"),
         os.path.join(root_dir, "bin"),
         os.path.join(root_dir, "tests"),
     ]

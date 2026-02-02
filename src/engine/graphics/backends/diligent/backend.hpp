@@ -1,11 +1,8 @@
 #pragma once
 
 #include "karma/graphics/backend.hpp"
-#if defined(KARMA_UI_BACKEND_IMGUI)
-#include "karma/ui/platform/imgui/renderer_diligent.hpp"
-#endif
-
 #include <DiligentCore/Common/interface/RefCntAutoPtr.hpp>
+#include <functional>
 #include <unordered_map>
 
 namespace Diligent {
@@ -62,6 +59,11 @@ public:
     void setUiOverlayTexture(const graphics::TextureHandle& texture) override;
     void setUiOverlayVisible(bool visible) override;
     void renderUiOverlay() override;
+    void renderUiDrawData(const karma::app::UIDrawData& drawData,
+                          const std::function<bool(karma::app::UITextureHandle, graphics::TextureHandle&)>& resolveTexture,
+                          int viewportW,
+                          int viewportH,
+                          float dpiScale) override;
     void setBrightness(float brightness) override;
 
     void setPosition(graphics::EntityId entity, const glm::vec3& position) override;
@@ -81,9 +83,6 @@ public:
     glm::mat4 getProjectionMatrix() const override;
     glm::vec3 getCameraPosition() const override;
     glm::vec3 getCameraForward() const override;
-    UiRenderTargetBridge* getUiRenderTargetBridge() override { return uiBridge_.get(); }
-    const UiRenderTargetBridge* getUiRenderTargetBridge() const override { return uiBridge_.get(); }
-
 private:
     struct EntityRecord {
         graphics::LayerId layer = 0;
@@ -105,6 +104,7 @@ private:
         uint32_t indexCount = 0;
         Diligent::RefCntAutoPtr<Diligent::ITexture> texture;
         Diligent::ITextureView* srv = nullptr;
+        bool isWorldGrass = false;
     };
 
     struct RenderTargetRecord {
@@ -163,6 +163,15 @@ private:
     uint32_t uiOverlayWidth_ = 0;
     uint32_t uiOverlayHeight_ = 0;
     bool uiOverlayVisible_ = false;
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState> uiDrawPipeline_;
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState> uiDrawPipelinePremult_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> uiDrawBinding_;
+    Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> uiDrawBindingPremult_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> uiDrawVertexBuffer_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> uiDrawIndexBuffer_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> uiDrawConstants_;
+    uint32_t uiDrawVertexCapacity_ = 0;
+    uint32_t uiDrawIndexCapacity_ = 0;
 
     float brightness_ = 1.0f;
     RenderTargetRecord sceneTarget_;
@@ -172,7 +181,8 @@ private:
     Diligent::RefCntAutoPtr<Diligent::IBuffer> brightnessVertexBuffer_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer> brightnessConstantBuffer_;
 
-    std::unique_ptr<UiRenderTargetBridge> uiBridge_;
+
+    uint64_t configRevision_ = 0;
 
     glm::vec3 cameraPosition{0.0f};
     glm::quat cameraRotation{1.0f, 0.0f, 0.0f, 0.0f};
@@ -191,6 +201,7 @@ private:
     void updateSwapChain(int width, int height);
     void buildSkyboxResources();
     void ensureUiOverlayPipeline();
+    void ensureUiDrawPipeline();
     void ensureBrightnessPipeline();
     void ensureSceneTarget(int width, int height);
     void destroySceneTarget();
@@ -200,7 +211,8 @@ private:
                          graphics::LayerId layer,
                          int targetWidth,
                          int targetHeight,
-                         bool drawSkybox);
+                         bool drawSkybox,
+                         bool offscreenPass);
 
     glm::mat4 computeViewMatrix() const;
     glm::mat4 computeProjectionMatrix() const;

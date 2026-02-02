@@ -1,6 +1,6 @@
 <div class="panel start-server-panel">
     <div class="panel-header start-server-header">
-        <span class="panel-header-title" data-i18n="ui.console.start_server.title"></span>
+        <span class="panel-header-title" data-i18n="ui.console.tabs.start_server"></span>
     </div>
     <div class="start-server-body">
         <div id="start-server-warning" class="status status-error hidden" data-i18n="ui.console.start_server.server_binary_missing"></div>

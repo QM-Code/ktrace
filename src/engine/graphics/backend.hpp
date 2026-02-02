@@ -2,12 +2,13 @@
 
 #include "karma/graphics/texture_handle.hpp"
 #include "karma/graphics/types.hpp"
-#include "karma/graphics/ui_render_target_bridge.hpp"
+#include "karma/app/ui_draw_data.h"
 
 #include <filesystem>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/mat4x4.hpp>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -59,9 +60,18 @@ public:
     virtual void setUiOverlayTexture(const graphics::TextureHandle& texture) { (void)texture; }
     virtual void setUiOverlayVisible(bool visible) { (void)visible; }
     virtual void renderUiOverlay() {}
+    virtual void renderUiDrawData(const karma::app::UIDrawData& drawData,
+                                  const std::function<bool(karma::app::UITextureHandle, graphics::TextureHandle&)>& resolveTexture,
+                                  int viewportW,
+                                  int viewportH,
+                                  float dpiScale) {
+        (void)drawData;
+        (void)resolveTexture;
+        (void)viewportW;
+        (void)viewportH;
+        (void)dpiScale;
+    }
     virtual void setBrightness(float brightness) { (void)brightness; }
-    virtual UiRenderTargetBridge* getUiRenderTargetBridge() { return nullptr; }
-    virtual const UiRenderTargetBridge* getUiRenderTargetBridge() const { return nullptr; }
 
     virtual void setPosition(graphics::EntityId entity, const glm::vec3& position) = 0;
     virtual void setRotation(graphics::EntityId entity, const glm::quat& rotation) = 0;

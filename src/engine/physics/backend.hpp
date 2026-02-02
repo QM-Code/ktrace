@@ -1,6 +1,6 @@
 #pragma once
 
-#include "physics/types.hpp"
+#include "karma/physics/types.h"
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -63,7 +63,7 @@ public:
     virtual std::unique_ptr<PhysicsRigidBodyBackend> createBoxBody(const glm::vec3& halfExtents,
                                                                    float mass,
                                                                    const glm::vec3& position,
-                                                                   const PhysicsMaterial& material) = 0;
+                                                                   const karma::physics::PhysicsMaterial& material) = 0;
     virtual std::unique_ptr<PhysicsPlayerControllerBackend> createPlayer(const glm::vec3& size) = 0;
     virtual std::unique_ptr<PhysicsStaticBodyBackend> createStaticMesh(const std::string& meshPath) = 0;
     virtual bool raycast(const glm::vec3& from, const glm::vec3& to, glm::vec3& hitPoint, glm::vec3& hitNormal) const = 0;

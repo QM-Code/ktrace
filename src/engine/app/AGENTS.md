@@ -33,5 +33,5 @@ In BZ3, the game layer adapts this through `ClientEngine` and server main loops.
 
 ## Gotchas
 - Keep this code **game-agnostic**.
-- Avoid adding BZ3-specific configuration or input handling here; those belong
-  in `src/game/`.
+- Input/event pumping and overlay updates live here, but game-specific input
+  gating and action handling still belong in `src/game/`.

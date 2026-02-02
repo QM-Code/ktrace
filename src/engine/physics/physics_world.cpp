@@ -25,7 +25,7 @@ void PhysicsWorld::setGravity(float gravity) {
 PhysicsRigidBody PhysicsWorld::createBoxBody(const glm::vec3& halfExtents,
                                              float mass,
                                              const glm::vec3& position,
-                                             const PhysicsMaterial& material) {
+                                             const karma::physics::PhysicsMaterial& material) {
     if (!backend_) {
         return PhysicsRigidBody();
     }

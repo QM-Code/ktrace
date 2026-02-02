@@ -1,11 +1,8 @@
 #pragma once
 
 #include "karma/graphics/backend.hpp"
-#if defined(KARMA_UI_BACKEND_IMGUI)
-#include "karma/ui/platform/imgui/renderer_bgfx.hpp"
-#endif
-
 #include <bgfx/bgfx.h>
+#include <functional>
 #include <unordered_map>
 
 namespace graphics_backend {
@@ -58,6 +55,11 @@ public:
     void setUiOverlayTexture(const graphics::TextureHandle& texture) override;
     void setUiOverlayVisible(bool visible) override;
     void renderUiOverlay() override;
+    void renderUiDrawData(const karma::app::UIDrawData& drawData,
+                          const std::function<bool(karma::app::UITextureHandle, graphics::TextureHandle&)>& resolveTexture,
+                          int viewportW,
+                          int viewportH,
+                          float dpiScale) override;
     void setBrightness(float brightness) override;
 
     void setPosition(graphics::EntityId entity, const glm::vec3& position) override;
@@ -77,9 +79,6 @@ public:
     glm::mat4 getProjectionMatrix() const override;
     glm::vec3 getCameraPosition() const override;
     glm::vec3 getCameraForward() const override;
-    UiRenderTargetBridge* getUiRenderTargetBridge() override { return uiBridge_.get(); }
-    const UiRenderTargetBridge* getUiRenderTargetBridge() const override { return uiBridge_.get(); }
-
 private:
     struct EntityRecord {
         graphics::LayerId layer = 0;
@@ -100,6 +99,7 @@ private:
         bgfx::IndexBufferHandle indexBuffer = BGFX_INVALID_HANDLE;
         uint32_t indexCount = 0;
         bgfx::TextureHandle texture = BGFX_INVALID_HANDLE;
+        bool isWorldGrass = false;
     };
 
     struct RenderTargetRecord {
@@ -195,7 +195,6 @@ private:
     void ensureSceneTarget(int width, int height);
     void destroySceneTarget();
 
-    std::unique_ptr<UiRenderTargetBridge> uiBridge_;
 };
 
 } // namespace graphics_backend

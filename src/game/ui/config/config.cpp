@@ -4,6 +4,7 @@
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <string>
 
@@ -84,6 +85,46 @@ bool GetRequiredBool(const char* path) {
         spdlog::error("Config '{}' cannot be interpreted as boolean", path);
     }
     return false;
+}
+
+std::array<float, 4> GetRequiredColor(const char* path) {
+    const auto* value = getValue(path);
+    if (!value) {
+        return {0.0f, 0.0f, 0.0f, 1.0f};
+    }
+    if (!value->is_array()) {
+        spdlog::error("Config '{}' must be an array of 4 floats", path);
+        return {0.0f, 0.0f, 0.0f, 1.0f};
+    }
+    const auto& array = *value;
+    if (array.size() != 4) {
+        spdlog::error("Config '{}' must contain 4 float values", path);
+        return {0.0f, 0.0f, 0.0f, 1.0f};
+    }
+    std::array<float, 4> color{};
+    for (std::size_t i = 0; i < 4; ++i) {
+        const auto& item = array[i];
+        if (item.is_number_float()) {
+            color[i] = static_cast<float>(item.get<double>());
+        } else if (item.is_number_integer()) {
+            color[i] = static_cast<float>(item.get<long long>());
+        } else if (item.is_string()) {
+            try {
+                color[i] = std::stof(item.get<std::string>());
+            } catch (...) {
+                spdlog::error("Config '{}' contains invalid float at index {}", path, i);
+                color[i] = 0.0f;
+            }
+        } else {
+            spdlog::error("Config '{}' contains invalid value at index {}", path, i);
+            color[i] = 0.0f;
+        }
+    }
+    color[0] = std::clamp(color[0], 0.0f, 1.0f);
+    color[1] = std::clamp(color[1], 0.0f, 1.0f);
+    color[2] = std::clamp(color[2], 0.0f, 1.0f);
+    color[3] = std::clamp(color[3], 0.0f, 1.0f);
+    return color;
 }
 
 } // namespace ui::config

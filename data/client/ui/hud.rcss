@@ -36,6 +36,64 @@ body#hud-body
     color: #ffffff;
 }
 
+.hud-quick-menu
+{
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #0b0f1499;
+    z-index: 50;
+}
+
+.hud-quick-menu.hidden
+{
+    display: none;
+}
+
+.hud-quick-menu-panel
+{
+    width: 320px;
+    padding: 18px;
+    background-color: #0b0f14e6;
+    border-width: 1px;
+    border-color: #223040;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.hud-quick-menu-title
+{
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.hud-quick-menu-button
+{
+    width: 100%;
+    height: 32px;
+    background-color: #16212b;
+    border-width: 1px;
+    border-color: #223040;
+    border-radius: 6px;
+    color: #e7f0fa;
+    font-size: 14px;
+    text-align: center;
+}
+
+.hud-quick-menu-button:hover
+{
+    background-color: #1b2a36;
+    border-color: #2f89c4;
+}
+
 .hud-crosshair
 {
     position: absolute;
@@ -46,6 +104,7 @@ body#hud-body
     margin-left: -25px;
     margin-top: -25px;
     pointer-events: none;
+    z-index: 10;
 }
 
 .hud-crosshair.hidden
@@ -89,6 +148,7 @@ body#hud-body
     border-radius: 6px;
     color: #ffffff;
     font-size: 14px;
+    z-index: 10;
 }
 
 .hud-fps.hidden
@@ -124,6 +184,7 @@ body#hud-body
     border-width: 1px;
     border-color: #223040;
     border-radius: 6px;
+    z-index: 10;
 }
 
 .hud-chat-panel.hidden
@@ -195,6 +256,7 @@ body#hud-body
     border-radius: 6px;
     overflow: hidden;
     box-sizing: border-box;
+    z-index: 10;
 }
 
 .hud-scoreboard.hidden
@@ -206,7 +268,6 @@ body#hud-body
 {
     margin: 2px 0px;
     color: #ffffff;
-    text-shadow: 1px 1px 2px #00000080;
 }
 
 .hud-radar-panel
@@ -226,7 +287,8 @@ body#hud-body
     border-radius: 6px;
     display: flex;
     align-items: stretch;
-    justify-content: stretch;
+    justify-content: flex-start;
+    z-index: 10;
 }
 
 .hud-radar-panel.hidden

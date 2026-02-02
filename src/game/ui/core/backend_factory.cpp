@@ -32,9 +32,13 @@ public:
     void focusChatInput() override {}
     bool getChatInputFocus() const override { return false; }
     bool consumeKeybindingsReloadRequest() override { return false; }
+    std::optional<ui::QuickMenuAction> consumeQuickMenuAction() override { return std::nullopt; }
     void setRendererBridge(const ui::RendererBridge *bridge) override { (void)bridge; }
     ui::RenderOutput getRenderOutput() const override { return {}; }
     float getRenderBrightness() const override { return 1.0f; }
+    bool isUiInputEnabled() const override { return false; }
+    const char *name() const override { return "null"; }
+    ui::HudRenderState getHudRenderState() const override { return {}; }
 
 private:
     ui::NullConsole consoleImpl;

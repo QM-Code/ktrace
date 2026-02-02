@@ -24,7 +24,8 @@
         "settings": "设置",
         "documentation": "文档",
         "start_server": "启动服务器",
-        "bindings": "Bindings"
+        "bindings": "绑定",
+        "help": "帮助"
       },
       "start_server": {
         "title": "启动服务器",
@@ -43,10 +44,21 @@
     "hud": {
       "chat_placeholder": "按 T 输入",
       "fps_label": "FPS: {value}",
-      "spawn_hint": "按 {binding} 出生"
+      "spawn_hint": "按 {binding} 出生",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
     },
     "settings": {
-      "language_label": "语言"
+      "language_label": "语言",
+      "hud_background_label": "背景",
+      "hud_background_edit": "编辑",
+      "hud_text_color_label": "文字颜色",
+      "hud_text_size_label": "文字大小"
     }
   }
 }

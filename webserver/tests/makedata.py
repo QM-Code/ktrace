@@ -146,7 +146,7 @@ def main():
     if root_dir not in sys.path:
         sys.path.insert(0, root_dir)
 
-    from bz3web import cli, auth, config, db
+    from karma import cli, auth, config, db
 
     cli.bootstrap(directory, _usage())
     db_path = db.default_db_path()
@@ -162,7 +162,7 @@ def main():
         new_user_ids = []
         for _ in range(user_num):
             username = _random_name(existing_users)
-            email = f"{username.lower()}@bz3.test"
+            email = f"{username.lower()}@karma.test"
             password = f"{username}#1"
             digest, salt = auth.new_password(password)
             db.add_user(conn, username, email, digest, salt)

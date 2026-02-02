@@ -11,7 +11,6 @@
 #include <vector>
 
 class ClientNetwork {
-    friend class ClientEngine;
 
 public:
     using DisconnectEvent = game::net::DisconnectEvent;
@@ -20,14 +19,14 @@ public:
 private:
     std::unique_ptr<game::net::ClientBackend> backend_;
 
+    void sendImpl(const ClientMsg &input, bool flush);
+
+public:
     ClientNetwork();
     ~ClientNetwork();
 
     void flushPeekedMessages();
     void update();
-    void sendImpl(const ClientMsg &input, bool flush);
-
-public:
     bool connect(const std::string &address, uint16_t port, int timeoutMs = 5000);
     void disconnect(const std::string &reason = "");
     std::optional<DisconnectEvent> consumeDisconnectEvent();

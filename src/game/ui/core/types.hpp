@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "karma/ui/types.hpp"
+#include "karma_extras/ui/types.hpp"
 
 struct ScoreboardEntry {
     std::string name;
@@ -11,3 +11,14 @@ struct ScoreboardEntry {
     bool communityAdmin = false;
     bool localAdmin = false;
 };
+
+namespace ui {
+
+enum class QuickMenuAction {
+    OpenConsole,
+    Resume,
+    Disconnect,
+    Quit
+};
+
+} // namespace ui

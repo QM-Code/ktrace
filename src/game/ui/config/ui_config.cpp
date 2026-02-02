@@ -1,75 +1,15 @@
 #include "ui/config/ui_config.hpp"
 
 #include "karma/common/config_store.hpp"
+#include "karma/common/json.hpp"
+#include "ui/config/config.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <string>
 
 namespace ui {
-namespace {
-
-std::string toLower(std::string text) {
-    std::transform(text.begin(), text.end(), text.begin(),
-                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-    return text;
-}
-
-float readFloatValue(const karma::json::Value &value, float fallback) {
-    if (value.is_number_float()) {
-        return static_cast<float>(value.get<double>());
-    }
-    if (value.is_number_integer()) {
-        return static_cast<float>(value.get<long long>());
-    }
-    if (value.is_string()) {
-        try {
-            return std::stof(value.get<std::string>());
-        } catch (...) {
-            return fallback;
-        }
-    }
-    return fallback;
-}
-
-float readFloat(std::string_view path, float fallback) {
-    const auto *value = karma::config::ConfigStore::Get(path);
-    if (!value) {
-        return fallback;
-    }
-    return readFloatValue(*value, fallback);
-}
-
-bool readBool(std::string_view path, bool fallback) {
-    const auto *value = karma::config::ConfigStore::Get(path);
-    if (!value) {
-        return fallback;
-    }
-    if (value->is_boolean()) {
-        return value->get<bool>();
-    }
-    if (value->is_number_integer()) {
-        return value->get<long long>() != 0;
-    }
-    if (value->is_number_float()) {
-        return value->get<double>() != 0.0;
-    }
-    if (value->is_string()) {
-        const std::string text = toLower(value->get<std::string>());
-        if (text == "true" || text == "1" || text == "yes" || text == "on") {
-            return true;
-        }
-        if (text == "false" || text == "0" || text == "no" || text == "off") {
-            return false;
-        }
-    }
-    return fallback;
-}
-
-} // namespace
 
 float UiConfig::GetRenderBrightness() {
-    return readFloat("render.brightness", kDefaultRenderBrightness);
+    return ui::config::GetRequiredFloat("render.brightness");
 }
 
 bool UiConfig::SetRenderBrightness(float value) {
@@ -80,12 +20,16 @@ bool UiConfig::EraseRenderBrightness() {
     return karma::config::ConfigStore::Erase("render.brightness");
 }
 
-std::optional<float> UiConfig::TryGetRenderScale() {
-    const auto *value = karma::config::ConfigStore::Get("ui.RenderScale");
-    if (!value) {
-        return std::nullopt;
-    }
-    return readFloatValue(*value, kDefaultRenderScale);
+bool UiConfig::GetVsync() {
+    return ui::config::GetRequiredBool("graphics.VSync");
+}
+
+bool UiConfig::SetVsync(bool value) {
+    return karma::config::ConfigStore::Set("graphics.VSync", value);
+}
+
+float UiConfig::GetRenderScale() {
+    return ui::config::GetRequiredFloat("ui.RenderScale");
 }
 
 bool UiConfig::SetRenderScale(float value) {
@@ -146,23 +90,39 @@ bool UiConfig::EraseControllerKeybindings() {
 }
 
 bool UiConfig::GetHudScoreboard() {
-    return readBool("ui.hud.scoreboard", kDefaultHudScoreboard);
+    return ui::config::GetRequiredBool("ui.hud.scoreboard");
 }
 
 bool UiConfig::GetHudChat() {
-    return readBool("ui.hud.chat", kDefaultHudChat);
+    return ui::config::GetRequiredBool("ui.hud.chat");
 }
 
 bool UiConfig::GetHudRadar() {
-    return readBool("ui.hud.radar", kDefaultHudRadar);
+    return ui::config::GetRequiredBool("ui.hud.radar");
 }
 
 bool UiConfig::GetHudFps() {
-    return readBool("ui.hud.fps", kDefaultHudFps);
+    return ui::config::GetRequiredBool("ui.hud.fps");
 }
 
 bool UiConfig::GetHudCrosshair() {
-    return readBool("ui.hud.crosshair", kDefaultHudCrosshair);
+    return ui::config::GetRequiredBool("ui.hud.crosshair");
+}
+
+std::array<float, 4> UiConfig::GetHudBackgroundColor() {
+    return ui::config::GetRequiredColor("ui.hud.backgroundColor");
+}
+
+std::array<float, 4> UiConfig::GetHudTextColor() {
+    return ui::config::GetRequiredColor("ui.hud.textColor");
+}
+
+float UiConfig::GetHudTextScale() {
+    return ui::config::GetRequiredFloat("ui.hud.textScale");
+}
+
+bool UiConfig::GetValidateUi() {
+    return ui::config::GetRequiredBool("ui.Validate");
 }
 
 bool UiConfig::SetHudScoreboard(bool value) {
@@ -183,6 +143,20 @@ bool UiConfig::SetHudFps(bool value) {
 
 bool UiConfig::SetHudCrosshair(bool value) {
     return karma::config::ConfigStore::Set("ui.hud.crosshair", value);
+}
+
+bool UiConfig::SetHudBackgroundColor(const std::array<float, 4> &value) {
+    const karma::json::Value array = karma::json::Array({value[0], value[1], value[2], value[3]});
+    return karma::config::ConfigStore::Set("ui.hud.backgroundColor", array);
+}
+
+bool UiConfig::SetHudTextColor(const std::array<float, 4> &value) {
+    const karma::json::Value array = karma::json::Array({value[0], value[1], value[2], value[3]});
+    return karma::config::ConfigStore::Set("ui.hud.textColor", array);
+}
+
+bool UiConfig::SetHudTextScale(float value) {
+    return karma::config::ConfigStore::Set("ui.hud.textScale", value);
 }
 
 } // namespace ui

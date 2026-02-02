@@ -1,29 +1,13 @@
 # src/engine/renderer/AGENTS.md
 
 Read `src/engine/AGENTS.md` first.
-This directory defines the **engine renderer core** that orchestrates render
-passes independent of the game layer.
+This directory contains **engine renderer core headers**.
 
-## Purpose
-- Provide a renderer that can be fed by game-level logic.
-- Own render contexts (camera, layers, lighting, targets).
-- Expose a stable API to game renderers.
+## Scope
+- Renderer context/types shared by engine systems.
+- Scene renderer interfaces used by backends and systems.
 
 ## Key files
-- `renderer_core.*`
-  - Core render loop orchestration.
-
-- `renderer_context.*`
-  - Per-frame render state (camera, layers, lighting).
-
-- `scene_renderer.*`
-  - Scene-level rendering wrapper that draws entities using graphics backend.
-
-## How it connects to game code
-- Game renderer holds a `RendererCore` instance and controls what to render.
-- Game sets camera transforms and main layer in the context.
-- UI overlays are composed after scene render via bridges.
-
-## Common tasks
-- Add a render pass: update renderer core + graphics backend if needed.
-- Debug draw order: check renderer core sequence.
+- `renderer_context.hpp` — camera/layer context passed through render systems.
+- `renderer_core.hpp` — core renderer entry point used by game/runtime.
+- `scene_renderer.hpp` — scene interface for submitting renderables.

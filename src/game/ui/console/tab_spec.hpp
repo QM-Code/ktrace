@@ -18,7 +18,7 @@ inline constexpr std::array<ConsoleTabSpec, 5> kConsoleTabSpecs = {{
     {"start-server", "ui.console.tabs.start_server", nullptr, false, false},
     {"settings", "ui.console.tabs.settings", nullptr, false, false},
     {"bindings", "ui.console.tabs.bindings", nullptr, false, false},
-    {"documentation", nullptr, "?", true, false}
+    {"documentation", "ui.console.tabs.help", nullptr, true, false}
 }};
 
 constexpr std::span<const ConsoleTabSpec> GetConsoleTabSpecs() {

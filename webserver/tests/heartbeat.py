@@ -59,7 +59,7 @@ def main():
     if root_dir not in sys.path:
         sys.path.insert(0, root_dir)
 
-    from bz3web import cli, config, db
+    from karma import cli, config, db
 
     cli.bootstrap(directory, _usage())
     settings = config.get_config()

@@ -24,7 +24,8 @@
         "settings": "सेटिंग्स",
         "documentation": "दस्तावेज़",
         "start_server": "सर्वर शुरू करें",
-        "bindings": "Bindings"
+        "bindings": "की-बाइंडिंग",
+        "help": "सहायता"
       },
       "start_server": {
         "title": "सर्वर शुरू करें",
@@ -43,10 +44,21 @@
     "hud": {
       "chat_placeholder": "लिखने के लिए T दबाएँ",
       "fps_label": "FPS: {value}",
-      "spawn_hint": "स्पॉन करने के लिए {binding} दबाएँ"
+      "spawn_hint": "स्पॉन करने के लिए {binding} दबाएँ",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
     },
     "settings": {
-      "language_label": "भाषा"
+      "language_label": "भाषा",
+      "hud_background_label": "पृष्ठभूमि",
+      "hud_background_edit": "संपादित करें",
+      "hud_text_color_label": "पाठ का रंग",
+      "hud_text_size_label": "पाठ का आकार"
     }
   }
 }

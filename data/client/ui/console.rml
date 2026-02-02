@@ -16,7 +16,7 @@
             <span id="tab-start-server" class="tab" data-i18n="ui.console.tabs.start_server"></span>
             <span id="tab-settings" class="tab" data-i18n="ui.console.tabs.settings"></span>
             <span id="tab-bindings" class="tab" data-i18n="ui.console.tabs.bindings"></span>
-            <span id="tab-documentation" class="tab">?</span>
+            <span id="tab-documentation" class="tab" data-i18n="ui.console.tabs.help"></span>
         </div>
         <div id="tab-content">
             <div id="panel-community" class="tab-panel"></div>

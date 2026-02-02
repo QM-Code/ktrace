@@ -1,8 +1,13 @@
 #include "shot.hpp"
 #include "client/game.hpp"
+#include "karma/components/mesh.h"
+#include "karma/components/transform.h"
+#include "karma_extras/ecs/render_components.h"
+#include "renderer/radar_components.hpp"
 #include "spdlog/spdlog.h"
 #include <glm/gtc/quaternion.hpp>
 
+namespace components = karma::components;
 Shot::Shot(Game &game,
            shot_id id,
            bool isGlobalId,
@@ -14,15 +19,25 @@ Shot::Shot(Game &game,
     position(position),
     prevPosition(position),
     velocity(velocity),
-    renderId(game.engine.render->create(game.world->resolveAssetPath("shotModel").string(), false)),
     audioEngine(*game.engine.audio),
     fireAudio(audioEngine.loadClip(game.world->resolveAssetPath("audio.shot.Fire").string(), 20)),
     ricochetAudio(audioEngine.loadClip(game.world->resolveAssetPath("audio.shot.Ricochet").string(), 20))
 {
-    game.engine.render->setPosition(renderId, position);
-    game.engine.render->setScale(renderId, glm::vec3(0.6f));
-    game.engine.render->setTransparency(renderId, true);
-    game.engine.render->setRadarCircleGraphic(renderId, 0.5f);
+    if (game.engine.ecsWorld) {
+        ecsEntity = game.engine.ecsWorld->createEntity();
+        components::TransformComponent xform{};
+        xform.position = position;
+        xform.scale = glm::vec3(0.6f);
+        game.engine.ecsWorld->add(ecsEntity, xform);
+        components::MeshComponent mesh{};
+        mesh.mesh_key = game.world->resolveAssetPath("shotModel").string();
+        game.engine.ecsWorld->add(ecsEntity, mesh);
+        game.engine.ecsWorld->add(ecsEntity, karma::ecs::Transparency{true});
+        game::renderer::RadarCircle circle{};
+        circle.radius = 0.5f;
+        game.engine.ecsWorld->add(ecsEntity, circle);
+        spdlog::info("Shot: ECS render enabled (shot_id={}, ecs_entity={})", id, ecsEntity.index);
+    }
 
     fireAudio.play(position);
 }
@@ -40,7 +55,9 @@ Shot::Shot(Game &game, glm::vec3 position, glm::vec3 velocity) : Shot(game, getN
 Shot::Shot(Game &game, shot_id globalId, glm::vec3 position, glm::vec3 velocity) : Shot(game, globalId, true, position, velocity) {};
 
 Shot::~Shot() {
-    game.engine.render->destroy(renderId);
+    if (ecsEntity.isValid() && game.engine.ecsWorld) {
+        game.engine.ecsWorld->destroyEntity(ecsEntity);
+    }
 }
 
 void Shot::update(TimeUtils::duration deltaTime) {
@@ -69,7 +86,10 @@ void Shot::update(TimeUtils::duration deltaTime) {
         position = end;
     }
 
-    game.engine.render->setPosition(renderId, position);
+    if (ecsEntity.isValid() && game.engine.ecsWorld &&
+        game.engine.ecsWorld->has<components::TransformComponent>(ecsEntity)) {
+        game.engine.ecsWorld->get<components::TransformComponent>(ecsEntity).position = position;
+    }
     prevPosition = position; // track last position for potential future use
 }
 

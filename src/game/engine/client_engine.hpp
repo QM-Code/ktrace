@@ -8,7 +8,7 @@
 #include "game/input/state.hpp"
 #include "ui/core/system.hpp"
 #include "client/roaming_camera.hpp"
-#include "karma/ecs/world.hpp"
+#include "karma/ecs/world.h"
 #include "karma/audio/audio.hpp"
 #include "karma/platform/window.hpp"
 #include <string>
@@ -21,13 +21,10 @@ class RendererBridge;
 
 class ClientEngine {
 private:
-    platform::Window *window;
     std::unique_ptr<ui::RendererBridge> uiRenderBridge;
     std::string lastLanguage;
-    float lastBrightness = 1.0f;
     bool roamingMode = false;
     bool roamingModeInitialized = false;
-    std::vector<platform::Event> lastEvents;
     game_client::RoamingCameraController roamingCamera;
 
 public:
@@ -37,8 +34,11 @@ public:
     Input *input;
     game_input::InputState inputState;
     UiSystem *ui;
+    std::unique_ptr<karma::app::UiLayer> uiLayer;
     Audio *audio;
-    ecs::World *ecsWorld = nullptr;
+    karma::ecs::World *ecsWorld = nullptr;
+    karma::ecs::Entity cameraEntity{};
+    game_client::RoamingCameraController &roamingCameraController() { return roamingCamera; }
 
     void setRoamingModeSession(bool enabled);
     bool isRoamingModeSession() const { return roamingMode; }
@@ -50,6 +50,7 @@ public:
     void step(TimeUtils::duration deltaTime);
     void lateUpdate(TimeUtils::duration deltaTime);
     void updateRoamingCamera(TimeUtils::duration deltaTime, bool allowInput);
+    void handleGlobalUiInput();
 
     const game_input::InputState& getInputState() const { return inputState; }
 };

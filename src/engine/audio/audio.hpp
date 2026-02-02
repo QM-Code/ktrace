@@ -28,7 +28,6 @@ private:
 };
 
 class Audio {
-    friend class ClientEngine;
 
 public:
     Audio();

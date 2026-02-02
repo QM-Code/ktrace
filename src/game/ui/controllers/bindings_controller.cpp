@@ -78,8 +78,9 @@ BindingsController::Result BindingsController::loadFromConfig() {
         std::vector<std::string> keyboardEntries;
         std::vector<std::string> mouseEntries;
         std::vector<std::string> controllerEntries;
+        const bool allowConfigBindings = std::string_view(defs[i].action) != "escape";
 
-        if (bindingsNode) {
+        if (bindingsNode && allowConfigBindings) {
             auto it = bindingsNode->find(defs[i].action);
             if (it != bindingsNode->end() && it->is_array()) {
                 for (const auto &entry : *it) {
@@ -87,6 +88,9 @@ BindingsController::Result BindingsController::loadFromConfig() {
                         continue;
                     }
                     const auto value = entry.get<std::string>();
+                    if (ui::bindings::IsReservedBindingName(value)) {
+                        continue;
+                    }
                     if (ui::bindings::IsMouseBindingName(value)) {
                         mouseEntries.push_back(value);
                     } else {

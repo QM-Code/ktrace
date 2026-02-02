@@ -2,6 +2,9 @@
 
 #include "ui/config/ui_config.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 namespace ui {
 
 void HudSettings::loadFromConfig() {
@@ -11,6 +14,9 @@ void HudSettings::loadFromConfig() {
     radarVisibleValue = UiConfig::GetHudRadar();
     fpsVisibleValue = UiConfig::GetHudFps();
     crosshairVisibleValue = UiConfig::GetHudCrosshair();
+    backgroundColorValue = UiConfig::GetHudBackgroundColor();
+    textColorValue = UiConfig::GetHudTextColor();
+    textScaleValue = UiConfig::GetHudTextScale();
 }
 
 bool HudSettings::saveToConfig() const {
@@ -18,15 +24,21 @@ bool HudSettings::saveToConfig() const {
         UiConfig::SetHudChat(chatVisibleValue) &&
         UiConfig::SetHudRadar(radarVisibleValue) &&
         UiConfig::SetHudFps(fpsVisibleValue) &&
-        UiConfig::SetHudCrosshair(crosshairVisibleValue);
+        UiConfig::SetHudCrosshair(crosshairVisibleValue) &&
+        UiConfig::SetHudBackgroundColor(backgroundColorValue) &&
+        UiConfig::SetHudTextColor(textColorValue) &&
+        UiConfig::SetHudTextScale(textScaleValue);
 }
 
 void HudSettings::reset() {
-    scoreboardVisibleValue = UiConfig::kDefaultHudScoreboard;
-    chatVisibleValue = UiConfig::kDefaultHudChat;
-    radarVisibleValue = UiConfig::kDefaultHudRadar;
-    fpsVisibleValue = UiConfig::kDefaultHudFps;
-    crosshairVisibleValue = UiConfig::kDefaultHudCrosshair;
+    scoreboardVisibleValue = UiConfig::GetHudScoreboard();
+    chatVisibleValue = UiConfig::GetHudChat();
+    radarVisibleValue = UiConfig::GetHudRadar();
+    fpsVisibleValue = UiConfig::GetHudFps();
+    crosshairVisibleValue = UiConfig::GetHudCrosshair();
+    backgroundColorValue = UiConfig::GetHudBackgroundColor();
+    textColorValue = UiConfig::GetHudTextColor();
+    textScaleValue = UiConfig::GetHudTextScale();
     dirty = false;
 }
 
@@ -79,6 +91,48 @@ bool HudSettings::setCrosshairVisible(bool value, bool fromUser) {
         return false;
     }
     crosshairVisibleValue = value;
+    if (fromUser) {
+        dirty = true;
+    }
+    return true;
+}
+
+bool HudSettings::setBackgroundColor(const std::array<float, 4> &value, bool fromUser) {
+    std::array<float, 4> clamped = value;
+    for (float &component : clamped) {
+        component = std::clamp(component, 0.0f, 1.0f);
+    }
+    if (clamped == backgroundColorValue) {
+        return false;
+    }
+    backgroundColorValue = clamped;
+    if (fromUser) {
+        dirty = true;
+    }
+    return true;
+}
+
+bool HudSettings::setTextColor(const std::array<float, 4> &value, bool fromUser) {
+    std::array<float, 4> clamped = value;
+    for (float &component : clamped) {
+        component = std::clamp(component, 0.0f, 1.0f);
+    }
+    clamped[3] = 1.0f;
+    if (clamped == textColorValue) {
+        return false;
+    }
+    textColorValue = clamped;
+    if (fromUser) {
+        dirty = true;
+    }
+    return true;
+}
+
+bool HudSettings::setTextScale(float value, bool fromUser) {
+    if (std::abs(value - textScaleValue) < 0.0001f) {
+        return false;
+    }
+    textScaleValue = value;
     if (fromUser) {
         dirty = true;
     }

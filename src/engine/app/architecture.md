@@ -8,6 +8,7 @@ should remain free of game-specific logic.
 - Create and wire the engine subsystems.
 - Own the main loop (update/tick).
 - Provide an `EngineContext` to game code.
+- Pump input + overlay events and advance overlay updates each tick.
 
 ## Integration
 The game implements a minimal interface or adapter, and `EngineApp` drives it.

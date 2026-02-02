@@ -1,5 +1,8 @@
 #include "ui/console/keybindings.hpp"
 
+#include <cctype>
+#include <string>
+
 namespace ui::bindings {
 namespace {
 
@@ -14,7 +17,6 @@ constexpr BindingDefinition kDefinitions[] = {
     {"spawn", "Spawn"},
     {"chat", "Chat"},
     {"toggleFullscreen", "Toggle Fullscreen"},
-    {"escape", "Escape Menu"},
     {"quickQuit", "Quick Quit"},
     {nullptr, "Roaming", true},
     {"roamMoveForward", "Roam Camera Forward"},
@@ -31,6 +33,22 @@ constexpr BindingDefinition kDefinitions[] = {
 
 std::span<const BindingDefinition> Definitions() {
     return std::span<const BindingDefinition>(kDefinitions);
+}
+
+bool IsReservedBindingName(std::string_view name) {
+    if (name.empty()) {
+        return false;
+    }
+    std::string normalized;
+    normalized.reserve(name.size());
+    for (const char ch : name) {
+        if (ch == ' ' || ch == '-') {
+            normalized.push_back('_');
+        } else {
+            normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+        }
+    }
+    return normalized == "ESCAPE" || normalized == "GRAVE_ACCENT";
 }
 
 } // namespace ui::bindings

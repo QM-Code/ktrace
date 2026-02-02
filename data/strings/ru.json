@@ -24,7 +24,8 @@
         "settings": "Настройки",
         "documentation": "Документация",
         "start_server": "Запустить сервер",
-        "bindings": "Bindings"
+        "bindings": "Привязки",
+        "help": "Помощь"
       },
       "start_server": {
         "title": "Запустить сервер",
@@ -43,10 +44,21 @@
     "hud": {
       "chat_placeholder": "нажмите T для ввода",
       "fps_label": "FPS: {value}",
-      "spawn_hint": "Нажмите {binding}, чтобы появиться"
+      "spawn_hint": "Нажмите {binding}, чтобы появиться",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
     },
     "settings": {
-      "language_label": "Язык"
+      "language_label": "Язык",
+      "hud_background_label": "Фон",
+      "hud_background_edit": "Изменить",
+      "hud_text_color_label": "Цвет текста",
+      "hud_text_size_label": "Размер текста"
     }
   }
 }

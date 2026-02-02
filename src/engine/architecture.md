@@ -16,24 +16,25 @@ For subsystem-level architecture, see each subdirectory’s `architecture.md`.
    - **Physics** (`physics/`)
    - **Audio** (`audio/`)
    - **Input mapping** (`input/`)
-   - **UI bridges** (`ui/`)
    - **Networking transport** (`network/`)
-   - **World content** (`world/`)
 
 4) **App shell** (`app/`)
    - Orchestrates initialization and ties subsystems together.
 
+Optional UI frontends and helpers live in `src/karma-extras/` and are consumed
+by game code, not the engine core.
+
 ## Key integration points
 - **Renderer ↔ Graphics backends**: `graphics` owns backend selection and GPU
   resources; `renderer` orchestrates scene and render passes.
-- **UI ↔ Graphics**: UI frontends render into textures via bridges; those textures
-  are composed by renderer/graphics.
+- **UI ↔ Graphics**: Game-provided UI layers fill `UIContext` draw data; the
+  renderer consumes that draw data via backend-agnostic paths.
 - **Input ↔ Platform**: platform events feed the input mapper; input provides
   action-based queries for game code.
 - **Physics ↔ Game**: physics backends provide a consistent API; game code uses
   physics objects without knowing which backend is selected.
 
-## Forwarder layer
-`src/engine/karma/` is an **adapter layer** that mirrors the intended public API
-for the engine repo. Once Karma is split out, these forwarders will be replaced
-by real installed headers.
+## Public headers
+Public engine headers live under `include/karma/` and point directly at
+`src/engine/...`. When Karma is split out, these headers become the installed
+API surface.

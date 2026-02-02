@@ -1,6 +1,6 @@
-# BZ3 Community Web Server
+# Community Web Server
 
-Python WSGI webserver for the BZ3 community list (accounts, submissions, admin tooling).
+Python WSGI webserver for the community list (accounts, submissions, admin tooling).
 
 ## Requirements
 
@@ -125,7 +125,7 @@ You can also add:
   },
   "database": {
     "database_directory": "data",
-    "database_file": "bz3web.db"
+    "database_file": "karma.db"
   },
   "uploads": {
     "upload_directory": "uploads",
@@ -527,7 +527,7 @@ You can also add:
 
 ## Directory layout
 
-- `bz3web/`: Python package.
+- `karma/`: Python package.
 - `bin/`: CLI tools.
 - `config.json`: distribution defaults (authoritative).
 - `strings/`: distribution strings (one file per language, e.g. `strings/en.json`).

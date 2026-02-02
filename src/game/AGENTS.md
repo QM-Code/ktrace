@@ -6,8 +6,8 @@ Everything here is game-specific: tanks, HUD, radar, protocol, gameplay rules.
 ## How BZ3 uses Karma
 BZ3 is built on top of Karma (engine layer). The high-level flow is:
 
-- Game initializes engine subsystems (render, input, audio, physics, UI).
-- Game owns gameplay state and creates/updates engine entities.
+- Engine initializes subsystems (render, input, audio, physics, UI).
+- Game owns gameplay state and updates ECS data.
 - UI frontends (ImGui/RmlUi) render HUD/console via engine UI bridges.
 - Game networking protocol drives world sessions and player state.
 
@@ -32,7 +32,7 @@ architecture.md. Read from the top down:
 - `server/` — server runtime, world session, plugins
 - `net/` — protocol and message handling
 - `protos/` — protobuf schema
-- `renderer/` — game-level render orchestration (radar, meshes)
+- `renderer/` — game-level render orchestration (radar, overlay)
 - `ui/` — HUD/console, frontends, models, controllers
 - `input/` — game action IDs and defaults
 - `engine/` — game-specific engine glue / facades

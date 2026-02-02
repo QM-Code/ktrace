@@ -18,13 +18,30 @@
   },
   "ui": {
     "RenderScale": 1.0,
+    "Validate": false,
     "hud": {
       "scoreboard": true,
       "chat": true,
       "radar": true,
       "fps": false,
-      "crosshair": true
+      "crosshair": true,
+      "backgroundColor": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "textColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "textScale": 1.0
     }
+  },
+  "render": {
+    "brightness": 1.0
   },
   "game": {
     "roamingCamera": {

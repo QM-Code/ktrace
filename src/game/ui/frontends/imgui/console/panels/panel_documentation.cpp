@@ -3,10 +3,9 @@
 namespace ui {
 
 void ConsoleView::drawDocumentationPanel(const MessageColors &colors) const {
-    drawPlaceholderPanel(
-        "?",
-        "This space intentionally left blank.",
-        colors);
+    ImGui::PushStyleColor(ImGuiCol_Text, colors.notice);
+    ImGui::TextWrapped("%s", "This space intentionally left blank.");
+    ImGui::PopStyleColor();
 }
 
 

@@ -183,6 +183,12 @@ std::unique_ptr<ServerMsg> decodeServerMsg(const std::byte *data, std::size_t si
         out->text = msg.chat().text();
         return out;
     }
+    case karma::ServerMsg::kJoinResponse: {
+        auto out = std::make_unique<ServerMsg_JoinResponse>();
+        out->accepted = msg.join_response().accepted();
+        out->reason = msg.join_response().reason();
+        return out;
+    }
 
     default:
         return nullptr;
@@ -241,6 +247,13 @@ std::unique_ptr<ClientMsg> decodeClientMsg(const std::byte *data, std::size_t si
         out->registeredUser = msg.player_join().registered_user();
         out->communityAdmin = msg.player_join().community_admin();
         out->localAdmin = msg.player_join().local_admin();
+        return out;
+    }
+    case karma::ClientMsg::kJoinRequest: {
+        auto out = std::make_unique<ClientMsg_JoinRequest>();
+        out->clientId = msg.client_id();
+        out->name = msg.join_request().name();
+        out->protocolVersion = msg.join_request().protocol_version();
         return out;
     }
 
@@ -305,6 +318,14 @@ std::optional<std::vector<std::byte>> encodeClientMsg(const ClientMsg &input) {
     case ClientMsg_Type_PLAYER_LEAVE: {
         msg.set_type(karma::ClientMsg::PLAYER_LEAVE);
         msg.mutable_player_leave();
+        break;
+    }
+    case ClientMsg_Type_JOIN_REQUEST: {
+        msg.set_type(karma::ClientMsg::JOIN_REQUEST);
+        const auto &typed = static_cast<const ClientMsg_JoinRequest&>(input);
+        auto *join = msg.mutable_join_request();
+        join->set_name(typed.name);
+        join->set_protocol_version(typed.protocolVersion);
         break;
     }
     default:
@@ -429,6 +450,14 @@ std::optional<std::vector<std::byte>> encodeServerMsg(const ServerMsg &input) {
             (*params->mutable_params())[key] = val;
         }
         init->set_world_data(typed.worldData.data(), typed.worldData.size());
+        break;
+    }
+    case ServerMsg_Type_JOIN_RESPONSE: {
+        msg.set_type(karma::ServerMsg::JOIN_RESPONSE);
+        const auto &typed = static_cast<const ServerMsg_JoinResponse&>(input);
+        auto *resp = msg.mutable_join_response();
+        resp->set_accepted(typed.accepted);
+        resp->set_reason(typed.reason);
         break;
     }
     default:

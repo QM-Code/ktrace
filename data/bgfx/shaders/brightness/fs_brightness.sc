@@ -7,5 +7,5 @@ uniform vec4 u_brightness;
 
 void main() {
     vec4 texColor = texture2D(s_tex, v_texcoord0);
-    gl_FragColor = texColor * u_brightness.x;
+    gl_FragColor = vec4(texColor.rgb * u_brightness.x, 1.0);
 }

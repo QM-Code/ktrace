@@ -14,14 +14,17 @@ float RenderSettings::clampBrightness(float value) {
 void RenderSettings::loadFromConfig() {
     reset();
     setBrightness(UiConfig::GetRenderBrightness(), false);
+    setVsync(UiConfig::GetVsync(), false);
 }
 
 bool RenderSettings::saveToConfig() const {
-    return UiConfig::SetRenderBrightness(brightnessValue);
+    return UiConfig::SetRenderBrightness(brightnessValue) &&
+           UiConfig::SetVsync(vsyncValue);
 }
 
 void RenderSettings::reset() {
-    brightnessValue = UiConfig::kDefaultRenderBrightness;
+    brightnessValue = UiConfig::GetRenderBrightness();
+    vsyncValue = UiConfig::GetVsync();
     dirty = false;
 }
 
@@ -37,8 +40,23 @@ bool RenderSettings::setBrightness(float value, bool fromUser) {
     return true;
 }
 
+bool RenderSettings::setVsync(bool value, bool fromUser) {
+    if (value == vsyncValue) {
+        return false;
+    }
+    vsyncValue = value;
+    if (fromUser) {
+        dirty = true;
+    }
+    return true;
+}
+
 float RenderSettings::brightness() const {
     return brightnessValue;
+}
+
+bool RenderSettings::vsync() const {
+    return vsyncValue;
 }
 
 bool RenderSettings::consumeDirty() {

@@ -1,9 +1,7 @@
 # src/engine/renderer/architecture.md
 
-Renderer core flow:
-1) Game updates `RendererContext` (camera, layers, lighting).
-2) `RendererCore` prepares device state and render targets.
-3) `SceneRenderer` draws render entities using graphics backend.
-4) UI overlays are composed by game/engine bridge.
+Engine renderer core abstractions.
 
-The engine renderer is deliberately minimal; game code decides what to render.
+- `RendererCore` owns the graphics device + scene renderer.
+- `RendererContext` carries camera and layer data for each frame.
+- `SceneRenderer` is the backend-facing draw interface used by systems.

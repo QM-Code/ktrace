@@ -1,7 +1,6 @@
 #include "ui/core/system.hpp"
 
 #include "ui/core/backend.hpp"
-#include "karma/platform/window.hpp"
 #include "karma/common/i18n.hpp"
 #include "ui/config/ui_config.hpp"
 #include "karma/common/config_store.hpp"
@@ -27,13 +26,25 @@ void UiSystem::update() {
         hudModel.visibility.radar = ui::UiConfig::GetHudRadar();
         hudModel.visibility.fps = ui::UiConfig::GetHudFps();
         hudModel.visibility.crosshair = ui::UiConfig::GetHudCrosshair();
+        hudModel.hudBackgroundColor = ui::UiConfig::GetHudBackgroundColor();
+        hudModel.hudTextColor = ui::UiConfig::GetHudTextColor();
+        hudModel.hudTextScale = ui::UiConfig::GetHudTextScale();
+        validateHudState = ui::UiConfig::GetValidateUi();
     }
     const bool consoleVisible = backend->console().isVisible();
     const bool connected = backend->console().getConnectionState().connected;
     hudModel.visibility.hud = connected || !consoleVisible;
+    if (!hudModel.visibility.hud || consoleVisible) {
+        hudModel.visibility.quickMenu = false;
+    }
     hudController.tick();
     backend->setHudModel(hudModel);
     backend->update();
+    if (validateHudState) {
+        const ui::HudRenderState expected = ui::BuildExpectedHudState(hudModel, consoleVisible);
+        const ui::HudRenderState actual = backend->getHudRenderState();
+        hudValidator.validate(expected, actual, backend->name());
+    }
 }
 
 void UiSystem::reloadFonts() {
@@ -85,6 +96,25 @@ void UiSystem::setDialogVisible(bool show) {
     hudController.setDialogVisible(show);
 }
 
+void UiSystem::setQuickMenuVisible(bool show) {
+    hudModel.visibility.quickMenu = show;
+}
+
+void UiSystem::toggleQuickMenuVisible() {
+    hudModel.visibility.quickMenu = !hudModel.visibility.quickMenu;
+}
+
+bool UiSystem::isQuickMenuVisible() const {
+    return hudModel.visibility.quickMenu;
+}
+
+std::optional<ui::QuickMenuAction> UiSystem::consumeQuickMenuAction() {
+    if (!backend) {
+        return std::nullopt;
+    }
+    return backend->consumeQuickMenuAction();
+}
+
 bool UiSystem::consumeKeybindingsReloadRequest() {
     return backend->consumeKeybindingsReloadRequest();
 }
@@ -97,6 +127,13 @@ ui::RenderOutput UiSystem::getRenderOutput() const {
     return backend ? backend->getRenderOutput() : ui::RenderOutput{};
 }
 
+bool UiSystem::buildDrawData(karma::app::UIContext &ctx) {
+    if (!backend) {
+        return false;
+    }
+    return backend->buildDrawData(ctx);
+}
+
 float UiSystem::getRenderBrightness() const {
     if (!backend) {
         return 1.0f;
@@ -105,4 +142,12 @@ float UiSystem::getRenderBrightness() const {
         return 1.0f;
     }
     return backend->getRenderBrightness();
+}
+
+bool UiSystem::isUiInputEnabled() const {
+    return backend && backend->isUiInputEnabled();
+}
+
+bool UiSystem::isGameplayInputEnabled() const {
+    return !isUiInputEnabled();
 }

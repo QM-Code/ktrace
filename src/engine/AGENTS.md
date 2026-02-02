@@ -3,14 +3,14 @@
 Read `src/AGENTS.md` first. This file describes the **Karma engine** subtree.
 Everything here is intended to be **game-agnostic** and eventually moved into its
 own repository. While Karma is still in-tree, BZ3 includes it via `karma/...`
-forwarders in `src/engine/karma/`.
+headers under `include/karma/`.
 
 ## What Karma provides
 Karma is a modular runtime that owns:
 
 - Platform and window management
 - Graphics backends and GPU resource management
-- UI rendering bridges (ImGui/RmlUi render-to-texture)
+- UI rendering bridges (ImGui/RmlUi render-to-texture) (moved to karma-extras)
 - Input mapping (action-agnostic)
 - Physics backends (Jolt or PhysX)
 - Audio backends (miniaudio or SDL audio)
@@ -28,14 +28,13 @@ BZ3 uses these engine services to implement gameplay and UI.
 - **Physics** → `src/engine/physics/AGENTS.md`
 - **Windowing / events** → `src/engine/platform/AGENTS.md`
 - **Config/I18n** → `src/engine/common/AGENTS.md`
-- **UI bridges** → `src/engine/ui/AGENTS.md`
+- **UI bridges** → `src/karma-extras/ui/AGENTS.md`
 - **Network transport** → `src/engine/network/AGENTS.md`
-- **World content loading** → `src/engine/world/AGENTS.md`
+- **World content loading** → `src/karma-extras/world/AGENTS.md`
 
-## Forwarders and namespacing
-- `src/engine/karma/` is a **header forwarder** tree.
-- Game code includes `karma/...` headers; in the future these will come from the
-  engine repo. Right now they forward to `src/engine/...`.
+## Public headers
+- Game code includes `karma/...` headers; these live in `include/karma/` and
+  point directly at `src/engine/...`.
 
 ## Cascading rule
 Every subdirectory under `src/engine/` has its own `AGENTS.md`, `README.md`,
@@ -59,9 +58,9 @@ and `architecture.md`. Read from the top down:
 - `physics/` — backend factory + physics world
 - `platform/` — window/events abstraction
 - `renderer/` — renderer core and scene orchestration
-- `ui/` — UI bridges and platform renderers
-- `world/` — content and world backend factories
-- `karma/` — forwarder headers (temporary while in-tree)
+- `ui/` — moved to `src/karma-extras/ui/`
+- `world/` — moved to `src/karma-extras/world/`
+
 
 If you’re unsure, read the subsystem’s `README.md` for a human-level overview,
 then `architecture.md` for structure, then `AGENTS.md` for detailed guidance.

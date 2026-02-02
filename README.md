@@ -17,6 +17,7 @@ This project uses vcpkg to provide most native dependencies and the setup script
 ## Runtime Data
 
 The programs load assets/config from a data root resolved via the `KARMA_DATA_DIR` environment variable (configured by `src/game/common/data_path_spec.*`).
+See `CONFIG-SCHEMA.md` for config layering and asset lookup details.
 
 - Linux/macOS:
 
@@ -67,6 +68,23 @@ After building:
 - Linux/macOS: `./build/bz3` and `./build/bz3-server`
 - Windows: `build\Release\bz3.exe` and `build\Release\bz3-server.exe`
 
+### Config validation
+
+Startup validates required config keys. To allow startup with warnings only, pass:
+
+- Client: `./build/bz3 --strict-config=false`
+- Server: `./build/bz3-server --strict-config=false`
+
+You can verify the required-key list stays in sync with code using:
+
+- `scripts/check_required_config.py`
+
+### UI smoke test
+
+The client has a lightweight HUD smoke test that toggles visibility flags on a timer:
+
+- `./build/bz3 --ui-smoke`
+
 ## Overview (Libraries in Use)
 
 Rendering and windowing
@@ -78,6 +96,7 @@ Rendering and windowing
 - **Assimp** (model loading)
 
 UI
+ - **RmlUi** and **ImGui** (game UI frontends via `src/karma-extras/`)
 
 Networking
 - **ENet** (reliable UDP transport)
@@ -107,7 +126,24 @@ Other
 
 - **Engine** (game-agnostic systems) lives under `src/engine/`.
 - **Game** (BZ3-specific rules, UI, and gameplay) lives under `src/game/`.
+- **Karma extras** (optional UI frontends and helpers) live under `src/karma-extras/`.
 - The game configures engine data/asset discovery via `src/game/common/data_path_spec.*`.
+
+## Engine library (Karma)
+
+The engine is exported as a standalone library with public headers under
+`include/karma/`. After install, consumers can use `find_package(karma)` and
+link against `karma::karma`.
+
+Example:
+
+```cmake
+find_package(karma REQUIRED)
+add_executable(my_game main.cpp)
+target_link_libraries(my_game PRIVATE karma::karma)
+```
+
+See `examples/karma_find_package/` for a minimal CMake + main.cpp.
 
 ## Backends and entry points
 
@@ -117,9 +153,9 @@ Entry points (public interfaces)
 - Audio: `Audio` in `src/engine/audio/audio.hpp`
 - Windowing: `Window` in `src/engine/platform/window.hpp`
 - Graphics: `GraphicsDevice` in `src/engine/graphics/device.hpp`
-- Renderer orchestration: `Render` in `src/game/renderer/render.hpp`
+- Renderer orchestration: `Renderer` in `src/game/renderer/renderer.hpp`
 - UI: `UiSystem` in `src/game/ui/core/system.hpp`
-- UI render bridge: `ui::RenderBridge` in `src/game/ui/bridges/render_bridge.hpp`
+- UI render bridge: `ui::RendererBridge` in `src/game/ui/bridges/renderer_bridge.hpp`
 - Physics: `PhysicsWorld` in `src/engine/physics/physics_world.hpp`
 - Networking: `ClientNetwork` and `ServerNetwork` in `src/game/net/` (message-level); transports live in `src/engine/network/`
 - World runtime: `ClientWorldSession` and `ServerWorldSession` in `src/game/client/` and `src/game/server/`
@@ -132,7 +168,6 @@ Backend factories (compile-time selection)
 - UI: `src/game/ui/core/backend_factory.cpp`
 - Physics: `src/engine/physics/backend_factory.cpp`
 - Networking: `src/game/net/backend_factory.cpp`
-- World: `src/engine/world/backend_factory.cpp`
 
 Backend layouts (examples)
 - `src/engine/audio/backends/miniaudio/` and `src/engine/audio/backends/sdl/`
@@ -141,7 +176,6 @@ Backend layouts (examples)
 - `src/engine/physics/backends/jolt/` and `src/engine/physics/backends/physx/`
 - `src/engine/graphics/backends/bgfx/` and `src/engine/graphics/backends/diligent/`
 - `src/game/net/backends/enet/` (future: steam, webrtc, etc.)
-- `src/engine/world/backends/fs/` (future: zip, remote, etc.)
 - `src/engine/input/mapping/` (action-agnostic mapping: bindings, maps, mapper)
 - `src/game/input/` (BZ3 action IDs + default bindings)
 
@@ -155,20 +189,38 @@ These CMake cache variables select backends at build time:
 - `KARMA_AUDIO_BACKEND=miniaudio|sdlaudio`
 - `KARMA_RENDER_BACKEND=bgfx|diligent`
 - `KARMA_NETWORK_BACKEND=enet`
-- `KARMA_WORLD_BACKEND=fs`
+
+Engine/Game build modes:
+
+- `KARMA_ENGINE_ONLY=ON` to build and install only the engine libraries.
+- `BZ3_GAME_ONLY=ON` to build only the game (requires an installed Karma package; set `CMAKE_PREFIX_PATH`).
+
+Example (engine-only build + install):
+
+```bash
+cmake -S . -B build-engine-only -DKARMA_ENGINE_ONLY=ON
+cmake --build build-engine-only
+cmake --install build-engine-only --prefix /opt/karma
+```
+
+Example (game-only build using installed engine):
+
+```bash
+cmake -S . -B build-game-only -DBZ3_GAME_ONLY=ON -DCMAKE_PREFIX_PATH=/opt/karma
+cmake --build build-game-only
+```
 
 Example:
 
 ```bash
-cmake -S . -B build-sdl3-rmlui-sdlaudio-bgfx-enet-fs \
+cmake -S . -B build-sdl3-rmlui-sdlaudio-bgfx-enet \
   -DKARMA_WINDOW_BACKEND=sdl3 \
   -DKARMA_UI_BACKEND=rmlui \
   -DKARMA_PHYSICS_BACKEND=jolt \
   -DKARMA_AUDIO_BACKEND=sdlaudio \
   -DKARMA_RENDER_BACKEND=bgfx \
-  -DKARMA_NETWORK_BACKEND=enet \
-  -DKARMA_WORLD_BACKEND=fs
-cmake --build build-sdl3-rmlui-sdlaudio-bgfx-enet-fs
+  -DKARMA_NETWORK_BACKEND=enet
+cmake --build build-sdl3-rmlui-sdlaudio-bgfx-enet
 ```
 
 ## Input bindings
@@ -191,6 +243,10 @@ Actions:
 ## Agent prompts
 
 Repo-level guidance lives in `AGENTS.md`. Task-specific prompts live under `docs/agent-prompts/` (e.g., Webserver, UiSystem/HUD). In a new session, ask to use a prompt by its title.
+
+## Guides
+
+- `HOW-TO-ADD-SUBSYSTEM.md`
 
 ## TODO
 * Teams

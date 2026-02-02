@@ -6,6 +6,8 @@
 #include "shot.hpp"
 #include "world_session.hpp"
 #include "chat.hpp"
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <memory>
 
@@ -16,6 +18,8 @@ private:
     void removeClient(client_id id);
 
     std::vector<std::unique_ptr<Shot>> shots;
+    std::unordered_map<client_id, std::string> pendingJoinNames_;
+    std::unordered_set<client_id> approvedJoinIds_;
 
     client_id getNextClientId() {
         static client_id nextId = 4;

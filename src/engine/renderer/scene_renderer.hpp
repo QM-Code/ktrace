@@ -3,6 +3,8 @@
 #include "karma/graphics/device.hpp"
 #include "karma/graphics/texture_handle.hpp"
 #include "karma/renderer/renderer_context.hpp"
+#include "karma/app/ui_context.h"
+#include <functional>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -64,6 +66,22 @@ public:
 
     void renderUiOverlay() {
         device_->renderUiOverlay();
+    }
+
+    void renderUi(const karma::app::UIContext &ui_context) {
+        const auto &draw_data = ui_context.drawData();
+        if (draw_data.commands.empty()) {
+            return;
+        }
+        const auto resolve = [&ui_context](karma::app::UITextureHandle handle,
+                                           graphics::TextureHandle &out) {
+            return ui_context.resolveExternalTexture(handle, out);
+        };
+        device_->renderUiDrawData(draw_data,
+                                  resolve,
+                                  ui_context.frame().viewport_w,
+                                  ui_context.frame().viewport_h,
+                                  ui_context.frame().dpi_scale);
     }
 
     void setBrightness(float brightness) {

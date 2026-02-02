@@ -14,7 +14,7 @@ own repository**. The structure and naming already reflect that goal:
 
 - Engine code uses the `karma::` namespace and lives under `src/engine/`.
 - Game code uses `game::` or `ui::` and lives under `src/game/`.
-- `src/engine/karma/` contains **forwarder headers** so game code can include
+- `include/karma/` contains **public headers** so game code can include
   `karma/...` even while Karma is still in-tree.
 
 ## The engine/game boundary (mental model)
@@ -24,7 +24,7 @@ providing game-specific logic:
 
 - **Engine** owns: render devices, backend selection, input mapping, physics
   backends, audio backends, windowing, common config/i18n, data path resolution,
-  UI render bridges, ECS scaffolding, and generic world/content loading.
+  UI render bridges, ECS scaffolding, and generic world/content loading (moved to karma-extras).
 - **Game** owns: gameplay simulation, networking protocol, world session logic,
   UI/HUD/console, gameplay rendering and radar, and any content rules.
 
@@ -41,7 +41,7 @@ CMakeLists). Only these combinations are valid now:
 - Audio: `miniaudio` or `sdlaudio`
 - Window: `sdl3` (sdl2 stub exists)
 
-If you see code for Forge or Bullet, it should not exist anymore.
+If you see code for Forge or Bullet, it should not exist anymore. The supported physics backends are Jolt and PhysX.
 
 ## Cascading rule (important)
 Each subdirectory contains its own `AGENTS.md`, `README.md`, and `architecture.md`.

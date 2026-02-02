@@ -2,12 +2,18 @@
 
 #include "client/game.hpp"
 #include "spdlog/spdlog.h"
+#include "karma/components/mesh.h"
+#include "karma/components/transform.h"
+#include "renderer/radar_components.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
+#include "karma/common/world_archive.hpp"
+
+namespace components = karma::components;
 
 ClientWorldSession::ClientWorldSession(Game &game, std::string worldDir)
-        : game(game), backend_(world_backend::CreateWorldBackend()) {
+        : game(game) {
     const auto userConfigPath = karma::config::ConfigStore::Initialized()
         ? karma::config::ConfigStore::UserConfigPath()
         : karma::data::EnsureUserConfigFile("config.json");
@@ -18,16 +24,18 @@ ClientWorldSession::ClientWorldSession(Game &game, std::string worldDir)
         {userConfigPath, "user config", spdlog::level::debug, false}
     };
 
-    content_ = backend_->loadContent(layerSpecs,
-                                     std::nullopt,
-                                     std::filesystem::path(worldDir),
-                                     std::string{},
-                                     "ClientWorldSession");
+    content_ = world::LoadWorldContent(layerSpecs,
+                                       std::nullopt,
+                                       std::filesystem::path(worldDir),
+                                       std::string{},
+                                       "ClientWorldSession");
     defaultPlayerParameters_ = game_world::ExtractDefaultPlayerParameters(content_.config);
 }
 
 ClientWorldSession::~ClientWorldSession() {
-    game.engine.render->destroy(renderId);
+    if (worldEcsEntity.isValid() && game.engine.ecsWorld) {
+        game.engine.ecsWorld->destroyEntity(worldEcsEntity);
+    }
     physics.destroy();
 }
 
@@ -70,10 +78,10 @@ void ClientWorldSession::update() {
 
             content_.rootDir = downloadsDir;
 
-            backend_->extractArchive(initMsg.worldData, downloadsDir);
+            world::ExtractWorldArchive(initMsg.worldData, downloadsDir);
 
             const auto worldConfigPath = downloadsDir / "config.json";
-            auto worldConfigOpt = backend_->readJsonFile(worldConfigPath);
+            auto worldConfigOpt = world::ReadWorldJsonFile(worldConfigPath);
             if (worldConfigOpt.has_value()) {
                 if (!worldConfigOpt->is_object()) {
                     spdlog::warn("ClientWorldSession: World config is not a JSON object: {}", worldConfigPath.string());
@@ -98,7 +106,15 @@ void ClientWorldSession::update() {
         }
 
         const auto worldPath = resolveAssetPath("world");
-        renderId = game.engine.render->create(worldPath.string(), true);
+        worldEcsEntity = game.engine.ecsWorld->createEntity();
+        components::TransformComponent worldXform{};
+        game.engine.ecsWorld->add(worldEcsEntity, worldXform);
+        components::MeshComponent worldMesh{};
+        worldMesh.mesh_key = worldPath.string();
+        game.engine.ecsWorld->add(worldEcsEntity, worldMesh);
+        game.engine.ecsWorld->add(worldEcsEntity, game::renderer::RadarRenderable{true});
+        spdlog::info("ClientWorldSession: ECS world mesh enabled (entity={}, path={})",
+                     worldEcsEntity.index, worldPath.string());
         physics = game.engine.physics->createStaticMesh(worldPath.string());
 
         spdlog::info("ClientWorldSession: World initialized from server");

@@ -423,6 +423,10 @@ void RmlUiPanelBindings::captureKey(int keyIdentifier) {
         clearSelection();
         return;
     }
+    if (bindingsModel.selectedColumn == ui::BindingsModel::Column::Keyboard &&
+        (keyIdentifier == Rml::Input::KI_ESCAPE || keyIdentifier == Rml::Input::KI_OEM_3)) {
+        return;
+    }
     if (bindingsModel.selectedColumn == ui::BindingsModel::Column::Mouse) {
         return;
     }

@@ -29,6 +29,15 @@ void AppendBinding(std::array<char, 128> &buffer, const std::string &value) {
 std::optional<std::string> DetectKeyboardBinding() {
     for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; ++key) {
         const ImGuiKey keyValue = static_cast<ImGuiKey>(key);
+#ifdef ImGuiKey_GraveAccent
+        if (keyValue == ImGuiKey_Escape || keyValue == ImGuiKey_GraveAccent) {
+            continue;
+        }
+#else
+        if (keyValue == ImGuiKey_Escape) {
+            continue;
+        }
+#endif
 #ifdef ImGuiKey_MouseLeft
         if (keyValue >= ImGuiKey_MouseLeft && keyValue <= ImGuiKey_MouseWheelY) {
             continue;

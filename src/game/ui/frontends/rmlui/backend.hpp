@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,7 @@ public:
     void handleEvents(const std::vector<platform::Event> &events) override;
     void update() override;
     void reloadFonts() override;
+    bool buildDrawData(karma::app::UIContext &ctx) override;
 
     void setHudModel(const ui::HudModel &model) override;
     void addConsoleLine(const std::string &playerName, const std::string &line) override;
@@ -40,12 +42,15 @@ public:
     void focusChatInput() override;
     bool getChatInputFocus() const override;
     bool consumeKeybindingsReloadRequest() override;
+    std::optional<ui::QuickMenuAction> consumeQuickMenuAction() override;
     void setRendererBridge(const ui::RendererBridge *bridge) override;
     ui::RenderOutput getRenderOutput() const override;
     float getRenderBrightness() const override;
     bool isRenderBrightnessDragActive() const override;
     void setActiveTab(const std::string &tabKey);
-    bool isUiInputEnabled() const;
+    bool isUiInputEnabled() const override;
+    const char *name() const override { return "rmlui"; }
+    ui::HudRenderState getHudRenderState() const override { return lastHudRenderState; }
 
 private:
     platform::Window *windowRef = nullptr;
@@ -55,6 +60,7 @@ private:
     ui::HudModel hudModel;
     const ui::RendererBridge *rendererBridge = nullptr;
     ui::RmlUiPanelSettings *settingsPanel = nullptr;
+    ui::HudRenderState lastHudRenderState{};
     void loadConfiguredFonts(const std::string &language);
     void loadConsoleDocument();
     void loadHudDocument();

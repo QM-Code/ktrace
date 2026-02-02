@@ -6,3 +6,10 @@ Client flow:
 3) `Player` updates camera position/rotation each frame.
 4) `RoamingCameraController` applies a free camera when roaming.
 5) UI is driven by engine UI system; game handles chat input.
+
+Input gating:
+- Gameplay input (movement/fire/spawn/jump) is suppressed when UI input is active
+  (console visible or chat focused).
+- Global actions (chat/escape/quick quit/fullscreen) remain active.
+EngineApp now pumps window events and drives UI updates; client code consumes
+the resulting input state.

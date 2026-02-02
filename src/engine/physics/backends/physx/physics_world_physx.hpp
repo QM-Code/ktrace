@@ -18,7 +18,7 @@ public:
     std::unique_ptr<PhysicsRigidBodyBackend> createBoxBody(const glm::vec3& halfExtents,
                                                            float mass,
                                                            const glm::vec3& position,
-                                                           const PhysicsMaterial& material) override;
+                                                           const karma::physics::PhysicsMaterial& material) override;
     std::unique_ptr<PhysicsPlayerControllerBackend> createPlayer(const glm::vec3& size) override;
     std::unique_ptr<PhysicsStaticBodyBackend> createStaticMesh(const std::string& meshPath) override;
     bool raycast(const glm::vec3& from, const glm::vec3& to, glm::vec3& hitPoint, glm::vec3& hitNormal) const override;

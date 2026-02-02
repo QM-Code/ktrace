@@ -25,6 +25,15 @@
         <div id="hud-radar-panel" class="hud-radar-panel">
             <img id="hud-radar-image" class="hud-radar-image" src="" />
         </div>
+        <div id="hud-quick-menu-overlay" class="hud-quick-menu hidden">
+            <div class="hud-quick-menu-panel">
+                <div class="hud-quick-menu-title" data-i18n="ui.hud.quick_menu.title">Menu</div>
+                <button id="hud-quick-menu-console" class="hud-quick-menu-button" data-i18n="ui.hud.quick_menu.console">Console</button>
+                <button id="hud-quick-menu-resume" class="hud-quick-menu-button" data-i18n="ui.hud.quick_menu.resume">Resume</button>
+                <button id="hud-quick-menu-disconnect" class="hud-quick-menu-button" data-i18n="ui.hud.quick_menu.disconnect">Disconnect</button>
+                <button id="hud-quick-menu-quit" class="hud-quick-menu-button" data-i18n="ui.hud.quick_menu.quit">Quit</button>
+            </div>
+        </div>
     </div>
 </body>
 </rml>

@@ -49,8 +49,8 @@ def main():
     if root_dir not in sys.path:
         sys.path.insert(0, root_dir)
 
-    from bz3web import cli, config, db
-    from bz3web.tools import import_data as tool
+    from karma import cli, config, db
+    from karma.tools import import_data as tool
 
     base_language = config.normalize_language(
         (config.get_base_config().get("server") or {}).get("language") or "en"

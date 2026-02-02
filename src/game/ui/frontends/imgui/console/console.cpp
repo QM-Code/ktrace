@@ -6,6 +6,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "karma/common/json.hpp"
@@ -57,6 +58,25 @@ ImVec4 readColorConfig(const char *path, const ImVec4 &fallback) {
         color.w = readComponent(3, color.w);
     }
     return color;
+}
+
+std::string tabLabelForSpec(const ui::ConsoleTabSpec &spec) {
+    if (spec.labelKey) {
+        return karma::i18n::Get().get(spec.labelKey);
+    }
+    if (spec.fallbackLabel) {
+        return spec.fallbackLabel;
+    }
+    return spec.key ? spec.key : "";
+}
+
+const ui::ConsoleTabSpec *findTabSpec(std::string_view key) {
+    for (const auto &spec : ui::GetConsoleTabSpecs()) {
+        if (spec.key && key == spec.key) {
+            return &spec;
+        }
+    }
+    return nullptr;
 }
 
 }
@@ -151,6 +171,9 @@ void ConsoleView::initializeFonts(ImGuiIO &io) {
         titleFontSize
     );
     titleColor = readColorConfig("assets.hud.fonts.console.Title.Color", defaultTextColor);
+    if (titleFont) {
+        addFallbacksForSelection(titleFontSize, selection.script);
+    }
 
     if (!titleFont) {
         spdlog::warn("Failed to load console title font for community browser ({}).", titleFontPathStr);
@@ -165,6 +188,9 @@ void ConsoleView::initializeFonts(ImGuiIO &io) {
         headingFontSize
     );
     headingColor = readColorConfig("assets.hud.fonts.console.Heading.Color", defaultTextColor);
+    if (headingFont) {
+        addFallbacksForSelection(headingFontSize, selection.script);
+    }
 
     if (!headingFont) {
         spdlog::warn("Failed to load console heading font for community browser ({}).", headingFontPathStr);
@@ -178,6 +204,9 @@ void ConsoleView::initializeFonts(ImGuiIO &io) {
         buttonFontSize
     );
     buttonColor = readColorConfig("assets.hud.fonts.console.Button.Color", defaultTextColor);
+    if (buttonFont) {
+        addFallbacksForSelection(buttonFontSize, selection.script);
+    }
 
     if (!buttonFont) {
         spdlog::warn("Failed to load console button font for community browser ({}).", buttonFontPathStr);
@@ -256,14 +285,6 @@ void ConsoleView::draw(ImGuiIO &io) {
         for (const auto &spec : ui::GetConsoleTabSpecs()) {
             const std::string label = spec.labelKey ? i18n.get(spec.labelKey)
                                                     : (spec.fallbackLabel ? spec.fallbackLabel : spec.key);
-            if (spec.rightAlign) {
-                const float tabWidth =
-                    ImGui::CalcTextSize(label.c_str()).x + (ImGui::GetStyle().FramePadding.x * 2.0f);
-                const float tabX = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - tabWidth;
-                if (tabX > ImGui::GetCursorPosX()) {
-                    ImGui::SetCursorPosX(tabX);
-                }
-            }
             const std::string tabId = label + "###Tab" + spec.key;
             const bool tabOpen = ImGui::BeginTabItem(tabId.c_str());
             if (spec.refreshOnActivate && (ImGui::IsItemActivated() || ImGui::IsItemClicked())) {
@@ -301,22 +322,27 @@ void ConsoleView::draw(ImGuiIO &io) {
 
 void ConsoleView::drawTabContent(const std::string &key, const MessageColors &colors) {
     if (key == "community") {
+        drawPanelHeader(key);
         drawCommunityPanel(colors);
         return;
     }
     if (key == "start-server") {
+        drawPanelHeader(key);
         drawStartServerPanel(colors);
         return;
     }
     if (key == "settings") {
+        drawPanelHeader(key);
         drawSettingsPanel(colors);
         return;
     }
     if (key == "bindings") {
+        drawPanelHeader(key);
         drawBindingsPanel(colors);
         return;
     }
     if (key == "documentation") {
+        drawPanelHeader(key);
         drawDocumentationPanel(colors);
         return;
     }
@@ -417,6 +443,29 @@ void ConsoleView::drawPlaceholderPanel(const char *heading,
     ImGui::PopStyleColor();
 }
 
+void ConsoleView::drawPanelHeader(std::string_view tabKey) const {
+    const ui::ConsoleTabSpec *spec = findTabSpec(tabKey);
+    std::string label = spec ? tabLabelForSpec(*spec) : std::string(tabKey);
+    if (label.empty()) {
+        label = std::string(tabKey);
+    }
+
+    ImGui::SetCursorPosX(ImGui::GetStyle().WindowPadding.x);
+    if (headingFont) {
+        ImGui::PushFont(headingFont);
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, headingColor);
+    ImGui::TextUnformatted(label.c_str());
+    ImGui::PopStyleColor();
+    if (headingFont) {
+        ImGui::PopFont();
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+}
+
 void ConsoleView::show(const std::vector<CommunityBrowserEntry> &newEntries) {
     visible = true;
     setEntries(newEntries);
@@ -437,7 +486,6 @@ void ConsoleView::show(const std::vector<CommunityBrowserEntry> &newEntries) {
     consoleModel.community.serverDescriptionErrorText.clear();
     consoleModel.community.statusTone = MessageTone::Notice;
     clearPassword();
-    showNewCommunityInput = false;
     listUrlBuffer.fill(0);
 }
 
@@ -575,7 +623,6 @@ void ConsoleView::hide() {
     consoleModel.community.serverDescriptionErrorText.clear();
     consoleModel.community.statusTone = MessageTone::Notice;
     clearPassword();
-    showNewCommunityInput = false;
     thumbnails.shutdown();
 }
 

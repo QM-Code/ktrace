@@ -15,7 +15,7 @@ constexpr client_id SERVER_CLIENT_ID = 0;
 constexpr client_id BROADCAST_CLIENT_ID = 1;
 constexpr client_id FIRST_CLIENT_ID = 2;
 
-constexpr uint32_t NET_PROTOCOL_VERSION = 4;
+constexpr uint32_t NET_PROTOCOL_VERSION = 5;
 
 struct PlayerState {
     std::string name;
@@ -46,7 +46,8 @@ enum ServerMsg_Type {
     ServerMsg_Type_CREATE_SHOT,
     ServerMsg_Type_REMOVE_SHOT,
     ServerMsg_Type_INIT,
-    ServerMsg_Type_CHAT
+    ServerMsg_Type_CHAT,
+    ServerMsg_Type_JOIN_RESPONSE
 };
 
 struct ServerMsg {
@@ -147,6 +148,13 @@ struct ServerMsg_Init : ServerMsg {
     std::vector<std::byte> worldData;
 };
 
+struct ServerMsg_JoinResponse : ServerMsg {
+    static constexpr ServerMsg_Type Type = ServerMsg_Type_JOIN_RESPONSE;
+    ServerMsg_JoinResponse() { type = Type; }
+    bool accepted = false;
+    std::string reason;
+};
+
 /*
  * Client messages
  */
@@ -157,7 +165,8 @@ enum ClientMsg_Type {
     ClientMsg_Type_REQUEST_PLAYER_SPAWN,
     ClientMsg_Type_PLAYER_LOCATION,
     ClientMsg_Type_CREATE_SHOT,
-    ClientMsg_Type_CHAT
+    ClientMsg_Type_CHAT,
+    ClientMsg_Type_JOIN_REQUEST
 };
 
 struct ClientMsg {
@@ -175,6 +184,13 @@ struct ClientMsg_PlayerJoin : ClientMsg {
     bool registeredUser = false;
     bool communityAdmin = false;
     bool localAdmin = false;
+};
+
+struct ClientMsg_JoinRequest : ClientMsg {
+    static constexpr ClientMsg_Type Type = ClientMsg_Type_JOIN_REQUEST;
+    ClientMsg_JoinRequest() { type = Type; }
+    std::string name;
+    uint32_t protocolVersion = NET_PROTOCOL_VERSION;
 };
 
 struct ClientMsg_PlayerLeave : ClientMsg {

@@ -113,6 +113,11 @@ message ServerMsg_Init {
   repeated string features = 7;
 }
 
+message ServerMsg_JoinResponse {
+  bool accepted = 1;
+  string reason = 2;
+}
+
 // Wrapper for "ServerMsg { type; }"
 message ServerMsg {
   enum Type {
@@ -129,6 +134,7 @@ message ServerMsg {
     REMOVE_SHOT = 10;
     INIT = 11;
     CHAT = 12;
+    JOIN_RESPONSE = 13;
   }
 
   // Optional: keep a type field if you want quick switching/logging.
@@ -147,6 +153,7 @@ message ServerMsg {
     ServerMsg_RemoveShot remove_shot = 11;
     ServerMsg_Init init = 12;
     ServerMsg_Chat chat = 13;
+    ServerMsg_JoinResponse join_response = 14;
   }
 }
 
@@ -161,6 +168,11 @@ message ClientMsg_PlayerJoin {
   bool registered_user = 4;
   bool community_admin = 5;
   bool local_admin = 6;
+}
+
+message ClientMsg_JoinRequest {
+  string name = 1;
+  uint32 protocol_version = 2;
 }
 
 message ClientMsg_PlayerLeave {
@@ -195,6 +207,7 @@ message ClientMsg {
     PLAYER_LOCATION = 4;
     CREATE_SHOT = 5;
     CHAT = 6;
+    JOIN_REQUEST = 7;
   }
 
   Type type = 1;
@@ -207,5 +220,6 @@ message ClientMsg {
     ClientMsg_PlayerLocation player_location = 6;
     ClientMsg_CreateShot create_shot = 7;
     ClientMsg_Chat chat = 8;
+    ClientMsg_JoinRequest join_request = 9;
   }
 }

@@ -14,6 +14,7 @@ void ImGuiHud::setDialogText(const std::string &text) {
 }
 
 void ImGuiHud::setDialogVisible(bool show) {
+    dialogVisible = show;
     dialog.setVisible(show);
 }
 
@@ -72,12 +73,25 @@ bool ImGuiHud::getChatInputFocus() const {
 }
 
 void ImGuiHud::setShowFps(bool show) {
+    fpsVisible = show;
     fps.setVisible(show);
+}
+
+void ImGuiHud::setHudBackgroundColor(const ImVec4 &color) {
+    hudBackgroundColor = color;
+}
+
+void ImGuiHud::setHudTextColor(const ImVec4 &color) {
+    hudTextColor = color;
+}
+
+void ImGuiHud::setHudTextScale(float scale) {
+    hudTextScale = scale;
 }
 
 void ImGuiHud::draw(ImGuiIO &io, ImFont *bigFont) {
     if (scoreboardVisible) {
-        scoreboard.draw(io);
+        scoreboard.draw(io, hudBackgroundColor, hudTextColor, hudTextScale);
     }
 
     const float margin = 12.0f;
@@ -95,7 +109,7 @@ void ImGuiHud::draw(ImGuiIO &io, ImFont *bigFont) {
     const ImVec2 radarPos = ImVec2(vpPos.x + margin, vpPos.y + vpSize.y - margin - radarSize);
     const ImVec2 radarWindowSize = ImVec2(radarSize, radarSize);
     if (radarVisible) {
-        radar.draw(radarPos, radarWindowSize);
+        radar.draw(radarPos, radarWindowSize, hudBackgroundColor);
     }
 
     const float consoleLeft = vpPos.x + margin + (radarVisible ? radarSize + margin : 0.0f);
@@ -104,14 +118,16 @@ void ImGuiHud::draw(ImGuiIO &io, ImFont *bigFont) {
     ImVec2 size = ImVec2(consoleWidth, panelHeight);
 
     if (chatVisible) {
-        chat.draw(pos, size, inputHeight);
+        chat.draw(pos, size, inputHeight, hudBackgroundColor, hudTextColor, hudTextScale);
     }
 
     dialog.draw(io, bigFont);
     if (crosshairVisible) {
         crosshair.draw(io);
     }
-    fps.draw(io);
+    if (fpsVisible) {
+        fps.draw(io, hudBackgroundColor, hudTextColor, hudTextScale);
+    }
 }
 
 } // namespace ui

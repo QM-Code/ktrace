@@ -11,7 +11,7 @@
   },
   "database": {
     "database_directory": "data",
-    "database_file": "bz3web.db"
+    "database_file": "karma.db"
   },
   "uploads": {
     "upload_directory": "uploads",

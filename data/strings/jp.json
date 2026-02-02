@@ -24,7 +24,8 @@
         "settings": "設定",
         "documentation": "ドキュメント",
         "start_server": "サーバーを開始",
-        "bindings": "Bindings"
+        "bindings": "キー割り当て",
+        "help": "ヘルプ"
       },
       "start_server": {
         "title": "サーバーを開始",
@@ -43,10 +44,21 @@
     "hud": {
       "chat_placeholder": "T を押して入力",
       "fps_label": "FPS: {value}",
-      "spawn_hint": "{binding} を押してスポーン"
+      "spawn_hint": "{binding} を押してスポーン",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
     },
     "settings": {
-      "language_label": "言語"
+      "language_label": "言語",
+      "hud_background_label": "背景",
+      "hud_background_edit": "編集",
+      "hud_text_color_label": "文字色",
+      "hud_text_size_label": "文字サイズ"
     }
   }
 }

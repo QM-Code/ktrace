@@ -1,12 +1,11 @@
 # src/engine/README.md
 
 Karma is the **engine layer** of this project. It provides reusable systems for
-rendering, input mapping, physics, audio, windowing, networking transport, and
-UI bridges.
+rendering, input mapping, physics, audio, windowing, and networking transport.
 
 This subtree is designed to be extracted into its own repo. While it lives in
-this mono-repo, BZ3 consumes it through `karma/...` include paths (forwarders
-under `src/engine/karma/`).
+this mono-repo, BZ3 consumes it through `karma/...` include paths (public
+headers live under `include/karma/` and point directly at engine headers).
 
 ## What Karma does not contain
 - Game rules or gameplay logic
@@ -14,6 +13,8 @@ under `src/engine/karma/`).
 - HUD or console logic
 
 Those live under `src/game/`.
+
+Optional UI frontends and render bridges live under `src/karma-extras/`.
 
 ## How to work with Karma
 Start with:

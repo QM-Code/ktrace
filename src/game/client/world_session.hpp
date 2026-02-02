@@ -4,11 +4,10 @@
 #include "game/net/messages.hpp"
 #include "karma/physics/static_body.hpp"
 #include "game/world/config.hpp"
-#include "world/backend.hpp"
-#include "world/content.hpp"
+#include "karma/common/world_content.hpp"
+#include "karma/ecs/entity.h"
 
 #include <filesystem>
-#include <memory>
 #include "karma/common/json.hpp"
 #include <string>
 #include <vector>
@@ -18,8 +17,7 @@ class Game;
 class ClientWorldSession {
 private:
     Game &game;
-    std::unique_ptr<world_backend::Backend> backend_;
-    render_id renderId{};
+    karma::ecs::Entity worldEcsEntity{};
     PhysicsStaticBody physics;
     world::WorldContent content_;
     PlayerParameters defaultPlayerParameters_;

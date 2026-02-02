@@ -9,10 +9,17 @@
 
 namespace game::renderer {
 
+struct RadarConfig {
+    std::filesystem::path shaderVertex;
+    std::filesystem::path shaderFragment;
+    float fovDegrees = 60.0f;
+};
+
 class RadarRenderer {
 public:
     RadarRenderer(graphics::GraphicsDevice &device, engine::renderer::SceneRenderer &scene);
 
+    void configure(const RadarConfig& config);
     void ensureResources();
     void setFovDegrees(float fovDegrees);
     void updateFovLines(const glm::vec3 &cameraPosition, const glm::quat &cameraRotation, float fovDegrees);
@@ -27,9 +34,6 @@ public:
     void destroy(render_id id);
 
     graphics::TextureHandle getRadarTexture() const;
-    void setRadarShaderPath(const std::filesystem::path &vertPath,
-                            const std::filesystem::path &fragPath,
-                            float playerY);
 
 private:
     graphics::GraphicsDevice *device_;
@@ -49,6 +53,8 @@ private:
     std::unordered_map<render_id, std::filesystem::path> modelPaths_;
 
     float radarFovDegrees_ = 60.0f;
+    RadarConfig config_{};
+    bool hasConfig_ = false;
 
     glm::quat computeRadarCameraRotation(const glm::vec3 &radarCamPos,
                                          const glm::vec3 &cameraPosition,

@@ -24,7 +24,8 @@
         "settings": "Paramètres",
         "documentation": "Documentation",
         "start_server": "Démarrer le serveur",
-        "bindings": "Bindings"
+        "bindings": "Raccourcis",
+        "help": "Aide"
       },
       "start_server": {
         "title": "Démarrer le serveur",
@@ -43,10 +44,21 @@
     "hud": {
       "chat_placeholder": "appuyez sur T pour écrire",
       "fps_label": "FPS : {value}",
-      "spawn_hint": "Appuyez sur {binding} pour apparaître"
+      "spawn_hint": "Appuyez sur {binding} pour apparaître",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
     },
     "settings": {
-      "language_label": "Langue"
+      "language_label": "Langue",
+      "hud_background_label": "Fond",
+      "hud_background_edit": "Modifier",
+      "hud_text_color_label": "Couleur du texte",
+      "hud_text_size_label": "Taille du texte"
     }
   }
 }

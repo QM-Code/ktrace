@@ -17,9 +17,9 @@
 #include <cmath>
 
 #if defined(KARMA_RENDER_BACKEND_BGFX)
-#include "karma/ui/platform/rmlui/renderer_bgfx.hpp"
+#include "karma_extras/ui/platform/rmlui/renderer_bgfx.hpp"
 #elif defined(KARMA_RENDER_BACKEND_DILIGENT)
-#include "karma/ui/platform/rmlui/renderer_diligent.hpp"
+#include "karma_extras/ui/platform/rmlui/renderer_diligent.hpp"
 #else
 #error "RmlUi backend requires BGFX or Diligent renderer."
 #endif
@@ -38,7 +38,7 @@
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/config_store.hpp"
 #include "spdlog/spdlog.h"
-#include "karma/ui/bridges/ui_render_bridge.hpp"
+#include "karma_extras/ui/bridges/ui_render_bridge.hpp"
 #include "ui/fonts/console_fonts.hpp"
 #include "ui/config/input_mapping.hpp"
 #include "ui/config/render_scale.hpp"
@@ -457,7 +457,7 @@ bool RmlUiBackend::isUiInputEnabled() const {
     if (consoleView && consoleView->isVisible()) {
         return true;
     }
-    return state && state->hud && state->hud->isChatFocused();
+    return state && state->hud && (state->hud->isChatFocused() || state->hud->isQuickMenuVisible());
 }
 
 void RmlUiBackend::update() {
@@ -481,15 +481,20 @@ void RmlUiBackend::update() {
     if (state->hud) {
         const bool consoleVisible = consoleView && consoleView->isVisible();
         state->hud->setScoreboardEntries(hudModel.scoreboardEntries);
+        const bool suppressHud = hudModel.visibility.quickMenu;
         state->hud->setDialogText(hudModel.dialog.text);
-        state->hud->setDialogVisible(hudModel.dialog.visible);
+        state->hud->setDialogVisible(!suppressHud && hudModel.dialog.visible);
         state->hud->setChatLines(hudModel.chatLines);
-        state->hud->setScoreboardVisible(hudModel.visibility.scoreboard);
-        state->hud->setChatVisible(hudModel.visibility.chat);
-        state->hud->setRadarVisible(hudModel.visibility.radar);
-        state->hud->setCrosshairVisible(hudModel.visibility.crosshair && !consoleVisible);
-        state->hud->setFpsVisible(hudModel.visibility.hud && hudModel.visibility.fps);
-        if (hudModel.visibility.hud && hudModel.visibility.fps) {
+        state->hud->setHudBackgroundColor(hudModel.hudBackgroundColor);
+        state->hud->setHudTextColor(hudModel.hudTextColor);
+        state->hud->setHudTextScale(hudModel.hudTextScale);
+        state->hud->setScoreboardVisible(!suppressHud && hudModel.visibility.scoreboard);
+        state->hud->setChatVisible(!suppressHud && hudModel.visibility.chat);
+        state->hud->setRadarVisible(!suppressHud && hudModel.visibility.radar);
+        state->hud->setCrosshairVisible(!suppressHud && hudModel.visibility.crosshair && !consoleVisible);
+        state->hud->setFpsVisible(!suppressHud && hudModel.visibility.hud && hudModel.visibility.fps);
+        state->hud->setQuickMenuVisible(hudModel.visibility.quickMenu);
+        if (!suppressHud && hudModel.visibility.hud && hudModel.visibility.fps) {
             state->hud->setFpsValue(hudModel.fpsValue);
         }
     }
@@ -545,6 +550,28 @@ void RmlUiBackend::update() {
             state->hud->hide();
         }
     }
+    if (state->hud) {
+        lastHudRenderState.hudVisible = state->hud->isVisible();
+        if (lastHudRenderState.hudVisible) {
+            lastHudRenderState.scoreboardVisible = state->hud->isScoreboardVisible();
+            lastHudRenderState.chatVisible = state->hud->isChatVisible();
+            lastHudRenderState.radarVisible = state->hud->isRadarVisible();
+            lastHudRenderState.crosshairVisible = state->hud->isCrosshairVisible();
+            lastHudRenderState.fpsVisible = state->hud->isFpsVisible();
+            lastHudRenderState.dialogVisible = state->hud->isDialogVisible();
+            lastHudRenderState.quickMenuVisible = state->hud->isQuickMenuVisible();
+        } else {
+            lastHudRenderState.scoreboardVisible = false;
+            lastHudRenderState.chatVisible = false;
+            lastHudRenderState.radarVisible = false;
+            lastHudRenderState.crosshairVisible = false;
+            lastHudRenderState.fpsVisible = false;
+            lastHudRenderState.dialogVisible = false;
+            lastHudRenderState.quickMenuVisible = false;
+        }
+    } else {
+        lastHudRenderState = {};
+    }
 
     const bool anyVisible = (state->document && state->document->IsVisible())
         || (state->hud && state->hud->isVisible());
@@ -558,11 +585,6 @@ void RmlUiBackend::update() {
             state->hud->update();
         }
         state->context->Update();
-        state->renderInterface.BeginFrame();
-        if (!std::getenv("KARMA_RMLUI_DISABLE_RENDER")) {
-            state->context->Render();
-        }
-        state->renderInterface.EndFrame();
     }
 
     if (state->reloadArmed) {
@@ -579,6 +601,26 @@ void RmlUiBackend::update() {
         loadHudDocument();
         loadConsoleDocument();
     }
+}
+
+bool RmlUiBackend::buildDrawData(karma::app::UIContext &ctx) {
+    if (!state || !state->context) {
+        return false;
+    }
+    const bool hasVisible = (state->document && state->document->IsVisible())
+        || (state->hud && state->hud->isVisible());
+    state->outputVisible = hasVisible;
+    if (!hasVisible || state->reloadRequested || state->reloadArmed) {
+        return false;
+    }
+
+    state->renderInterface.SetDrawDataTarget(&ctx);
+    state->renderInterface.BeginFrame();
+    state->context->Render();
+    state->renderInterface.EndFrame();
+    state->renderInterface.SetDrawDataTarget(nullptr);
+
+    return !ctx.drawData().commands.empty();
 }
 
 void RmlUiBackend::reloadFonts() {
@@ -635,6 +677,13 @@ bool RmlUiBackend::getChatInputFocus() const {
 
 bool RmlUiBackend::consumeKeybindingsReloadRequest() {
     return consoleView && consoleView->consumeKeybindingsReloadRequest();
+}
+
+std::optional<ui::QuickMenuAction> RmlUiBackend::consumeQuickMenuAction() {
+    if (!state || !state->hud) {
+        return std::nullopt;
+    }
+    return state->hud->consumeQuickMenuAction();
 }
 
 void RmlUiBackend::setRendererBridge(const ui::RendererBridge *bridge) {

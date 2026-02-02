@@ -100,7 +100,7 @@ void PhysicsWorldPhysX::setGravity(float gravity) {
 std::unique_ptr<PhysicsRigidBodyBackend> PhysicsWorldPhysX::createBoxBody(const glm::vec3& halfExtents,
                                                                           float mass,
                                                                           const glm::vec3& position,
-                                                                          const PhysicsMaterial& material) {
+                                                                          const karma::physics::PhysicsMaterial& material) {
     if (!physics_ || !scene_) {
         return std::make_unique<PhysicsRigidBodyPhysX>();
     }

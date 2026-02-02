@@ -1,22 +1,19 @@
 # src/engine/ecs/AGENTS.md
 
 Read `src/engine/AGENTS.md` first.
-This directory contains the **engine ECS scaffolding**: lightweight entity
-registries, components, and optional systems.
+This directory contains the **engine ECS scaffolding**: lightweight component
+types and optional sync systems that operate on `karma::ecs::World`.
 
 ## Purpose
 ECS is **optional**. The engine can render and simulate without it, but the
 scaffolding exists to support more data-driven game logic later.
 
 ## Key pieces
-- `world.hpp`
-  - Owns entity registry and component stores.
-- `components.hpp`
-  - Common component types (transform, render mesh, etc.).
-- `registry.hpp`
-  - Generic storage for component types.
+- `render_components.h` (in `include/karma_extras/ecs/`)
+  - Engine-only render components (mesh/material/layer/etc) now live in karma-extras.
 - `systems/`
-  - Optional engine-level systems (e.g., renderer integration).
+  - Optional engine-level systems that sync engine state to ECS
+    (render/audio/physics/camera/procedural mesh).
 
 ## How the game uses it
 - The game renderer may register ECS entities for rendering.
@@ -24,3 +21,4 @@ scaffolding exists to support more data-driven game logic later.
 
 ## Gotchas
 - Keep ECS generic and engine-level. Avoid game-specific components here.
+- Use `karma::ecs::World::storage/has/get/add` (KARMA-REPO API).

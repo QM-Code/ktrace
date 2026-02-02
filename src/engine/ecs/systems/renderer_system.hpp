@@ -1,9 +1,11 @@
 #pragma once
 
-#include "karma/ecs/components.hpp"
-#include "karma/ecs/world.hpp"
 #include "karma/graphics/device.hpp"
 #include "karma/graphics/types.hpp"
+#include "karma/components/mesh.h"
+#include "karma/components/transform.h"
+#include "karma/ecs/world.h"
+#include "karma_extras/ecs/render_components.h"
 #include "spdlog/spdlog.h"
 #include <cstdlib>
 #include <unordered_map>
@@ -12,13 +14,14 @@ namespace graphics {
 class GraphicsDevice;
 }
 
-namespace ecs {
+namespace karma::ecs {
+namespace components = karma::components;
 
 class RendererSystem {
 public:
     void setDefaultMaterial(graphics::MaterialId material) { defaultMaterial_ = material; }
 
-    void update(World &world, graphics::GraphicsDevice *graphics, float dt) {
+    void update(karma::ecs::World &world, graphics::GraphicsDevice *graphics, float dt) {
         if (!graphics) {
             return;
         }
@@ -27,43 +30,37 @@ public:
             if (debugAccum_ >= 1.0f) {
                 debugAccum_ = 0.0f;
                 spdlog::info("RendererSystem: entities={} meshes={} renderEntities={}",
-                             world.all<Transform>().size(),
-                             world.all<RenderMesh>().size(),
-                             world.all<RenderEntity>().size());
+                             world.storage<components::TransformComponent>().denseEntities().size(),
+                             world.storage<RenderMesh>().denseEntities().size(),
+                             world.storage<RenderEntity>().denseEntities().size());
             }
         }
-        for (const EntityId entity : world.consumeDestroyed()) {
-            graphics::EntityId gfxEntity = graphics::kInvalidEntity;
-            if (auto it = entities_.find(entity); it != entities_.end()) {
-                gfxEntity = it->second.entity;
-                entities_.erase(it);
-            } else if (const auto &renderEntities = world.all<RenderEntity>();
-                       renderEntities.find(entity) != renderEntities.end()) {
-                gfxEntity = renderEntities.at(entity).entityId;
+        for (auto it = entities_.begin(); it != entities_.end(); ) {
+            if (!world.isAlive(it->first)) {
+                if (it->second.entity != graphics::kInvalidEntity) {
+                    graphics->destroyEntity(it->second.entity);
+                }
+                it = entities_.erase(it);
+            } else {
+                ++it;
             }
-            if (gfxEntity != graphics::kInvalidEntity) {
-                graphics->destroyEntity(gfxEntity);
-            }
-            world.remove<RenderEntity>(entity);
-            world.remove<RenderMesh>(entity);
-            world.remove<Material>(entity);
-            world.remove<Transform>(entity);
-            world.remove<RenderLayer>(entity);
         }
-        const auto &meshes = world.all<RenderMesh>();
-        const auto &materials = world.all<Material>();
-        const auto &renderEntities = world.all<RenderEntity>();
-        const auto &layers = world.all<RenderLayer>();
-        for (const auto &pair : world.all<Transform>()) {
-            const EntityId entity = pair.first;
-            const Transform &transform = pair.second;
+        auto &meshes = world.storage<RenderMesh>();
+        auto &materials = world.storage<Material>();
+        auto &renderEntities = world.storage<RenderEntity>();
+        auto &transparency = world.storage<Transparency>();
+        auto &layers = world.storage<RenderLayer>();
+        auto &meshComponents = world.storage<components::MeshComponent>();
+        auto &transforms = world.storage<components::TransformComponent>();
+        for (const karma::ecs::Entity entity : transforms.denseEntities()) {
+            const components::TransformComponent &transform = transforms.get(entity);
             graphics::EntityId gfxEntity = graphics::kInvalidEntity;
-            if (auto reIt = renderEntities.find(entity); reIt != renderEntities.end()) {
-                gfxEntity = reIt->second.entityId;
+            if (renderEntities.has(entity)) {
+                gfxEntity = renderEntities.get(entity).entityId;
             }
             graphics::LayerId desiredLayer = 0;
-            if (auto layerIt = layers.find(entity); layerIt != layers.end()) {
-                desiredLayer = layerIt->second.layer;
+            if (layers.has(entity)) {
+                desiredLayer = layers.get(entity).layer;
             }
             if (auto handleIt = entities_.find(entity); handleIt != entities_.end()) {
                 if (handleIt->second.layer != desiredLayer) {
@@ -77,29 +74,43 @@ public:
             }
 
             if (gfxEntity == graphics::kInvalidEntity) {
-                const auto meshIt = meshes.find(entity);
-                if (meshIt == meshes.end()) {
+                const bool hasMesh = meshes.has(entity);
+                const bool hasMeshKey = meshComponents.has(entity);
+                if (!hasMesh && !hasMeshKey) {
                     continue;
                 }
                 gfxEntity = graphics->createEntity(desiredLayer);
                 entities_.insert({entity, RenderHandle{gfxEntity, desiredLayer}});
-                graphics->setEntityMesh(gfxEntity, meshIt->second.meshId, graphics::kInvalidMaterial);
-                world.set(entity, RenderEntity{gfxEntity});
+                if (hasMeshKey && !meshComponents.get(entity).mesh_key.empty()) {
+                    graphics->setEntityModel(gfxEntity, meshComponents.get(entity).mesh_key, graphics::kInvalidMaterial);
+                } else if (hasMesh) {
+                    graphics->setEntityMesh(gfxEntity, meshes.get(entity).meshId, graphics::kInvalidMaterial);
+                }
+                world.add(entity, RenderEntity{gfxEntity});
             }
 
             if (gfxEntity != graphics::kInvalidEntity) {
-                if (auto meshIt = meshes.find(entity); meshIt != meshes.end()) {
-                    graphics::MaterialId material = defaultMaterial_;
-                    if (auto materialIt = materials.find(entity); materialIt != materials.end()) {
-                        material = materialIt->second.materialId;
+                if (meshComponents.has(entity) && !meshComponents.get(entity).mesh_key.empty()) {
+                    graphics::MaterialId material = graphics::kInvalidMaterial;
+                    if (materials.has(entity)) {
+                        material = materials.get(entity).materialId;
                     }
-                    graphics->setEntityMesh(gfxEntity, meshIt->second.meshId, material);
+                    graphics->setEntityModel(gfxEntity, meshComponents.get(entity).mesh_key, material);
+                } else if (meshes.has(entity)) {
+                    graphics::MaterialId material = defaultMaterial_;
+                    if (materials.has(entity)) {
+                        material = materials.get(entity).materialId;
+                    }
+                    graphics->setEntityMesh(gfxEntity, meshes.get(entity).meshId, material);
+                }
+                if (transparency.has(entity)) {
+                    graphics->setTransparency(gfxEntity, transparency.get(entity).enabled);
                 }
                 graphics->setPosition(gfxEntity, transform.position);
                 graphics->setRotation(gfxEntity, transform.rotation);
                 graphics->setScale(gfxEntity, transform.scale);
-            } else if (auto meshIt = meshes.find(entity); meshIt != meshes.end()) {
-                spdlog::warn("RendererSystem: failed to create render entity for ECS id {}", entity);
+            } else if (meshes.has(entity)) {
+                spdlog::warn("RendererSystem: failed to create render entity for ECS id {}", entity.index);
             }
         }
     }
@@ -109,7 +120,7 @@ private:
         graphics::EntityId entity = graphics::kInvalidEntity;
         graphics::LayerId layer = 0;
     };
-    std::unordered_map<EntityId, RenderHandle> entities_;
+    std::unordered_map<karma::ecs::Entity, RenderHandle> entities_;
     graphics::MaterialId defaultMaterial_ = graphics::kInvalidMaterial;
     float debugAccum_ = 0.0f;
 
@@ -124,4 +135,4 @@ private:
     mutable int debugCached_ = -1;
 };
 
-} // namespace ecs
+} // namespace karma::ecs

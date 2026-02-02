@@ -24,7 +24,8 @@
         "settings": "الإعدادات",
         "documentation": "التوثيق",
         "start_server": "بدء الخادم",
-        "bindings": "Bindings"
+        "bindings": "تعيينات المفاتيح",
+        "help": "المساعدة"
       },
       "start_server": {
         "title": "بدء الخادم",
@@ -43,10 +44,21 @@
     "hud": {
       "chat_placeholder": "اضغط T للكتابة",
       "fps_label": "FPS: {value}",
-      "spawn_hint": "اضغط {binding} للظهور"
+      "spawn_hint": "اضغط {binding} للظهور",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
     },
     "settings": {
-      "language_label": "اللغة"
+      "language_label": "اللغة",
+      "hud_background_label": "الخلفية",
+      "hud_background_edit": "تعديل",
+      "hud_text_color_label": "لون النص",
+      "hud_text_size_label": "حجم النص"
     }
   }
 }

@@ -149,7 +149,7 @@ void PhysicsWorldJolt::setGravity(float gravity) {
 std::unique_ptr<PhysicsRigidBodyBackend> PhysicsWorldJolt::createBoxBody(const glm::vec3& halfExtents,
                                                                          float mass,
                                                                          const glm::vec3& position,
-                                                                         const ::PhysicsMaterial& material) {
+                                                                         const karma::physics::PhysicsMaterial& material) {
     if (!physicsSystem_) return std::make_unique<PhysicsRigidBodyJolt>();
 
     RefConst<Shape> shape = new BoxShape(toJph(halfExtents));

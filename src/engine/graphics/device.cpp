@@ -132,15 +132,21 @@ void GraphicsDevice::renderUiOverlay() {
     }
 }
 
+void GraphicsDevice::renderUiDrawData(const karma::app::UIDrawData& drawData,
+                                      const std::function<bool(karma::app::UITextureHandle, graphics::TextureHandle&)>& resolveTexture,
+                                      int viewportW,
+                                      int viewportH,
+                                      float dpiScale) {
+    if (backend_) {
+        backend_->renderUiDrawData(drawData, resolveTexture, viewportW, viewportH, dpiScale);
+    }
+}
+
 void GraphicsDevice::setBrightness(float brightness) {
     if (backend_) {
         const float clamped = std::clamp(brightness, 0.2f, 3.0f);
         backend_->setBrightness(clamped);
     }
-}
-
-graphics_backend::UiRenderTargetBridge* GraphicsDevice::getUiRenderTargetBridge() const {
-    return backend_ ? backend_->getUiRenderTargetBridge() : nullptr;
 }
 
 void GraphicsDevice::setPosition(EntityId entity, const glm::vec3& position) {

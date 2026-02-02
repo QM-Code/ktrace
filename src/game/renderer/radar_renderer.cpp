@@ -1,4 +1,4 @@
-#include "game/renderer/radar_renderer.hpp"
+#include "renderer/radar_renderer.hpp"
 
 #include "spdlog/spdlog.h"
 #include <algorithm>
@@ -57,6 +57,33 @@ namespace game::renderer {
 RadarRenderer::RadarRenderer(graphics::GraphicsDevice &device, engine::renderer::SceneRenderer &scene)
     : device_(&device), scene_(&scene) {}
 
+void RadarRenderer::configure(const RadarConfig& config) {
+    config_ = config;
+    hasConfig_ = true;
+    radarFovDegrees_ = config.fovDegrees;
+    ensureResources();
+    if (radarMaterial_ != graphics::kInvalidMaterial && device_) {
+        graphics::MaterialDesc desc;
+        desc.vertexShaderPath = config_.shaderVertex;
+        desc.fragmentShaderPath = config_.shaderFragment;
+        desc.transparent = true;
+        desc.depthTest = true;
+        desc.depthWrite = false;
+        desc.doubleSided = true;
+        desc.baseColor = {1.0f, 1.0f, 1.0f, 1.0f};
+        device_->updateMaterial(radarMaterial_, desc);
+        device_->setMaterialFloat(radarMaterial_, "jumpHeight", 5.0f);
+        for (const auto &entry : radarEntities_) {
+            const auto &id = entry.first;
+            const auto &entity = entry.second;
+            auto pathIt = modelPaths_.find(id);
+            if (pathIt != modelPaths_.end()) {
+                device_->setEntityModel(entity, pathIt->second, radarMaterial_);
+            }
+        }
+    }
+}
+
 void RadarRenderer::ensureResources() {
     if (!device_) {
         return;
@@ -86,6 +113,10 @@ void RadarRenderer::ensureResources() {
 
     if (radarMaterial_ == graphics::kInvalidMaterial) {
         graphics::MaterialDesc desc;
+        if (hasConfig_) {
+            desc.vertexShaderPath = config_.shaderVertex;
+            desc.fragmentShaderPath = config_.shaderFragment;
+        }
         desc.transparent = true;
         desc.depthTest = true;
         desc.depthWrite = false;
@@ -284,36 +315,6 @@ graphics::TextureHandle RadarRenderer::getRadarTexture() const {
     handle.width = static_cast<uint32_t>(kRadarTexSize);
     handle.height = static_cast<uint32_t>(kRadarTexSize);
     return handle;
-}
-
-void RadarRenderer::setRadarShaderPath(const std::filesystem::path &vertPath,
-                                       const std::filesystem::path &fragPath,
-                                       float playerY) {
-    ensureResources();
-    graphics::MaterialDesc desc;
-    desc.vertexShaderPath = vertPath;
-    desc.fragmentShaderPath = fragPath;
-    desc.transparent = true;
-    desc.depthTest = true;
-    desc.depthWrite = false;
-    desc.doubleSided = true;
-    desc.baseColor = {1.0f, 1.0f, 1.0f, 1.0f};
-    if (radarMaterial_ == graphics::kInvalidMaterial) {
-        radarMaterial_ = device_->createMaterial(desc);
-    } else {
-        device_->updateMaterial(radarMaterial_, desc);
-    }
-    device_->setMaterialFloat(radarMaterial_, "jumpHeight", 5.0f);
-    device_->setMaterialFloat(radarMaterial_, "playerY", playerY);
-
-    for (const auto &entry : radarEntities_) {
-        const auto &id = entry.first;
-        const auto &entity = entry.second;
-        auto pathIt = modelPaths_.find(id);
-        if (pathIt != modelPaths_.end()) {
-            device_->setEntityModel(entity, pathIt->second, radarMaterial_);
-        }
-    }
 }
 
 } // namespace game::renderer

@@ -24,6 +24,10 @@ void Input::update(const std::vector<platform::Event> &events) {
     lastEvents_ = events;
 }
 
+void Input::pumpEvents(const std::vector<platform::Event> &events) {
+    update(events);
+}
+
 bool Input::actionTriggered(std::string_view actionId) const {
     return mapper_.actionTriggered(actionId, lastEvents_);
 }

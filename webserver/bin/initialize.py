@@ -155,7 +155,7 @@ def main():
         with open(config_path, "r", encoding="utf-8") as handle:
             config = json.load(handle)
 
-        from bz3web import config as config_lib
+        from karma import config as config_lib
 
         if "server" not in config:
             raise SystemExit("Missing server in config.json. Add it to config.json.")
@@ -241,8 +241,8 @@ def main():
             handle.write("\n")
         created_paths.append(community_config_path)
 
-        from bz3web import cli
-        from bz3web import db
+        from karma import cli
+        from karma import db
 
         cli.bootstrap(directory, "usage: initialize.py <community-directory>")
         db.init_db(db.default_db_path())

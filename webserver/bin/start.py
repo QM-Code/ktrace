@@ -26,7 +26,7 @@ def main():
     if root_dir not in sys.path:
         sys.path.insert(0, root_dir)
 
-    from bz3web import config
+    from karma import config
 
     base_language = config.normalize_language(
         (config.get_base_config().get("server") or {}).get("language") or "en"
@@ -51,8 +51,8 @@ def main():
         else:
             raise SystemExit(messages["usage"])
 
-    from bz3web import app
-    from bz3web import cli
+    from karma import app
+    from karma import cli
 
     try:
         cli.bootstrap(directory, messages["usage"])
@@ -68,7 +68,7 @@ def main():
         raise SystemExit(0)
 
     signal.signal(signal.SIGINT, _handle_sigint)
-    os.environ["BZ3WEB_SIGINT_HANDLED"] = "1"
+    os.environ["KARMA_SIGINT_HANDLED"] = "1"
     app.main()
 
 

@@ -4,15 +4,18 @@
 #include "game/input/bindings.hpp"
 #include "game/input/state.hpp"
 #include "spdlog/spdlog.h"
-#include "karma/ui/bridges/renderer_bridge.hpp"
+#include "karma_extras/ui/bridges/renderer_bridge.hpp"
 #include "karma/common/config_store.hpp"
 #include "karma/common/config_helpers.hpp"
-#include <cstdlib>
 #include "karma/common/i18n.hpp"
+#include "karma/components/transform.h"
+#include "ui/core/ui_layer_adapter.hpp"
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
 #include <utility>
+
+namespace components = karma::components;
 
 namespace {
 
@@ -23,7 +26,7 @@ public:
     graphics::TextureHandle getRadarTexture() const override {
         return render ? render->getRadarTexture() : graphics::TextureHandle{};
     }
-    graphics_backend::UiRenderTargetBridge* getUiRenderTargetBridge() const override {
+    ui::UiRenderTargetBridge* getUiRenderTargetBridge() const override {
         return render ? render->getUiRenderTargetBridge() : nullptr;
     }
 
@@ -60,8 +63,6 @@ glm::vec3 ReadRequiredVec3Config(const char *path) {
 } // namespace
 
 ClientEngine::ClientEngine(platform::Window &window) {
-    this->window = &window;
-
     network = new ClientNetwork();
     spdlog::trace("ClientEngine: ClientNetwork initialized successfully");
     spdlog::trace("ClientEngine: Renderer initializing");
@@ -75,6 +76,7 @@ ClientEngine::ClientEngine(platform::Window &window) {
     spdlog::trace("ClientEngine: Input initialized successfully");
     ui = new UiSystem(window);
     ui->setRendererBridge(rendererBridgeImpl);
+    uiLayer = std::make_unique<UiLayerAdapter>(*ui);
     spdlog::trace("ClientEngine: UiSystem initialized successfully");
     lastLanguage = karma::i18n::Get().language();
     ui->setDialogText(game_input::SpawnHintText(*input));
@@ -93,21 +95,13 @@ ClientEngine::~ClientEngine() {
 }
 
 void ClientEngine::earlyUpdate(TimeUtils::duration deltaTime) {
-    if (window) {
-        window->pollEvents();
-    }
-    const std::vector<platform::Event> emptyEvents;
-    const auto &events = window ? window->events() : emptyEvents;
-    lastEvents = events;
-    if (ui) {
-        ui->handleEvents(events);
-    }
-    if (input) {
-        input->update(events);
-    }
+    const bool allowGameplayInput = !ui || ui->isGameplayInputEnabled();
     inputState = game_input::BuildInputState(*input);
-    if (window) {
-        window->clearEvents();
+    if (!allowGameplayInput) {
+        inputState.fire = false;
+        inputState.spawn = false;
+        inputState.jump = false;
+        inputState.movement = {};
     }
     network->update();
 }
@@ -117,9 +111,23 @@ void ClientEngine::step(TimeUtils::duration deltaTime) {
 }
 
 void ClientEngine::lateUpdate(TimeUtils::duration deltaTime) {
-    render->setBrightness(lastBrightness);
-    render->update();
-    ui->update();
+    if (cameraEntity.isValid() && ecsWorld && isRoamingModeSession()) {
+        const bool consoleVisible = ui && ui->console().isVisible();
+        const bool allowInput = !consoleVisible && (!ui || ui->isGameplayInputEnabled());
+        updateRoamingCamera(deltaTime, allowInput);
+        roamingCamera.applyToEcs(*ecsWorld, cameraEntity);
+    }
+    if (render) {
+        glm::vec3 camPos(0.0f);
+        glm::quat camRot(1.0f, 0.0f, 0.0f, 0.0f);
+        if (ecsWorld && cameraEntity.isValid() &&
+            ecsWorld->has<components::TransformComponent>(cameraEntity)) {
+            const auto &transform = ecsWorld->get<components::TransformComponent>(cameraEntity);
+            camPos = transform.position;
+            camRot = transform.rotation;
+        }
+        render->renderRadar(camPos, camRot);
+    }
     const std::string currentLanguage = karma::i18n::Get().language();
     if (currentLanguage != lastLanguage) {
         lastLanguage = currentLanguage;
@@ -127,20 +135,12 @@ void ClientEngine::lateUpdate(TimeUtils::duration deltaTime) {
             ui->setDialogText(game_input::SpawnHintText(*input));
         }
     }
-    const ui::RenderOutput output = ui->getRenderOutput();
-    render->setUiOverlayTexture(output);
-    if (!std::getenv("KARMA_DISABLE_UI_OVERLAY")) {
-        render->renderUiOverlay();
-    }
-    lastBrightness = ui->getRenderBrightness();
-    render->present();
-
     if (ui->consumeKeybindingsReloadRequest()) {
         input->reloadKeyBindings();
         ui->setDialogText(game_input::SpawnHintText(*input));
     }
+    handleGlobalUiInput();
     network->flushPeekedMessages();
-    karma::config::ConfigStore::Tick();
 }
 
 void ClientEngine::updateRoamingCamera(TimeUtils::duration deltaTime, bool allowInput) {
@@ -148,8 +148,27 @@ void ClientEngine::updateRoamingCamera(TimeUtils::duration deltaTime, bool allow
         return;
     }
     const auto settings = ReadRoamingCameraSettings();
-    roamingCamera.update(deltaTime, *input, lastEvents, settings, allowInput);
-    roamingCamera.apply(*render);
+    const std::vector<platform::Event> emptyEvents;
+    const auto &events = input ? input->events() : emptyEvents;
+    roamingCamera.update(deltaTime, *input, events, settings, allowInput);
+}
+
+void ClientEngine::handleGlobalUiInput() {
+    if (!ui || !input) {
+        return;
+    }
+    const bool consoleVisible = ui->console().isVisible();
+    if (consoleVisible && inputState.escape) {
+        ui->console().hide();
+        return;
+    }
+    if (inputState.escape) {
+        if (ui->isQuickMenuVisible()) {
+            ui->setQuickMenuVisible(false);
+        } else if (!consoleVisible) {
+            ui->setQuickMenuVisible(true);
+        }
+    }
 }
 
 void ClientEngine::setRoamingModeSession(bool enabled) {

@@ -1,1 +1,6 @@
-<div class="panel">This space intentionally left blank.</div>
+<div class="panel documentation-panel">
+    <div class="panel-header">
+        <span class="panel-header-title" data-i18n="ui.console.tabs.help"></span>
+    </div>
+    <div class="documentation-body">This space intentionally left blank.</div>
+</div>

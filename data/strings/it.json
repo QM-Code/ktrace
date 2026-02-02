@@ -24,7 +24,8 @@
         "settings": "Impostazioni",
         "documentation": "Documentazione",
         "start_server": "Avvia server",
-        "bindings": "Bindings"
+        "bindings": "Associazioni",
+        "help": "Aiuto"
       },
       "start_server": {
         "title": "Avvia server",
@@ -43,10 +44,21 @@
     "hud": {
       "chat_placeholder": "premi T per scrivere",
       "fps_label": "FPS: {value}",
-      "spawn_hint": "Premi {binding} per apparire"
+      "spawn_hint": "Premi {binding} per apparire",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
     },
     "settings": {
-      "language_label": "Lingua"
+      "language_label": "Lingua",
+      "hud_background_label": "Sfondo",
+      "hud_background_edit": "Modifica",
+      "hud_text_color_label": "Colore del testo",
+      "hud_text_size_label": "Dimensione del testo"
     }
   }
 }

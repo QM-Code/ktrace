@@ -6,6 +6,7 @@
 
 struct ImGuiIO;
 struct ImVec2;
+struct ImVec4;
 
 namespace ui {
 
@@ -19,7 +20,12 @@ public:
     void clearFocus();
     bool isFocused() const;
 
-    void draw(const ImVec2 &pos, const ImVec2 &size, float inputHeight);
+    void draw(const ImVec2 &pos,
+              const ImVec2 &size,
+              float inputHeight,
+              const ImVec4 &backgroundColor,
+              const ImVec4 &textColor,
+              float textScale);
 
 private:
     std::vector<std::string> consoleLines;

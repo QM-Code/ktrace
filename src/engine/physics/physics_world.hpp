@@ -1,6 +1,6 @@
 #pragma once
 
-#include "physics/types.hpp"
+#include "karma/physics/types.h"
 #include "physics/rigid_body.hpp"
 #include "physics/static_body.hpp"
 #include <glm/glm.hpp>
@@ -29,7 +29,7 @@ public:
     PhysicsRigidBody createBoxBody(const glm::vec3& halfExtents,
                                    float mass,
                                    const glm::vec3& position,
-                                   const PhysicsMaterial& material);
+                                   const karma::physics::PhysicsMaterial& material);
 
     PhysicsPlayerController& createPlayer();
     PhysicsPlayerController& createPlayer(const glm::vec3& size);

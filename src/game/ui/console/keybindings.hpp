@@ -20,6 +20,8 @@ inline bool IsMouseBindingName(std::string_view name) {
     return input::bindings::IsMouseBindingName(name);
 }
 
+bool IsReservedBindingName(std::string_view name);
+
 inline std::string JoinBindings(const std::vector<std::string> &entries) {
     return input::bindings::JoinBindings(entries);
 }

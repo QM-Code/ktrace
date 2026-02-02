@@ -3,12 +3,20 @@
 #include "karma/core/types.hpp"
 #include "game/net/messages.hpp"
 #include "client/game.hpp"
+#include "karma/components/audio_listener.h"
+#include "karma/components/camera.h"
+#include "karma/components/mesh.h"
+#include "karma/components/transform.h"
+#include "karma/common/config_helpers.hpp"
+#include "renderer/radar_components.hpp"
 #include <cmath>
 #include <string>
 #include <utility>
 #include <memory>
 #include "spdlog/spdlog.h"
 #include "shot.hpp"
+
+namespace components = karma::components;
 
 Player::Player(Game &game,
                client_id id,
@@ -37,9 +45,17 @@ Player::Player(Game &game,
     lastPosition = glm::vec3(0.0f);
     lastRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
-    renderId = game.engine.render->create();
-    game.engine.render->setRadarCircleGraphic(renderId, 1.2f);
-
+    if (game.engine.ecsWorld) {
+        ecsEntity = game.engine.ecsWorld->createEntity();
+        components::TransformComponent xform{};
+        xform.scale = glm::vec3(1.0f);
+        game.engine.ecsWorld->add(ecsEntity, xform);
+        game::renderer::RadarCircle circle{};
+        circle.radius = 1.2f;
+        game.engine.ecsWorld->add(ecsEntity, circle);
+        // Local player mesh rendering is skipped to avoid first-person camera inside the tank.
+        spdlog::info("Player: ECS entity created for local player (ecs_entity={})", ecsEntity.index);
+    }
 
     // Initialize controller extents from parameters once params are set
     setExtents(glm::vec3(
@@ -49,7 +65,9 @@ Player::Player(Game &game,
 }
 
 Player::~Player() {
-    game.engine.render->destroy(renderId);
+    if (ecsEntity.isValid() && game.engine.ecsWorld) {
+        game.engine.ecsWorld->destroyEntity(ecsEntity);
+    }
 }
 
 glm::vec3 Player::getForwardVector() const {
@@ -66,7 +84,16 @@ void Player::earlyUpdate() {
     bool wasGrounded = grounded;
     grounded = physics->isGrounded();
 
-    game.engine.render->setPosition(renderId, state.position);
+    if (ecsEntity.isValid() && game.engine.ecsWorld) {
+        if (game.engine.ecsWorld->has<components::TransformComponent>(ecsEntity)) {
+            auto &transform = game.engine.ecsWorld->get<components::TransformComponent>(ecsEntity);
+            transform.position = state.position;
+            transform.rotation = state.rotation;
+        }
+        if (game.engine.ecsWorld->has<game::renderer::RadarCircle>(ecsEntity)) {
+            game.engine.ecsWorld->get<game::renderer::RadarCircle>(ecsEntity).enabled = state.alive;
+        }
+    }
 
     if (state.alive) {
         game.engine.ui->setDialogVisible(false);
@@ -165,13 +192,12 @@ void Player::earlyUpdate() {
 
 void Player::lateUpdate() {
     setLocation(physics->getPosition(), physics->getRotation(), physics->getVelocity());
-    game.engine.render->setCameraPosition(state.position + glm::vec3(0.0f, muzzleOffset.y, 0.0f));
-    game.engine.render->setCameraRotation(state.rotation);
-    const auto &ctx = game.engine.render->mainContext();
-    const float halfVertRad = glm::radians(ctx.fov * 0.5f);
-    const float halfHorizRad = std::atan(std::tan(halfVertRad) * ctx.aspect);
-    game.engine.render->setRadarFOVLinesAngle(glm::degrees(halfHorizRad * 2.0f));
-
+    if (game.engine.cameraEntity.isValid() && game.engine.ecsWorld &&
+        game.engine.ecsWorld->has<components::TransformComponent>(game.engine.cameraEntity)) {
+        auto &transform = game.engine.ecsWorld->get<components::TransformComponent>(game.engine.cameraEntity);
+        transform.position = state.position + glm::vec3(0.0f, muzzleOffset.y, 0.0f);
+        transform.rotation = state.rotation;
+    }
     if (state.alive) {
         if (glm::distance(lastPosition, state.position) > POSITION_UPDATE_THRESHOLD ||
             angleBetween(lastRotation, state.rotation) > ROTATION_UPDATE_THRESHOLD) {
@@ -184,8 +210,6 @@ void Player::lateUpdate() {
         }
     }
 
-    audioEngine.setListenerPosition(state.position);
-    audioEngine.setListenerRotation(state.rotation);
 }
 
 void Player::update(TimeUtils::duration /*deltaTime*/) {
@@ -199,6 +223,12 @@ void Player::setState(const PlayerState &newState) {
         physics->setPosition(state.position);
         physics->setRotation(state.rotation);
         physics->setVelocity(state.velocity);
+    }
+    if (ecsEntity.isValid() && game.engine.ecsWorld &&
+        game.engine.ecsWorld->has<components::TransformComponent>(ecsEntity)) {
+        auto &transform = game.engine.ecsWorld->get<components::TransformComponent>(ecsEntity);
+        transform.position = state.position;
+        transform.rotation = state.rotation;
     }
 }
 
