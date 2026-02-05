@@ -320,9 +320,15 @@ class BgfxBackend final : public Backend {
         float proj[16];
         bx::mtxLookAt(view, bx::Vec3(camera_.position.x, camera_.position.y, camera_.position.z),
                       bx::Vec3(camera_.target.x, camera_.target.y, camera_.target.z));
+        // BGFX uses left-handed view/projection by default; mirror X to match the
+        // engine's right-handed camera conventions, then flip culling below.
+        float mirror[16];
+        float view_mirror[16];
+        bx::mtxScale(mirror, -1.0f, 1.0f, 1.0f);
+        bx::mtxMul(view_mirror, view, mirror);
         bx::mtxProj(proj, camera_.fov_y_degrees, float(width_) / float(height_),
                     camera_.near_clip, camera_.far_clip, bgfx::getCaps()->homogeneousDepth);
-        bgfx::setViewTransform(0, view, proj);
+        bgfx::setViewTransform(0, view_mirror, proj);
 
         for (const auto& item : draw_items_) {
             if (item.layer != layer) {
@@ -350,8 +356,8 @@ class BgfxBackend final : public Backend {
             } else if (bgfx::isValid(white_tex_)) {
                 bgfx::setTexture(0, s_tex_, white_tex_);
             }
-            const uint64_t cull_ccw = (BGFX_STATE_DEFAULT & ~BGFX_STATE_CULL_MASK) | BGFX_STATE_CULL_CCW;
-            bgfx::setState(cull_ccw | BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z);
+            const uint64_t cull_cw = (BGFX_STATE_DEFAULT & ~BGFX_STATE_CULL_MASK) | BGFX_STATE_CULL_CW;
+            bgfx::setState(cull_cw | BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z);
             bgfx::submit(0, program_);
         }
 
