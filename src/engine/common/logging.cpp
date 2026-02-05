@@ -72,14 +72,37 @@ const char* TraceCategoryColor(const std::string& category) {
     }
     const auto dot = category.find('.');
     const std::string top = dot == std::string::npos ? category : category.substr(0, dot);
+    // ANSI SGR color codes (foreground)
+    // Standard names: black/red/green/yellow/blue/magenta/cyan/white (30-37)
+    // Bright names: bright_black/bright_red/bright_green/bright_yellow/bright_blue/bright_magenta/bright_cyan/bright_white (90-97)
+    static const std::unordered_map<std::string, const char*> ansi_colors = {
+        {"black", "\x1b[30m"},
+        {"red", "\x1b[31m"},
+        {"green", "\x1b[32m"},
+        {"yellow", "\x1b[33m"},
+        {"blue", "\x1b[34m"},
+        {"magenta", "\x1b[35m"},
+        {"cyan", "\x1b[36m"},
+        {"white", "\x1b[37m"},
+        {"bright_black", "\x1b[90m"},
+        {"bright_red", "\x1b[91m"},
+        {"bright_green", "\x1b[92m"},
+        {"bright_yellow", "\x1b[93m"},
+        {"bright_blue", "\x1b[94m"},
+        {"bright_magenta", "\x1b[95m"},
+        {"bright_cyan", "\x1b[96m"},
+        {"bright_white", "\x1b[97m"},
+        {"reset", "\x1b[0m"}
+    };
     static const std::unordered_map<std::string, const char*> colors = {
-        {"ui", "\x1b[95m"},
-        {"render", "\x1b[91m"},
-        {"console", "\x1b[93m"},
-        {"config", "\x1b[96m"},
-        {"net", "\x1b[92m"},
-        {"engine", "\x1b[94m"},
-        {"platform", "\x1b[96m"}
+        {"ui", ansi_colors.at("bright_magenta")},
+        {"render", ansi_colors.at("bright_red")},
+        {"console", ansi_colors.at("bright_yellow")},
+        {"config", ansi_colors.at("bright_cyan")},
+        {"net", ansi_colors.at("bright_green")},
+        {"engine", ansi_colors.at("bright_blue")},
+        {"platform", ansi_colors.at("cyan")},
+        {"input", ansi_colors.at("bright_black")}
     };
     auto it = colors.find(top);
     return it == colors.end() ? "" : it->second;

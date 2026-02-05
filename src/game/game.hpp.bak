@@ -4,8 +4,7 @@
 #include "karma/renderer/types.hpp"
 #include "karma/scene/scene.hpp"
 
-#include <string>
-#include <vector>
+#include <glm/glm.hpp>
 
 namespace bz3 {
 

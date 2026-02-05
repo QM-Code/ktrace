@@ -7,6 +7,8 @@
 #include "karma/renderer/device.hpp"
 #include "karma/renderer/render_system.hpp"
 #include "karma/input/input_system.hpp"
+#include "karma/scene/roaming_camera.hpp"
+#include "karma/scene/scene.hpp"
 
 namespace karma::app {
 
@@ -43,7 +45,9 @@ class EngineApp {
     std::unique_ptr<platform::Window> window_;
     std::unique_ptr<renderer::GraphicsDevice> graphics_;
     std::unique_ptr<renderer::RenderSystem> render_system_;
+    scene::Scene scene_{};
     input::InputContext input_system_{};
+    scene::RoamingCameraController roaming_camera_{};
 
     bool running_ = false;
 };

@@ -39,6 +39,9 @@ void EngineApp::initSubsystems() {
         render_system_ = std::make_unique<renderer::RenderSystem>(*graphics_);
         render_system_->setCamera(config_.default_camera);
         render_system_->setDirectionalLight(config_.default_light);
+        render_system_->setScene(&scene_);
+        roaming_camera_.loadFromConfig();
+        roaming_camera_.initialize(*render_system_);
     }
 }
 
@@ -59,7 +62,7 @@ void EngineApp::start(GameInterface& game, const EngineConfig& config) {
         return;
     }
     game_ = &game;
-    game_->bind(*window_, *graphics_, *render_system_, input_system_);
+    game_->bind(*window_, *graphics_, *render_system_, scene_, input_system_);
     game_->onStart();
     running_ = true;
 }
@@ -91,6 +94,8 @@ void EngineApp::tick() {
     int fb_h = 0;
     window_->getFramebufferSize(fb_w, fb_h);
     if (render_system_) {
+        roaming_camera_.setActive(input_system_.mode() == input::InputMode::Roaming);
+        roaming_camera_.update(dt, input_system_, *render_system_);
         render_system_->beginFrame(fb_w, fb_h, dt);
         render_system_->renderFrame();
         render_system_->endFrame();

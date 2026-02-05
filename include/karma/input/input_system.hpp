@@ -90,6 +90,8 @@ class InputContext {
     InputSystem global_{};
     InputSystem game_{};
     InputSystem roaming_{};
+    std::unordered_set<int> logged_keys_down_{};
+    std::unordered_set<int> logged_mouse_down_{};
 };
 
 void LoadBindingsFromConfig(InputContext& context);

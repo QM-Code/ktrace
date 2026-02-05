@@ -323,7 +323,7 @@ class DiligentBackend final : public Backend {
 
             if (srb_) {
                 if (auto* texVar = srb_->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_tex")) {
-                    texVar->Set(mesh.srv);
+                    texVar->Set(mesh.srv, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
                 }
             }
             context_->CommitShaderResources(srb_, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

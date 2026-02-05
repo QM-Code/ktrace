@@ -116,6 +116,96 @@ bool isMouseEvent(const platform::Event& event, platform::MouseButton button,
     return event.type == type && event.mouse_button == button;
 }
 
+std::string keyToName(platform::Key key) {
+    const int key_value = static_cast<int>(key);
+    const int a_value = static_cast<int>(platform::Key::A);
+    const int z_value = static_cast<int>(platform::Key::Z);
+    if (key_value >= a_value && key_value <= z_value) {
+        char ch = static_cast<char>('a' + (key_value - a_value));
+        return std::string(1, ch);
+    }
+    const int n0_value = static_cast<int>(platform::Key::Num0);
+    const int n9_value = static_cast<int>(platform::Key::Num9);
+    if (key_value >= n0_value && key_value <= n9_value) {
+        char ch = static_cast<char>('0' + (key_value - n0_value));
+        return std::string(1, ch);
+    }
+    const int f1_value = static_cast<int>(platform::Key::F1);
+    const int f12_value = static_cast<int>(platform::Key::F12);
+    if (key_value >= f1_value && key_value <= f12_value) {
+        return std::string("f") + std::to_string(1 + (key_value - f1_value));
+    }
+    switch (key) {
+        case platform::Key::Left: return "left";
+        case platform::Key::Right: return "right";
+        case platform::Key::Up: return "up";
+        case platform::Key::Down: return "down";
+        case platform::Key::Minus: return "minus";
+        case platform::Key::Equals: return "equals";
+        case platform::Key::LeftBracket: return "left_bracket";
+        case platform::Key::RightBracket: return "right_bracket";
+        case platform::Key::Backslash: return "backslash";
+        case platform::Key::Semicolon: return "semicolon";
+        case platform::Key::Apostrophe: return "apostrophe";
+        case platform::Key::Comma: return "comma";
+        case platform::Key::Slash: return "slash";
+        case platform::Key::Grave: return "grave";
+        case platform::Key::LeftShift: return "left_shift";
+        case platform::Key::RightShift: return "right_shift";
+        case platform::Key::LeftControl: return "left_ctrl";
+        case platform::Key::RightControl: return "right_ctrl";
+        case platform::Key::LeftAlt: return "left_alt";
+        case platform::Key::RightAlt: return "right_alt";
+        case platform::Key::LeftSuper: return "left_super";
+        case platform::Key::RightSuper: return "right_super";
+        case platform::Key::Menu: return "menu";
+        case platform::Key::Home: return "home";
+        case platform::Key::End: return "end";
+        case platform::Key::PageUp: return "page_up";
+        case platform::Key::PageDown: return "page_down";
+        case platform::Key::Insert: return "insert";
+        case platform::Key::Delete: return "delete";
+        case platform::Key::CapsLock: return "caps_lock";
+        case platform::Key::NumLock: return "num_lock";
+        case platform::Key::ScrollLock: return "scroll_lock";
+        case platform::Key::Enter: return "enter";
+        case platform::Key::Space: return "space";
+        case platform::Key::Tab: return "tab";
+        case platform::Key::Period: return "period";
+        case platform::Key::Backspace: return "backspace";
+        case platform::Key::Escape: return "escape";
+        default: break;
+    }
+    return "key_" + std::to_string(key_value);
+}
+
+std::string mouseToName(platform::MouseButton button) {
+    switch (button) {
+        case platform::MouseButton::Left: return "left_mouse";
+        case platform::MouseButton::Right: return "right_mouse";
+        case platform::MouseButton::Middle: return "middle_mouse";
+        case platform::MouseButton::Button4: return "mouse4";
+        case platform::MouseButton::Button5: return "mouse5";
+        case platform::MouseButton::Button6: return "mouse6";
+        case platform::MouseButton::Button7: return "mouse7";
+        case platform::MouseButton::Button8: return "mouse8";
+        default: break;
+    }
+    return "mouse_unknown";
+}
+
+std::string modsToString(const platform::Modifiers& mods) {
+    std::string out;
+    if (mods.shift) out += "shift+";
+    if (mods.ctrl) out += "ctrl+";
+    if (mods.alt) out += "alt+";
+    if (mods.super) out += "super+";
+    if (!out.empty()) {
+        out.pop_back();
+    }
+    return out;
+}
+
 } // namespace
 
 void InputSystem::bindKey(const std::string& action, platform::Key key, Trigger trigger) {
@@ -224,6 +314,25 @@ void InputContext::setWindow(const platform::Window* window) {
 }
 
 void InputContext::update(const std::vector<platform::Event>& events) {
+    for (const auto& event : events) {
+        if (event.type == platform::EventType::KeyDown) {
+            const int key_code = static_cast<int>(event.key);
+            if (logged_keys_down_.insert(key_code).second) {
+                KARMA_TRACE("input.events", "KeyDown {} mods={}", keyToName(event.key),
+                            modsToString(event.mods));
+            }
+        } else if (event.type == platform::EventType::KeyUp) {
+            logged_keys_down_.erase(static_cast<int>(event.key));
+        } else if (event.type == platform::EventType::MouseButtonDown) {
+            const int button_code = static_cast<int>(event.mouse_button);
+            if (logged_mouse_down_.insert(button_code).second) {
+                KARMA_TRACE("input.events", "MouseDown {} mods={}", mouseToName(event.mouse_button),
+                            modsToString(event.mods));
+            }
+        } else if (event.type == platform::EventType::MouseButtonUp) {
+            logged_mouse_down_.erase(static_cast<int>(event.mouse_button));
+        }
+    }
     global_.update(events);
     game_.update(events);
     roaming_.update(events);
@@ -233,6 +342,8 @@ void InputContext::clear() {
     global_.clear();
     game_.clear();
     roaming_.clear();
+    logged_keys_down_.clear();
+    logged_mouse_down_.clear();
 }
 
 const InputSystem& InputContext::activeSystem() const {
