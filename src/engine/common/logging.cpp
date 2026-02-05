@@ -100,6 +100,7 @@ const char* TraceCategoryColor(const std::string& category) {
         {"console", ansi_colors.at("bright_yellow")},
         {"config", ansi_colors.at("bright_cyan")},
         {"net", ansi_colors.at("bright_green")},
+        {"ecs", ansi_colors.at("bright_green")},
         {"engine", ansi_colors.at("bright_blue")},
         {"platform", ansi_colors.at("cyan")},
         {"input", ansi_colors.at("bright_black")}
@@ -189,6 +190,7 @@ const char* GetDefaultTraceChannelsHelp() {
            "    audio\n"
            "    config\n"
            "    world\n"
+           "    ecs.world\n"
            "    physics.jolt\n"
            "    render\n"
            "    render.frame\n"

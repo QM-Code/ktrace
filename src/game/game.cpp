@@ -3,10 +3,12 @@
 #include "geometry/mesh_loader.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/logging.hpp"
+#include "karma/ecs/world.hpp"
 #include "karma/input/input_system.hpp"
 #include "karma/renderer/device.hpp"
 #include "karma/renderer/layers.hpp"
 #include "karma/renderer/render_system.hpp"
+#include "karma/scene/components.hpp"
 
 #include <stdexcept>
 
@@ -16,7 +18,7 @@ namespace bz3 {
 Game::Game(std::string model_key) : model_key_(std::move(model_key)) {}
 
 void Game::onStart() {
-    if (!graphics || !render || !scene) {
+    if (!graphics || !render || !world) {
         return;
     }
 
@@ -46,11 +48,19 @@ void Game::onStart() {
             spdlog::error("Failed to create mesh for model {}", model_path.string());
             continue;
         }
-        const auto entity = scene->createEntity();
-        scene->setMesh(entity, mesh_id);
-        scene->setMaterial(entity, model_material_);
-        scene->setLayer(entity, karma::renderer::kLayerWorld);
-        scene->setTransform(entity, entry.transform);
+        const auto entity = world->createEntity();
+
+        karma::scene::TransformComponent transform{};
+        transform.local = entry.transform;
+        transform.world = entry.transform;
+        world->add(entity, transform);
+
+        karma::scene::RenderComponent render_component{};
+        render_component.mesh = mesh_id;
+        render_component.material = model_material_;
+        render_component.layer = karma::renderer::kLayerWorld;
+        world->add(entity, render_component);
+
         model_meshes_.push_back(mesh_id);
         model_entities_.push_back(entity);
     }
@@ -61,6 +71,10 @@ void Game::onStart() {
 
     KARMA_TRACE("render.frame", "Game started; model meshes={}, material={}",
                 model_meshes_.size(), model_material_);
+    KARMA_TRACE("ecs.world",
+                "Game: spawned entities={} world_entities={}",
+                model_entities_.size(),
+                world ? world->entities().size() : 0);
 }
 
 void Game::onUpdate(float dt) {
@@ -74,10 +88,11 @@ void Game::onShutdown() {
     if (!graphics) {
         return;
     }
-    if (scene) {
+    if (world) {
         for (const auto entity : model_entities_) {
-            scene->destroyEntity(entity);
+            world->destroyEntity(entity);
         }
+        KARMA_TRACE("ecs.world", "Game: destroyed entities, world_entities={}", world->entities().size());
     }
     for (const auto mesh_id : model_meshes_) {
         if (mesh_id != karma::renderer::kInvalidMesh) {

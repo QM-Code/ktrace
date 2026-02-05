@@ -1,7 +1,9 @@
 #include "karma/renderer/render_system.hpp"
 
 #include "karma/common/logging.hpp"
-#include "karma/scene/scene.hpp"
+#include "karma/ecs/world.hpp"
+#include "karma/scene/components.hpp"
+#include <string>
 
 namespace karma::renderer {
 
@@ -38,29 +40,40 @@ void RenderSystem::setDirectionalLight(const DirectionalLightData& light) {
                 light_.unlit);
 }
 
-void RenderSystem::setScene(karma::scene::Scene* scene) {
-    scene_ = scene;
+void RenderSystem::setWorld(karma::ecs::World* world) {
+    world_ = world;
 }
 
 void RenderSystem::renderFrame() {
     graphics_.setCamera(camera_);
     graphics_.setDirectionalLight(light_);
 
-    if (scene_) {
-        for (const auto& entity : scene_->entities()) {
-            if (!entity.alive) {
+    if (world_) {
+        ecs::World& world = *world_;
+        const std::vector<scene::EntityId> entities =
+            world.view<scene::TransformComponent, scene::RenderComponent>();
+        size_t drawable_count = 0;
+        for (const scene::EntityId entity : entities) {
+            const scene::TransformComponent& transform = world.get<scene::TransformComponent>(entity);
+            const scene::RenderComponent& render = world.get<scene::RenderComponent>(entity);
+            if (!render.visible ||
+                render.mesh == kInvalidMesh ||
+                render.material == kInvalidMaterial) {
                 continue;
             }
-            if (entity.mesh == kInvalidMesh || entity.material == kInvalidMaterial) {
-                continue;
-            }
+            ++drawable_count;
             DrawItem item{};
-            item.mesh = entity.mesh;
-            item.material = entity.material;
-            item.transform = entity.transform;
-            item.layer = entity.layer;
+            item.mesh = render.mesh;
+            item.material = render.material;
+            item.transform = transform.world;
+            item.layer = render.layer;
             queues_[item.layer].push_back(item);
         }
+        KARMA_TRACE_CHANGED("ecs.world",
+                            std::to_string(entities.size()) + ":" + std::to_string(drawable_count),
+                            "RenderSystem: ecs view entities={} drawable={}",
+                            entities.size(),
+                            drawable_count);
     }
 
     for (auto& [layer, items] : queues_) {

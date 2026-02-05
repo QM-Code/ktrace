@@ -4,9 +4,7 @@
 
 #include <map>
 
-namespace karma::scene {
-class Scene;
-}
+namespace karma::ecs { class World; }
 
 namespace karma::renderer {
 
@@ -18,7 +16,7 @@ class RenderSystem {
     void submit(const DrawItem& item);
     void setCamera(const CameraData& camera);
     void setDirectionalLight(const DirectionalLightData& light);
-    void setScene(karma::scene::Scene* scene);
+    void setWorld(karma::ecs::World* world);
     void renderFrame();
     void endFrame();
 
@@ -27,7 +25,7 @@ class RenderSystem {
     std::map<LayerId, std::vector<DrawItem>> queues_;
     CameraData camera_{};
     DirectionalLightData light_{};
-    karma::scene::Scene* scene_ = nullptr;
+    karma::ecs::World* world_ = nullptr;
 };
 
 } // namespace karma::renderer

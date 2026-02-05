@@ -1,11 +1,14 @@
 #include "karma/app/engine_app.hpp"
 
 #include <chrono>
+#include <string>
 
 #include "karma/common/logging.hpp"
 #include "karma/renderer/render_system.hpp"
 
 namespace karma::app {
+
+EngineApp::EngineApp() : scene_(world_) {}
 
 EngineApp::~EngineApp() {
     if (game_ && running_) {
@@ -39,7 +42,7 @@ void EngineApp::initSubsystems() {
         render_system_ = std::make_unique<renderer::RenderSystem>(*graphics_);
         render_system_->setCamera(config_.default_camera);
         render_system_->setDirectionalLight(config_.default_light);
-        render_system_->setScene(&scene_);
+        render_system_->setWorld(&world_);
         roaming_camera_.loadFromConfig();
         roaming_camera_.initialize(*render_system_);
     }
@@ -62,8 +65,9 @@ void EngineApp::start(GameInterface& game, const EngineConfig& config) {
         return;
     }
     game_ = &game;
-    game_->bind(*window_, *graphics_, *render_system_, scene_, input_system_);
+    game_->bind(*window_, *graphics_, *render_system_, world_, scene_, input_system_);
     game_->onStart();
+    KARMA_TRACE("ecs.world", "EngineApp: world ready entities={}", world_.entities().size());
     running_ = true;
 }
 
@@ -87,6 +91,10 @@ void EngineApp::tick() {
     }
 
     input_system_.update(window_->events());
+    KARMA_TRACE_CHANGED("ecs.world",
+                        std::to_string(world_.entities().size()),
+                        "EngineApp: world entities={}",
+                        world_.entities().size());
 
     game_->onUpdate(dt);
 
@@ -96,6 +104,7 @@ void EngineApp::tick() {
     if (render_system_) {
         roaming_camera_.setActive(input_system_.mode() == input::InputMode::Roaming);
         roaming_camera_.update(dt, input_system_, *render_system_);
+        scene_.updateWorldTransforms();
         render_system_->beginFrame(fb_w, fb_h, dt);
         render_system_->renderFrame();
         render_system_->endFrame();

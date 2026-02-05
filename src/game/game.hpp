@@ -1,8 +1,8 @@
 #pragma once
 
 #include "karma/app/game_interface.hpp"
+#include "karma/ecs/entity.hpp"
 #include "karma/renderer/types.hpp"
-#include "karma/scene/scene.hpp"
 
 #include <string>
 #include <vector>
@@ -17,7 +17,7 @@ class Game final : public karma::app::GameInterface {
     void onShutdown() override;
 
  private:
-    std::vector<karma::scene::EntityId> model_entities_{};
+    std::vector<karma::ecs::Entity> model_entities_{};
     std::string model_key_;
     std::vector<karma::renderer::MeshId> model_meshes_{};
     karma::renderer::MaterialId model_material_ = karma::renderer::kInvalidMaterial;
