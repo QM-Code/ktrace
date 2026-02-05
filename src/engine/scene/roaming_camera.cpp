@@ -34,6 +34,7 @@ void RoamingCameraController::loadFromConfig() {
     config_.look_smoothing = config::ReadRequiredFloatConfig("game.roamingCamera.LookSmoothing");
     config_.invert_y = config::ReadRequiredBoolConfig("game.roamingCamera.InvertY");
     config_.start_yaw_offset_deg = config::ReadRequiredFloatConfig("game.roamingCamera.StartYawOffsetDeg");
+    config_.start_pitch_offset_deg = config::ReadRequiredFloatConfig("game.roamingCamera.StartPitchOffsetDeg");
     config_.start_position = ReadVec3Config("game.roamingCamera.StartPosition");
     config_.start_target = ReadVec3Config("game.roamingCamera.StartTarget");
 
@@ -55,6 +56,7 @@ void RoamingCameraController::initialize(renderer::RenderSystem& render) {
     yaw_ = std::atan2(dir.x, -dir.z);
     pitch_ = std::asin(glm::clamp(dir.y, -1.0f, 1.0f));
     yaw_ += glm::radians(config_.start_yaw_offset_deg);
+    pitch_ += glm::radians(config_.start_pitch_offset_deg);
     target_yaw_ = yaw_;
     target_pitch_ = pitch_;
 
@@ -77,7 +79,7 @@ void RoamingCameraController::update(float dt,
     const glm::vec3 up(0.0f, 1.0f, 0.0f);
     glm::vec3 forward(std::sin(yaw_) * std::cos(pitch_),
                       std::sin(pitch_),
-                      std::cos(yaw_) * std::cos(pitch_));
+                      -std::cos(yaw_) * std::cos(pitch_));
     if (glm::length(forward) < 0.0001f) {
         forward = glm::vec3(0.0f, 0.0f, -1.0f);
     } else {
@@ -114,7 +116,7 @@ void RoamingCameraController::update(float dt,
 
     glm::vec3 look_dir(std::sin(yaw_) * std::cos(pitch_),
                        std::sin(pitch_),
-                       std::cos(yaw_) * std::cos(pitch_));
+                       -std::cos(yaw_) * std::cos(pitch_));
     camera_.target = camera_.position + look_dir;
     render.setCamera(camera_);
 
@@ -129,10 +131,11 @@ void RoamingCameraController::update(float dt,
                     camera_.target.x, camera_.target.y, camera_.target.z,
                     yaw_deg, pitch_deg);
         KARMA_TRACE("render.camera",
-                    "Config snippet: game.roamingCamera.StartPosition=[{:.3f}, {:.3f}, {:.3f}] "
-                    "StartTarget=[{:.3f}, {:.3f}, {:.3f}] StartYawOffsetDeg=0.0",
-                    camera_.position.x, camera_.position.y, camera_.position.z,
-                    camera_.target.x, camera_.target.y, camera_.target.z);
+                    "Config: StartPosition=[{:.3f}, {:.3f}, {:.3f}] StartTarget=[{:.3f}, {:.3f}, {:.3f}] "
+                    "StartYawOffsetDeg={:.3f} StartPitchOffsetDeg={:.3f}",
+                    config_.start_position.x, config_.start_position.y, config_.start_position.z,
+                    config_.start_target.x, config_.start_target.y, config_.start_target.z,
+                    config_.start_yaw_offset_deg, config_.start_pitch_offset_deg);
     }
     camera_stats_down_ = camera_stats;
 }

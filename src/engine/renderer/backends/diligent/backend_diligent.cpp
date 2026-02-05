@@ -442,6 +442,8 @@ float4 main(PSInput input) : SV_TARGET {
         pso_ci.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         pso_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = true;
         pso_ci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_BACK;
+        // Vulkan projection flips Y; keep front-face consistent by treating CW as front.
+        pso_ci.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise = false;
 
         Diligent::LayoutElement layout[] = {
             {0, 0, 3, Diligent::VT_FLOAT32, false},

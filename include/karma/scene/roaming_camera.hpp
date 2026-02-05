@@ -28,6 +28,7 @@ class RoamingCameraController {
         float look_smoothing = 20.0f;
         bool invert_y = false;
         float start_yaw_offset_deg = 0.0f;
+        float start_pitch_offset_deg = 0.0f;
         glm::vec3 start_position{0.0f, 6.0f, 12.0f};
         glm::vec3 start_target{0.0f, 1.0f, 0.0f};
     } config_{};

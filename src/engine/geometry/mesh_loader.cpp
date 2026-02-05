@@ -6,11 +6,14 @@
 #include <stb_image.h>
 
 #include <cstdlib>
+#include <cfloat>
+#include <algorithm>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 namespace karma::geometry {
 
@@ -35,15 +38,6 @@ std::optional<renderer::MeshData::TextureData> loadTextureFromFile(const std::fi
     stbi_image_free(data);
     KARMA_TRACE("render.mesh", "MeshLoader: loaded texture '{}' {}x{}", path.string(), width, height);
     return tex;
-}
-
-glm::mat4 toGlm(const aiMatrix4x4& m) {
-    glm::mat4 out(1.0f);
-    out[0][0] = m.a1; out[1][0] = m.a2; out[2][0] = m.a3; out[3][0] = m.a4;
-    out[0][1] = m.b1; out[1][1] = m.b2; out[2][1] = m.b3; out[3][1] = m.b4;
-    out[0][2] = m.c1; out[1][2] = m.c2; out[2][2] = m.c3; out[3][2] = m.c4;
-    out[0][3] = m.d1; out[1][3] = m.d2; out[2][3] = m.d3; out[3][3] = m.d4;
-    return out;
 }
 
 std::optional<renderer::MeshData::TextureData> loadTextureFromMemory(const unsigned char* bytes, size_t size, const char* label) {
@@ -71,7 +65,8 @@ std::optional<renderer::MeshData::TextureData> loadTextureFromMemory(const unsig
 bool loadMeshData(const aiScene* scene,
                   const aiMesh* mesh,
                   const std::filesystem::path& path,
-                  renderer::MeshData& out) {
+                  renderer::MeshData& out,
+                  const aiMatrix4x4& transform) {
     if (!scene || !mesh) {
         return false;
     }
@@ -86,12 +81,17 @@ bool loadMeshData(const aiScene* scene,
     out.normals.reserve(mesh->mNumVertices);
     out.uvs.reserve(mesh->mNumVertices);
 
-        for (unsigned int i = 0; i < mesh->mNumVertices; ++i) {
+    aiMatrix3x3 normal_matrix = aiMatrix3x3(transform);
+    normal_matrix = normal_matrix.Inverse().Transpose();
+    for (unsigned int i = 0; i < mesh->mNumVertices; ++i) {
         const aiVector3D& v = mesh->mVertices[i];
-        out.positions.emplace_back(v.x, v.y, v.z);
+        const aiVector3D pos = transform * v;
+        out.positions.emplace_back(pos.x, pos.y, pos.z);
         if (mesh->HasNormals()) {
             const aiVector3D& n = mesh->mNormals[i];
-            out.normals.emplace_back(n.x, n.y, n.z);
+            aiVector3D nn = normal_matrix * n;
+            nn.Normalize();
+            out.normals.emplace_back(nn.x, nn.y, nn.z);
         } else {
             out.normals.emplace_back(0.0f, 1.0f, 0.0f);
         }
@@ -103,14 +103,23 @@ bool loadMeshData(const aiScene* scene,
         }
     }
 
-    for (unsigned int i = 0; i < mesh->mNumFaces; ++i) {
+        const float det = transform.Determinant();
+    const bool flip_winding = det < 0.0f;
+
+for (unsigned int i = 0; i < mesh->mNumFaces; ++i) {
         const aiFace& face = mesh->mFaces[i];
         if (face.mNumIndices != 3) {
             continue;
         }
-        out.indices.push_back(face.mIndices[0]);
-        out.indices.push_back(face.mIndices[1]);
-        out.indices.push_back(face.mIndices[2]);
+        if (flip_winding) {
+            out.indices.push_back(face.mIndices[0]);
+            out.indices.push_back(face.mIndices[2]);
+            out.indices.push_back(face.mIndices[1]);
+        } else {
+            out.indices.push_back(face.mIndices[0]);
+            out.indices.push_back(face.mIndices[1]);
+            out.indices.push_back(face.mIndices[2]);
+        }
     }
 
     if (scene->mNumMaterials > 0 && mesh->mMaterialIndex < scene->mNumMaterials) {
@@ -146,12 +155,12 @@ bool loadMeshData(const aiScene* scene,
 void collectSceneMeshes(const aiScene* scene,
                         const aiNode* node,
                         const std::filesystem::path& path,
-                        const glm::mat4& parent_transform,
+                        const aiMatrix4x4& parent_transform,
                         std::vector<SceneMesh>& out) {
     if (!node) {
         return;
     }
-    const glm::mat4 node_transform = parent_transform * toGlm(node->mTransformation);
+    const aiMatrix4x4 node_transform = parent_transform * node->mTransformation;
 
     for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
         const unsigned int mesh_index = node->mMeshes[i];
@@ -160,8 +169,8 @@ void collectSceneMeshes(const aiScene* scene,
         }
         const aiMesh* mesh = scene->mMeshes[mesh_index];
         SceneMesh entry{};
-        entry.transform = node_transform;
-        if (loadMeshData(scene, mesh, path, entry.mesh)) {
+        entry.transform = glm::mat4(1.0f);
+        if (loadMeshData(scene, mesh, path, entry.mesh, node_transform)) {
             out.push_back(std::move(entry));
         }
     }
@@ -190,7 +199,7 @@ bool LoadMesh(const std::filesystem::path& path, renderer::MeshData& out) {
         spdlog::error("MeshLoader: '{}' contains no mesh data", path.string());
         return false;
     }
-    if (!loadMeshData(scene, mesh, path, out)) {
+    if (!loadMeshData(scene, mesh, path, out, aiMatrix4x4())) {
         spdlog::error("MeshLoader: '{}' failed to decode mesh data", path.string());
         return false;
     }
@@ -214,9 +223,26 @@ bool LoadScene(const std::filesystem::path& path, std::vector<SceneMesh>& out) {
     }
 
     out.clear();
-    collectSceneMeshes(scene, scene->mRootNode, path, glm::mat4(1.0f), out);
+    collectSceneMeshes(scene, scene->mRootNode, path, aiMatrix4x4(), out);
 
     KARMA_TRACE("render.mesh", "MeshLoader: scene '{}' meshes={}", path.string(), out.size());
+    // Compute simple scene bounds for debugging orientation.
+    if (!out.empty()) {
+        glm::vec3 minv(FLT_MAX);
+        glm::vec3 maxv(-FLT_MAX);
+        for (const auto& entry : out) {
+            for (const auto& p : entry.mesh.positions) {
+                minv.x = std::min(minv.x, p.x);
+                minv.y = std::min(minv.y, p.y);
+                minv.z = std::min(minv.z, p.z);
+                maxv.x = std::max(maxv.x, p.x);
+                maxv.y = std::max(maxv.y, p.y);
+                maxv.z = std::max(maxv.z, p.z);
+            }
+        }
+        KARMA_TRACE("render.mesh", "MeshLoader: scene bounds min=({:.2f},{:.2f},{:.2f}) max=({:.2f},{:.2f},{:.2f})",
+                    minv.x, minv.y, minv.z, maxv.x, maxv.y, maxv.z);
+    }
     return !out.empty();
 }
 

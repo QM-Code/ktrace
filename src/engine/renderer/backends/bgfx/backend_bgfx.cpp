@@ -350,7 +350,8 @@ class BgfxBackend final : public Backend {
             } else if (bgfx::isValid(white_tex_)) {
                 bgfx::setTexture(0, s_tex_, white_tex_);
             }
-            bgfx::setState(BGFX_STATE_DEFAULT | BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z);
+            const uint64_t cull_ccw = (BGFX_STATE_DEFAULT & ~BGFX_STATE_CULL_MASK) | BGFX_STATE_CULL_CCW;
+            bgfx::setState(cull_ccw | BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z);
             bgfx::submit(0, program_);
         }
 

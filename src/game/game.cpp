@@ -10,8 +10,6 @@
 
 #include <stdexcept>
 
-#include <glm/gtc/matrix_transform.hpp>
-
 
 namespace bz3 {
 
@@ -37,7 +35,6 @@ void Game::onStart() {
     material.base_color = {0.8f, 0.8f, 0.8f, 1.0f};
     model_material_ = graphics->createMaterial(material);
 
-    const glm::mat4 flip = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, -1.0f, 1.0f));
     model_entities_.clear();
     model_meshes_.clear();
     model_entities_.reserve(scene_meshes.size());
@@ -53,7 +50,7 @@ void Game::onStart() {
         scene->setMesh(entity, mesh_id);
         scene->setMaterial(entity, model_material_);
         scene->setLayer(entity, karma::renderer::kLayerWorld);
-        scene->setTransform(entity, entry.transform * flip);
+        scene->setTransform(entity, entry.transform);
         model_meshes_.push_back(mesh_id);
         model_entities_.push_back(entity);
     }
