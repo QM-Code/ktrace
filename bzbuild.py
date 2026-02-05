@@ -57,13 +57,13 @@ network = ""
 build_dir = ""
 
 if not args:
-    window = prompt_choice("Platform (sdl3/sdl2)", "sdl3", ["sdl3", "sdl2"])
-    ui = prompt_choice("UI (rmlui/imgui)", "rmlui", ["rmlui", "imgui"])
-    physics = prompt_choice("Physics (jolt/physx)", "jolt", ["jolt", "physx"])
-    audio = prompt_choice("Audio (miniaudio/sdlaudio)", "sdlaudio", ["miniaudio", "sdlaudio"])
+    window = prompt_choice("Platform (sdl3)", "sdl3", ["sdl3"])
+    # ui = prompt_choice("UI (rmlui/imgui)", "rmlui", ["rmlui", "imgui"])
+    # physics = prompt_choice("Physics (jolt/physx)", "jolt", ["jolt", "physx"])
+    # audio = prompt_choice("Audio (miniaudio/sdlaudio)", "sdlaudio", ["miniaudio", "sdlaudio"])
     render = prompt_choice("Renderer (diligent/bgfx)", "bgfx", ["diligent", "bgfx"])
-    network = prompt_choice("Network (enet)", "enet", ["enet"])
-    build_dir = f"build-{window}-{ui}-{physics}-{audio}-{render}-{network}"
+    # network = prompt_choice("Network (enet)", "enet", ["enet"])
+    build_dir = f"build-{window}-{render}"
 else:
     build_dir = args[0]
     if not build_dir.startswith("build-"):
@@ -74,35 +74,48 @@ else:
     parts = name.split("-") if name else []
 
     for part in parts:
-        if part in ("sdl3", "sdl2"):
+        if part in ("sdl3",):
             if not window:
                 window = part
-        elif part in ("imgui", "rmlui"):
-            ui = part
-        elif part in ("jolt", "physx"):
-            physics = part
-        elif part in ("miniaudio", "sdlaudio"):
-            audio = part
+        # elif part in ("imgui", "rmlui"):
+        #     ui = part
+        # elif part in ("jolt", "physx"):
+        #     physics = part
+        # elif part in ("miniaudio", "sdlaudio"):
+        #     audio = part
         elif part in ("diligent", "bgfx"):
             render = part
-        elif part == "enet":
-            network = part
+        # elif part == "enet":
+        #     network = part
         elif part == "fs":
             print("Error: build dir must not include the deprecated world backend token 'fs'.", file=sys.stderr)
             usage()
 
-    if not (window and ui and physics and audio and render and network):
-        print("Error: build dir must include window, ui, physics, audio, renderer, and network tokens.", file=sys.stderr)
+    if not (window and render):
+        print("Error: build dir must include window and renderer tokens.", file=sys.stderr)
         usage()
 
 cmake_args = [
     f"-DKARMA_WINDOW_BACKEND={window}",
-    f"-DKARMA_UI_BACKEND={ui}",
-    f"-DKARMA_PHYSICS_BACKEND={physics}",
-    f"-DKARMA_AUDIO_BACKEND={audio}",
     f"-DKARMA_RENDER_BACKEND={render}",
-    f"-DKARMA_NETWORK_BACKEND={network}",
+    # f"-DKARMA_UI_BACKEND={ui}",
+    # f"-DKARMA_PHYSICS_BACKEND={physics}",
+    # f"-DKARMA_AUDIO_BACKEND={audio}",
+    # f"-DKARMA_NETWORK_BACKEND={network}",
 ]
+
+env = os.environ.copy()
+vcpkg_root = env.get("VCPKG_ROOT")
+if not vcpkg_root:
+    candidate = os.path.join(os.path.dirname(__file__), "..", "m-dev", "vcpkg")
+    if os.path.isdir(candidate):
+        vcpkg_root = os.path.abspath(candidate)
+        env["VCPKG_ROOT"] = vcpkg_root
+
+if vcpkg_root:
+    toolchain = os.path.join(vcpkg_root, "scripts", "buildsystems", "vcpkg.cmake")
+    if os.path.isfile(toolchain):
+        cmake_args.append(f"-DCMAKE_TOOLCHAIN_FILE={toolchain}")
 
 if not os.path.isdir(build_dir):
     os.makedirs(build_dir, exist_ok=True)
@@ -120,18 +133,17 @@ else:
         run_configure = True
 
 if run_configure:
-    run(["cmake", "-S", ".", "-B", build_dir, *cmake_args])
+    run(["cmake", "-S", ".", "-B", build_dir, *cmake_args], env=env)
 
-if render in ("bgfx",):
-    scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
+# if render in ("bgfx",):
+#     scripts_dir = os.path.join(os.path.dirname(__file__), "scripts")
+#     if render == "bgfx":
+#         script_path = os.path.join(scripts_dir, "build_bgfx_shaders.sh")
+#         if os.path.isfile(script_path):
+#             env = os.environ.copy()
+#             env.setdefault("KARMA_BUILD_DIR", os.path.abspath(build_dir))
+#             run([script_path], env=env)
+#         else:
+#             print(f"Warning: bgfx shader build script not found at {script_path}", file=sys.stderr)
 
-    if render == "bgfx":
-        script_path = os.path.join(scripts_dir, "build_bgfx_shaders.sh")
-        if os.path.isfile(script_path):
-            env = os.environ.copy()
-            env.setdefault("KARMA_BUILD_DIR", os.path.abspath(build_dir))
-            run([script_path], env=env)
-        else:
-            print(f"Warning: bgfx shader build script not found at {script_path}", file=sys.stderr)
-
-run(["cmake", "--build", build_dir, "-j4"])
+run(["cmake", "--build", build_dir, "-j4"], env=env)

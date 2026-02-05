@@ -321,7 +321,8 @@ std::optional<karma::json::Value> LoadJsonFile(const std::filesystem::path &path
                                            const std::string &label,
                                            spdlog::level::level_enum missingLevel) {
     if (!std::filesystem::exists(path)) {
-        spdlog::log(missingLevel, "data_path_resolver: {} not found: {}", label, path.string());
+        (void)missingLevel;
+        spdlog::error("data_path_resolver: {} not found: {}", label, path.string());
         return std::nullopt;
     }
 
@@ -350,9 +351,7 @@ std::vector<ConfigLayer> LoadConfigLayers(const std::vector<ConfigLayerSpec> &sp
         const std::string label = spec.label.empty() ? spec.relativePath.string() : spec.label;
         auto jsonOpt = LoadJsonFile(absolutePath, label, spec.missingLevel);
         if (!jsonOpt) {
-            if (spec.required) {
-                spdlog::error("data_path_resolver: Required config missing: {}", absolutePath.string());
-            }
+            spdlog::error("data_path_resolver: Config missing: {}", absolutePath.string());
             continue;
         }
 

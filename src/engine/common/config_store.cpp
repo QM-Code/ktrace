@@ -294,16 +294,7 @@ namespace karma::config {
 void ConfigStore::Initialize(const std::vector<ConfigFileSpec> &defaultSpecs,
                              const std::filesystem::path &userConfigPath,
                              const std::vector<ConfigFileSpec> &runtimeSpecs) {
-    std::vector<ConfigFileSpec> combinedDefaults;
-    combinedDefaults.reserve(defaultSpecs.size() + 1);
-    combinedDefaults.push_back({
-        std::filesystem::path("src/engine/data/config.json"),
-        "engine config",
-        spdlog::level::debug,
-        false,
-        false
-    });
-    combinedDefaults.insert(combinedDefaults.end(), defaultSpecs.begin(), defaultSpecs.end());
+    std::vector<ConfigFileSpec> combinedDefaults = defaultSpecs;
 
     std::vector<ConfigLayer> defaults = loadLayers(combinedDefaults);
     std::vector<ConfigLayer> runtime = loadLayers(runtimeSpecs);

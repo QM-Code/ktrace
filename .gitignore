@@ -1,13 +1,17 @@
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
-vcpkg_installed/
-build/
-build-*/
-_deps/
-vcpkg/
-third_party/
-libs/
-__pycache__/
-*.pyc
+# Build outputs
+/build-*/
+/build/
+/**/CMakeFiles/
+/**/CMakeCache.txt
+/**/cmake_install.cmake
+/**/Makefile
+
+# Dependency artifacts
+/**/_deps/
+/vcpkg_installed/
+
+# Generated shaders
+/data/bgfx/shaders/bin/
+
+# IDE
+/.vscode/
