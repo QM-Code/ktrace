@@ -22,8 +22,10 @@ class Backend {
 
     virtual void submit(const renderer::DrawItem& item) = 0;
     virtual void renderFrame() = 0;
+    virtual void renderLayer(renderer::LayerId layer) = 0;
 
     virtual void setCamera(const renderer::CameraData& camera) = 0;
+    virtual void setDirectionalLight(const renderer::DirectionalLightData& light) = 0;
     virtual bool isValid() const = 0;
 };
 

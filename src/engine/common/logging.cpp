@@ -77,7 +77,9 @@ const char* TraceCategoryColor(const std::string& category) {
         {"render", "\x1b[91m"},
         {"console", "\x1b[93m"},
         {"config", "\x1b[96m"},
-        {"net", "\x1b[92m"}
+        {"net", "\x1b[92m"},
+        {"engine", "\x1b[94m"},
+        {"platform", "\x1b[96m"}
     };
     auto it = colors.find(top);
     return it == colors.end() ? "" : it->second;
@@ -167,13 +169,14 @@ const char* GetDefaultTraceChannelsHelp() {
            "    physics.jolt\n"
            "    render\n"
            "    render.frame\n"
+           "    render.system\n"
            "    render.bgfx\n"
            "    render.bgfx.internal\n"
            "    render.bgfx.ui\n"
            "    render.mesh\n"
            "    render.diligent\n"
            "    render.diligent.radar\n"
-           "    render.diligent.vulkan\n"
+           "    render.diligent.internal\n"
            "    render.diligent.ui\n"
            "    game.client\n"
            "    game.radar\n"

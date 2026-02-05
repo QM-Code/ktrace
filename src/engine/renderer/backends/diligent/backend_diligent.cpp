@@ -44,8 +44,12 @@ struct Material {
 };
 
 struct Constants {
-    glm::mat4 mvp;
-    glm::vec4 color;
+    glm::mat4 u_modelViewProj;
+    glm::vec4 u_color;
+    glm::vec4 u_lightDir;
+    glm::vec4 u_lightColor;
+    glm::vec4 u_ambientColor;
+    glm::vec4 u_unlit;
 };
 
 void DILIGENT_CALL_TYPE DiligentMessageCallback(Diligent::DEBUG_MESSAGE_SEVERITY severity,
@@ -58,7 +62,7 @@ void DILIGENT_CALL_TYPE DiligentMessageCallback(Diligent::DEBUG_MESSAGE_SEVERITY
     }
     switch (severity) {
         case Diligent::DEBUG_MESSAGE_SEVERITY_INFO:
-            KARMA_TRACE("render.diligent.vulkan", "{}", message);
+            KARMA_TRACE("render.diligent.internal", "{}", message);
             break;
         case Diligent::DEBUG_MESSAGE_SEVERITY_WARNING:
             spdlog::warn("Diligent: {}", message);
@@ -70,7 +74,7 @@ void DILIGENT_CALL_TYPE DiligentMessageCallback(Diligent::DEBUG_MESSAGE_SEVERITY
             spdlog::critical("Diligent: {}", message);
             break;
         default:
-            KARMA_TRACE("render.diligent.vulkan", "{}", message);
+            KARMA_TRACE("render.diligent.internal", "{}", message);
             break;
     }
 }
@@ -149,12 +153,23 @@ class DiligentBackend final : public Backend {
         }
 
         createPipeline();
+        white_srv_ = createWhiteTexture();
+        if (!pso_ || !swapchain_) {
+            return;
+        }
+        initialized_ = true;
     }
 
     ~DiligentBackend() override = default;
 
     void beginFrame(int width, int height, float dt) override {
         (void)dt;
+        if (!initialized_) {
+            return;
+        }
+        if (width == width_ && height == height_) {
+            return;
+        }
         width_ = width;
         height_ = height;
         if (swapchain_) {
@@ -163,12 +178,18 @@ class DiligentBackend final : public Backend {
     }
 
     void endFrame() override {
+        if (!initialized_) {
+            return;
+        }
         if (swapchain_) {
             swapchain_->Present();
         }
     }
 
     renderer::MeshId createMesh(const renderer::MeshData& mesh) override {
+        if (!initialized_) {
+            return renderer::kInvalidMesh;
+        }
         Mesh out;
 
         Diligent::BufferDesc vb_desc{};
@@ -231,6 +252,9 @@ class DiligentBackend final : public Backend {
     }
 
     renderer::MaterialId createMaterial(const renderer::MaterialDesc& material) override {
+        if (!initialized_) {
+            return renderer::kInvalidMaterial;
+        }
         Material out;
         out.color = material.base_color;
         renderer::MaterialId id = next_material_id_++;
@@ -243,11 +267,18 @@ class DiligentBackend final : public Backend {
     }
 
     void submit(const renderer::DrawItem& item) override {
+        if (!initialized_) {
+            return;
+        }
         draw_items_.push_back(item);
     }
 
     void renderFrame() override {
-        if (!context_ || !swapchain_ || !pso_) {
+        renderLayer(0);
+    }
+
+    void renderLayer(renderer::LayerId layer) override {
+        if (!initialized_ || !context_ || !swapchain_ || !pso_) {
             return;
         }
 
@@ -263,6 +294,9 @@ class DiligentBackend final : public Backend {
         context_->SetPipelineState(pso_);
 
         for (const auto& item : draw_items_) {
+            if (item.layer != layer) {
+                continue;
+            }
             auto mesh_it = meshes_.find(item.mesh);
             auto mat_it = materials_.find(item.material);
             if (mesh_it == meshes_.end() || mat_it == materials_.end()) {
@@ -277,14 +311,18 @@ class DiligentBackend final : public Backend {
             glm::mat4 proj = glm::perspective(glm::radians(camera_.fov_y_degrees), aspect, camera_.near_clip, camera_.far_clip);
             proj[1][1] *= -1.0f; // Vulkan clip space
             Constants constants{};
-            constants.mvp = proj * view * item.transform;
-            constants.color = mat.color;
+            constants.u_modelViewProj = proj * view * item.transform;
+            constants.u_color = mat.color;
+            constants.u_lightDir = glm::vec4(light_.direction, 0.0f);
+            constants.u_lightColor = light_.color;
+            constants.u_ambientColor = light_.ambient;
+            constants.u_unlit = glm::vec4(light_.unlit, 0.0f, 0.0f, 0.0f);
 
             Diligent::MapHelper<Constants> cb_data(context_, constant_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
             *cb_data = constants;
 
             if (srb_) {
-                if (auto* texVar = srb_->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_Texture")) {
+                if (auto* texVar = srb_->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_tex")) {
                     texVar->Set(mesh.srv);
                 }
             }
@@ -302,6 +340,7 @@ class DiligentBackend final : public Backend {
             context_->DrawIndexed(draw);
         }
 
+        // TODO(bz3-rewrite): keep per-layer queues so multiple layers can render in a frame.
         draw_items_.clear();
     }
 
@@ -309,8 +348,12 @@ class DiligentBackend final : public Backend {
         camera_ = camera;
     }
 
+    void setDirectionalLight(const renderer::DirectionalLightData& light) override {
+        light_ = light;
+    }
+
     bool isValid() const override {
-        return device_ && context_ && swapchain_;
+        return initialized_ && device_ && context_ && swapchain_;
     }
 
  private:
@@ -331,12 +374,16 @@ struct PSInput {
     float2 UV  : TEXCOORD0;
 };
 cbuffer Constants {
-    float4x4 g_MVP;
-    float4 g_Color;
+    float4x4 u_modelViewProj;
+    float4 u_color;
+    float4 u_lightDir;
+    float4 u_lightColor;
+    float4 u_ambientColor;
+    float4 u_unlit;
 };
 PSInput main(VSInput input) {
     PSInput outp;
-    outp.Pos = mul(g_MVP, float4(input.Pos, 1.0));
+    outp.Pos = mul(u_modelViewProj, float4(input.Pos, 1.0));
     outp.Nor = input.Nor;
     outp.UV = input.UV;
     return outp;
@@ -350,17 +397,25 @@ struct PSInput {
     float2 UV  : TEXCOORD0;
 };
 cbuffer Constants {
-    float4x4 g_MVP;
-    float4 g_Color;
+    float4x4 u_modelViewProj;
+    float4 u_color;
+    float4 u_lightDir;
+    float4 u_lightColor;
+    float4 u_ambientColor;
+    float4 u_unlit;
 };
-Texture2D g_Texture;
-SamplerState g_Texture_sampler;
+Texture2D s_tex;
+SamplerState s_tex_sampler;
 float4 main(PSInput input) : SV_TARGET {
     float3 n = normalize(input.Nor);
-    float light = max(dot(n, normalize(float3(0.3, 0.8, 0.5))), 0.2);
-    float4 texColor = g_Texture.Sample(g_Texture_sampler, input.UV);
-    float3 color = g_Color.rgb * texColor.rgb;
-    return float4(color * light, g_Color.a * texColor.a);
+    float4 texColor = s_tex.Sample(s_tex_sampler, input.UV);
+    float4 baseColor = u_color * texColor;
+    if (u_unlit.x > 0.5) {
+        return baseColor;
+    }
+    float ndotl = max(dot(n, normalize(u_lightDir.xyz)), 0.0);
+    float3 lit = baseColor.rgb * (u_ambientColor.rgb + u_lightColor.rgb * ndotl);
+    return float4(lit, baseColor.a);
 }
 )";
 
@@ -400,10 +455,10 @@ float4 main(PSInput input) : SV_TARGET {
         pso_ci.pPS = ps;
 
         Diligent::ShaderResourceVariableDesc vars[] = {
-            {Diligent::SHADER_TYPE_PIXEL, "g_Texture", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE}
+            {Diligent::SHADER_TYPE_PIXEL, "s_tex", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE}
         };
         Diligent::ImmutableSamplerDesc samplers[] = {
-            {Diligent::SHADER_TYPE_PIXEL, "g_Texture_sampler", Diligent::SamplerDesc{}}
+            {Diligent::SHADER_TYPE_PIXEL, "s_tex_sampler", Diligent::SamplerDesc{}}
         };
         pso_ci.PSODesc.ResourceLayout.DefaultVariableType = Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC;
         pso_ci.PSODesc.ResourceLayout.Variables = vars;
@@ -435,10 +490,9 @@ float4 main(PSInput input) : SV_TARGET {
         if (pso_) {
             pso_->CreateShaderResourceBinding(&srb_, true);
         }
-        white_srv_ = createWhiteTextureView();
     }
 
-    Diligent::RefCntAutoPtr<Diligent::ITextureView> createWhiteTextureView() {
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> createWhiteTexture() {
         Diligent::RefCntAutoPtr<Diligent::ITextureView> view;
         const uint32_t white = 0xffffffffu;
         Diligent::TextureDesc desc{};
@@ -504,11 +558,13 @@ float4 main(PSInput input) : SV_TARGET {
     std::vector<renderer::DrawItem> draw_items_;
 
     renderer::CameraData camera_{};
+    renderer::DirectionalLightData light_{};
     int width_ = 1280;
     int height_ = 720;
     renderer::MeshId next_mesh_id_ = 1;
     renderer::MaterialId next_material_id_ = 1;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> white_srv_;
+    bool initialized_ = false;
 };
 
 std::unique_ptr<Backend> CreateBackend(karma::platform::Window& window) {

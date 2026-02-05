@@ -24,6 +24,9 @@ class Window {
     virtual const std::vector<Event>& events() const = 0;
     virtual void clearEvents() = 0;
 
+    virtual bool isKeyDown(Key key) const = 0;
+    virtual bool isMouseDown(MouseButton button) const = 0;
+
     virtual bool shouldClose() const = 0;
     virtual void getFramebufferSize(int& w, int& h) const = 0;
     virtual float getContentScale() const = 0;

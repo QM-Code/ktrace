@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "karma/common/logging.hpp"
+#include "karma/renderer/render_system.hpp"
 
 namespace karma::app {
 
@@ -24,6 +25,8 @@ void EngineApp::initSubsystems() {
     if (config_.window.fullscreen) {
         window_->setFullscreen(true);
     }
+    input_system_.setWindow(window_.get());
+    input::LoadBindingsFromConfig(input_system_);
     KARMA_TRACE("engine.app", "EngineApp: creating graphics device");
     graphics_ = std::make_unique<renderer::GraphicsDevice>(*window_);
     if (graphics_ && graphics_->isValid()) {
@@ -32,9 +35,15 @@ void EngineApp::initSubsystems() {
         spdlog::error("EngineApp: graphics device failed to initialize");
         graphics_.reset();
     }
+    if (graphics_) {
+        render_system_ = std::make_unique<renderer::RenderSystem>(*graphics_);
+        render_system_->setCamera(config_.default_camera);
+        render_system_->setDirectionalLight(config_.default_light);
+    }
 }
 
 void EngineApp::shutdownSubsystems() {
+    render_system_.reset();
     graphics_.reset();
     window_.reset();
     running_ = false;
@@ -46,11 +55,11 @@ void EngineApp::start(GameInterface& game, const EngineConfig& config) {
     }
     config_ = config;
     initSubsystems();
-    if (!window_ || !graphics_) {
+    if (!window_ || !graphics_ || !render_system_) {
         return;
     }
     game_ = &game;
-    game_->bind(*window_, *graphics_);
+    game_->bind(*window_, *graphics_, *render_system_, input_system_);
     game_->onStart();
     running_ = true;
 }
@@ -74,14 +83,18 @@ void EngineApp::tick() {
         requestStop();
     }
 
+    input_system_.update(window_->events());
+
     game_->onUpdate(dt);
 
     int fb_w = 0;
     int fb_h = 0;
     window_->getFramebufferSize(fb_w, fb_h);
-    graphics_->beginFrame(fb_w, fb_h, dt);
-    graphics_->renderFrame();
-    graphics_->endFrame();
+    if (render_system_) {
+        render_system_->beginFrame(fb_w, fb_h, dt);
+        render_system_->renderFrame();
+        render_system_->endFrame();
+    }
 
     window_->clearEvents();
 

@@ -2,8 +2,12 @@
 
 #include <initializer_list>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include <cstdint>
+
+#include "common/json.hpp"
 
 namespace karma::config {
 
@@ -15,5 +19,8 @@ bool ReadRequiredBoolConfig(const char *path);
 uint16_t ReadRequiredUInt16Config(const char *path);
 float ReadRequiredFloatConfig(const char *path);
 std::string ReadRequiredStringConfig(const char *path);
+std::vector<float> ReadRequiredFloatArrayConfig(std::string_view path);
+std::vector<std::string> ReadRequiredStringArrayConfig(std::string_view path);
+const karma::json::Value& ReadRequiredObjectConfig(std::string_view path);
 
 } // namespace karma::config

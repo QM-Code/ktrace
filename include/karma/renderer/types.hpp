@@ -45,6 +45,13 @@ struct CameraData {
     float far_clip = 2000.0f;
 };
 
+struct DirectionalLightData {
+    glm::vec3 direction{0.3f, 0.7f, -0.5f};
+    glm::vec4 color{0.8f, 0.8f, 0.8f, 1.0f};
+    glm::vec4 ambient{0.25f, 0.25f, 0.25f, 1.0f};
+    float unlit = 1.0f;
+};
+
 struct DrawItem {
     MeshId mesh = kInvalidMesh;
     MaterialId material = kInvalidMaterial;

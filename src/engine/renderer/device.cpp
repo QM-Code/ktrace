@@ -68,9 +68,21 @@ void GraphicsDevice::renderFrame() {
     }
 }
 
+void GraphicsDevice::renderLayer(LayerId layer) {
+    if (backend_) {
+        backend_->renderLayer(layer);
+    }
+}
+
 void GraphicsDevice::setCamera(const CameraData& camera) {
     if (backend_) {
         backend_->setCamera(camera);
+    }
+}
+
+void GraphicsDevice::setDirectionalLight(const DirectionalLightData& light) {
+    if (backend_) {
+        backend_->setDirectionalLight(light);
     }
 }
 

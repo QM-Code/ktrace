@@ -5,6 +5,8 @@
 #include "karma/app/game_interface.hpp"
 #include "karma/platform/window.hpp"
 #include "karma/renderer/device.hpp"
+#include "karma/renderer/render_system.hpp"
+#include "karma/input/input_system.hpp"
 
 namespace karma::app {
 
@@ -18,6 +20,8 @@ struct EngineConfig {
     bool generate_mipmaps = true;
     int shadow_map_size = 2048;
     int shadow_pcf_radius = 1;
+    renderer::CameraData default_camera{};
+    renderer::DirectionalLightData default_light{};
 };
 
 class EngineApp {
@@ -38,6 +42,8 @@ class EngineApp {
     EngineConfig config_{};
     std::unique_ptr<platform::Window> window_;
     std::unique_ptr<renderer::GraphicsDevice> graphics_;
+    std::unique_ptr<renderer::RenderSystem> render_system_;
+    input::InputContext input_system_{};
 
     bool running_ = false;
 };

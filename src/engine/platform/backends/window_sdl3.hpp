@@ -17,6 +17,9 @@ class WindowSdl3 final : public Window {
     const std::vector<Event>& events() const override { return events_; }
     void clearEvents() override { events_.clear(); }
 
+    bool isKeyDown(Key key) const override;
+    bool isMouseDown(MouseButton button) const override;
+
     bool shouldClose() const override { return should_close_; }
     void getFramebufferSize(int& w, int& h) const override;
     float getContentScale() const override { return content_scale_; }

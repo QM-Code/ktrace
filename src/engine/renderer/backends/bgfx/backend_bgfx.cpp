@@ -158,7 +158,7 @@ class BgfxBackend final : public Backend {
         window.getFramebufferSize(width_, height_);
         init.resolution.width = static_cast<uint32_t>(width_);
         init.resolution.height = static_cast<uint32_t>(height_);
-        init.resolution.reset = BGFX_RESET_VSYNC;
+        init.resolution.reset = BGFX_RESET_VSYNC | BGFX_RESET_SRGB_BACKBUFFER;
         KARMA_TRACE("render.bgfx",
                     "init renderer=Vulkan size={}x{} reset=0x{:08x}",
                     init.resolution.width, init.resolution.height, init.resolution.reset);
@@ -220,7 +220,7 @@ class BgfxBackend final : public Backend {
         }
         width_ = width;
         height_ = height;
-        bgfx::reset(static_cast<uint32_t>(width), static_cast<uint32_t>(height), BGFX_RESET_VSYNC);
+        bgfx::reset(static_cast<uint32_t>(width), static_cast<uint32_t>(height), BGFX_RESET_VSYNC | BGFX_RESET_SRGB_BACKBUFFER);
         bgfx::setViewRect(0, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
         bgfx::touch(0);
     }
@@ -308,6 +308,10 @@ class BgfxBackend final : public Backend {
     }
 
     void renderFrame() override {
+        renderLayer(0);
+    }
+
+    void renderLayer(renderer::LayerId layer) override {
         if (!initialized_ || !bgfx::isValid(program_)) {
             return;
         }
@@ -321,6 +325,9 @@ class BgfxBackend final : public Backend {
         bgfx::setViewTransform(0, view, proj);
 
         for (const auto& item : draw_items_) {
+            if (item.layer != layer) {
+                continue;
+            }
             auto mesh_it = meshes_.find(item.mesh);
             if (mesh_it == meshes_.end()) continue;
             auto mat_it = materials_.find(item.material);
@@ -330,10 +337,10 @@ class BgfxBackend final : public Backend {
             bgfx::setIndexBuffer(mesh_it->second.ibh);
             bgfx::setTransform(&item.transform[0][0]);
             bgfx::setUniform(u_color_, mat_it->second.color);
-            const float light_dir[4] = {0.3f, 0.7f, -0.5f, 0.0f};
-            const float light_color[4] = {0.8f, 0.8f, 0.8f, 1.0f};
-            const float ambient_color[4] = {0.25f, 0.25f, 0.25f, 1.0f};
-            const float unlit[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+            const float light_dir[4] = {light_.direction.x, light_.direction.y, light_.direction.z, 0.0f};
+            const float light_color[4] = {light_.color.r, light_.color.g, light_.color.b, light_.color.a};
+            const float ambient_color[4] = {light_.ambient.r, light_.ambient.g, light_.ambient.b, light_.ambient.a};
+            const float unlit[4] = {light_.unlit, 0.0f, 0.0f, 0.0f};
             bgfx::setUniform(u_light_dir_, light_dir);
             bgfx::setUniform(u_light_color_, light_color);
             bgfx::setUniform(u_ambient_color_, ambient_color);
@@ -347,11 +354,16 @@ class BgfxBackend final : public Backend {
             bgfx::submit(0, program_);
         }
 
+        // TODO(bz3-rewrite): keep per-layer queues so multiple layers can render in a frame.
         draw_items_.clear();
     }
 
     void setCamera(const renderer::CameraData& camera) override {
         camera_ = camera;
+    }
+
+    void setDirectionalLight(const renderer::DirectionalLightData& light) override {
+        light_ = light;
     }
 
     bool isValid() const override {
@@ -375,6 +387,7 @@ class BgfxBackend final : public Backend {
     std::vector<renderer::DrawItem> draw_items_;
 
     renderer::CameraData camera_{};
+    renderer::DirectionalLightData light_{};
     int width_ = 1280;
     int height_ = 720;
     renderer::MeshId next_mesh_id_ = 1;

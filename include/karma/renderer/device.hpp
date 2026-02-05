@@ -24,7 +24,9 @@ class GraphicsDevice {
 
     void submit(const DrawItem& item);
     void renderFrame();
+    void renderLayer(LayerId layer);
     void setCamera(const CameraData& camera);
+    void setDirectionalLight(const DirectionalLightData& light);
     bool isValid() const;
 
  private:

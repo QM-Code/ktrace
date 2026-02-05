@@ -7,6 +7,8 @@
 #include <cctype>
 #include <limits>
 #include <stdexcept>
+#include <string_view>
+#include <vector>
 
 namespace karma::config {
 
@@ -178,6 +180,58 @@ std::string ReadRequiredStringConfig(const char *path) {
         }
     }
     throw std::runtime_error(std::string("Missing required string config: ") + path);
+}
+
+std::vector<float> ReadRequiredFloatArrayConfig(std::string_view path) {
+    const auto* value = ConfigStore::Get(path);
+    if (!value) {
+        throw std::runtime_error(std::string("Missing required float array config: ") + std::string(path));
+    }
+    if (!value->is_array()) {
+        throw std::runtime_error(std::string("Config '") + std::string(path) + "' must be an array");
+    }
+    std::vector<float> out;
+    out.reserve(value->size());
+    for (const auto& entry : *value) {
+        if (entry.is_number_float()) {
+            out.push_back(static_cast<float>(entry.get<double>()));
+        } else if (entry.is_number_integer()) {
+            out.push_back(static_cast<float>(entry.get<long long>()));
+        } else {
+            throw std::runtime_error(std::string("Config '") + std::string(path) + "' contains a non-numeric value");
+        }
+    }
+    return out;
+}
+
+std::vector<std::string> ReadRequiredStringArrayConfig(std::string_view path) {
+    const auto* value = ConfigStore::Get(path);
+    if (!value) {
+        throw std::runtime_error(std::string("Missing required string array config: ") + std::string(path));
+    }
+    if (!value->is_array()) {
+        throw std::runtime_error(std::string("Config '") + std::string(path) + "' must be an array");
+    }
+    std::vector<std::string> out;
+    out.reserve(value->size());
+    for (const auto& entry : *value) {
+        if (!entry.is_string()) {
+            throw std::runtime_error(std::string("Config '") + std::string(path) + "' contains a non-string value");
+        }
+        out.push_back(entry.get<std::string>());
+    }
+    return out;
+}
+
+const karma::json::Value& ReadRequiredObjectConfig(std::string_view path) {
+    const auto* value = ConfigStore::Get(path);
+    if (!value) {
+        throw std::runtime_error(std::string("Missing required object config: ") + std::string(path));
+    }
+    if (!value->is_object()) {
+        throw std::runtime_error(std::string("Config '") + std::string(path) + "' must be an object");
+    }
+    return *value;
 }
 
 } // namespace karma::config

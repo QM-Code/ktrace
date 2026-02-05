@@ -13,6 +13,9 @@ class WindowSdl2Stub final : public Window {
     const std::vector<Event>& events() const override { return events_; }
     void clearEvents() override { events_.clear(); }
 
+    bool isKeyDown(Key) const override { return false; }
+    bool isMouseDown(MouseButton) const override { return false; }
+
     bool shouldClose() const override { return true; }
     void getFramebufferSize(int& w, int& h) const override { w = 0; h = 0; }
     float getContentScale() const override { return 1.0f; }
