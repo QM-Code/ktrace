@@ -68,6 +68,7 @@ struct Mesh {
 
 struct Material {
     float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    bgfx::TextureHandle tex = BGFX_INVALID_HANDLE;
 };
 
 class BgfxCallback final : public bgfx::CallbackI {
@@ -122,6 +123,20 @@ bgfx::TextureHandle createWhiteTexture() {
     const uint32_t white = 0xffffffff;
     const bgfx::Memory* mem = bgfx::copy(&white, sizeof(white));
     return bgfx::createTexture2D(1, 1, false, 1, bgfx::TextureFormat::RGBA8, 0, mem);
+}
+
+bgfx::TextureHandle createTextureFromData(const renderer::MeshData::TextureData& tex) {
+    if (tex.pixels.empty() || tex.width <= 0 || tex.height <= 0) {
+        return BGFX_INVALID_HANDLE;
+    }
+    return bgfx::createTexture2D(
+        static_cast<uint16_t>(tex.width),
+        static_cast<uint16_t>(tex.height),
+        false,
+        1,
+        bgfx::TextureFormat::RGBA8,
+        0,
+        bgfx::copy(tex.pixels.data(), static_cast<uint32_t>(tex.pixels.size())));
 }
 
 class BgfxBackend final : public Backend {
@@ -200,7 +215,7 @@ class BgfxBackend final : public Backend {
             if (bgfx::isValid(mesh.ibh)) bgfx::destroy(mesh.ibh);
         }
         for (auto& [id, material] : materials_) {
-            (void)material;
+            if (bgfx::isValid(material.tex)) bgfx::destroy(material.tex);
         }
         if (bgfx::isValid(program_)) bgfx::destroy(program_);
         if (bgfx::isValid(u_color_)) bgfx::destroy(u_color_);
@@ -291,13 +306,23 @@ class BgfxBackend final : public Backend {
         out.color[1] = material.base_color.g;
         out.color[2] = material.base_color.b;
         out.color[3] = material.base_color.a;
+        if (material.albedo && !material.albedo->pixels.empty()) {
+            out.tex = createTextureFromData(*material.albedo);
+            KARMA_TRACE("render.bgfx", "createMaterial texture={} {}x{}",
+                        bgfx::isValid(out.tex) ? 1 : 0,
+                        material.albedo->width,
+                        material.albedo->height);
+        }
         renderer::MaterialId id = next_material_id_++;
         materials_[id] = out;
         return id;
     }
 
     void destroyMaterial(renderer::MaterialId material) override {
-        materials_.erase(material);
+        auto it = materials_.find(material);
+        if (it == materials_.end()) return;
+        if (bgfx::isValid(it->second.tex)) bgfx::destroy(it->second.tex);
+        materials_.erase(it);
     }
 
     void submit(const renderer::DrawItem& item) override {
@@ -351,7 +376,9 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_light_color_, light_color);
             bgfx::setUniform(u_ambient_color_, ambient_color);
             bgfx::setUniform(u_unlit_, unlit);
-            if (bgfx::isValid(mesh_it->second.tex)) {
+            if (bgfx::isValid(mat_it->second.tex)) {
+                bgfx::setTexture(0, s_tex_, mat_it->second.tex);
+            } else if (bgfx::isValid(mesh_it->second.tex)) {
                 bgfx::setTexture(0, s_tex_, mesh_it->second.tex);
             } else if (bgfx::isValid(white_tex_)) {
                 bgfx::setTexture(0, s_tex_, white_tex_);

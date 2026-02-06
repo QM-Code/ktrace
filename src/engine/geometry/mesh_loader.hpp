@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <vector>
 
@@ -11,6 +12,8 @@ namespace karma::geometry {
 
 struct SceneMesh {
     renderer::MeshData mesh{};
+    renderer::MaterialDesc material{};
+    uint32_t material_index = 0;
     glm::mat4 transform{1.0f};
 };
 

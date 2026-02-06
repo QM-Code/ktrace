@@ -66,6 +66,7 @@ bool loadMeshData(const aiScene* scene,
                   const aiMesh* mesh,
                   const std::filesystem::path& path,
                   renderer::MeshData& out,
+                  renderer::MaterialDesc& out_material,
                   const aiMatrix4x4& transform) {
     if (!scene || !mesh) {
         return false;
@@ -76,6 +77,7 @@ bool loadMeshData(const aiScene* scene,
     out.uvs.clear();
     out.indices.clear();
     out.albedo.reset();
+    out_material = renderer::MaterialDesc{};
 
     out.positions.reserve(mesh->mNumVertices);
     out.normals.reserve(mesh->mNumVertices);
@@ -103,10 +105,10 @@ bool loadMeshData(const aiScene* scene,
         }
     }
 
-        const float det = transform.Determinant();
+    const float det = transform.Determinant();
     const bool flip_winding = det < 0.0f;
 
-for (unsigned int i = 0; i < mesh->mNumFaces; ++i) {
+    for (unsigned int i = 0; i < mesh->mNumFaces; ++i) {
         const aiFace& face = mesh->mFaces[i];
         if (face.mNumIndices != 3) {
             continue;
@@ -124,6 +126,13 @@ for (unsigned int i = 0; i < mesh->mNumFaces; ++i) {
 
     if (scene->mNumMaterials > 0 && mesh->mMaterialIndex < scene->mNumMaterials) {
         aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
+        if (material) {
+            aiColor4D color(1.0f, 1.0f, 1.0f, 1.0f);
+            if (material->Get(AI_MATKEY_BASE_COLOR, color) == AI_SUCCESS ||
+                material->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
+                out_material.base_color = glm::vec4(color.r, color.g, color.b, color.a);
+            }
+        }
         aiString texPath;
         if (material && material->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS) {
             std::string texName = texPath.C_Str();
@@ -170,7 +179,8 @@ void collectSceneMeshes(const aiScene* scene,
         const aiMesh* mesh = scene->mMeshes[mesh_index];
         SceneMesh entry{};
         entry.transform = glm::mat4(1.0f);
-        if (loadMeshData(scene, mesh, path, entry.mesh, node_transform)) {
+        entry.material_index = mesh->mMaterialIndex;
+        if (loadMeshData(scene, mesh, path, entry.mesh, entry.material, node_transform)) {
             out.push_back(std::move(entry));
         }
     }
@@ -199,7 +209,8 @@ bool LoadMesh(const std::filesystem::path& path, renderer::MeshData& out) {
         spdlog::error("MeshLoader: '{}' contains no mesh data", path.string());
         return false;
     }
-    if (!loadMeshData(scene, mesh, path, out, aiMatrix4x4())) {
+    renderer::MaterialDesc material{};
+    if (!loadMeshData(scene, mesh, path, out, material, aiMatrix4x4())) {
         spdlog::error("MeshLoader: '{}' failed to decode mesh data", path.string());
         return false;
     }

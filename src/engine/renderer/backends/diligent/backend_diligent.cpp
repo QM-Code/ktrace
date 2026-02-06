@@ -41,6 +41,7 @@ struct Mesh {
 
 struct Material {
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> srv;
 };
 
 struct Constants {
@@ -257,6 +258,11 @@ class DiligentBackend final : public Backend {
         }
         Material out;
         out.color = material.base_color;
+        if (material.albedo && !material.albedo->pixels.empty()) {
+            out.srv = createTextureView(*material.albedo);
+            KARMA_TRACE("render.diligent", "createMaterial texture={} {}x{}",
+                        out.srv ? 1 : 0, material.albedo->width, material.albedo->height);
+        }
         renderer::MaterialId id = next_material_id_++;
         materials_[id] = out;
         return id;
@@ -322,7 +328,11 @@ class DiligentBackend final : public Backend {
 
             if (srb_) {
                 if (auto* texVar = srb_->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_tex")) {
-                    texVar->Set(mesh.srv, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+                    auto texture_view = mat.srv ? mat.srv : mesh.srv;
+                    if (!texture_view) {
+                        texture_view = white_srv_;
+                    }
+                    texVar->Set(texture_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
                 }
             }
             context_->CommitShaderResources(srb_, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

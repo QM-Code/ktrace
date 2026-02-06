@@ -35,6 +35,7 @@ struct MeshData {
 
 struct MaterialDesc {
     glm::vec4 base_color{1.0f, 1.0f, 1.0f, 1.0f};
+    std::optional<MeshData::TextureData> albedo;
 };
 
 struct CameraData {

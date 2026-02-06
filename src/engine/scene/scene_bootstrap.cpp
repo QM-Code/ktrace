@@ -10,6 +10,8 @@
 #include "karma/scene/components.hpp"
 
 #include <spdlog/spdlog.h>
+#include <cstdint>
+#include <unordered_map>
 
 namespace karma::scene {
 namespace {
@@ -77,16 +79,42 @@ bool PopulateStartupWorld(renderer::GraphicsDevice& graphics,
         return false;
     };
 
-    renderer::MaterialDesc material_desc{};
-    material_desc.base_color = {0.8f, 0.8f, 0.8f, 1.0f};
-    const renderer::MaterialId material_id = graphics.createMaterial(material_desc);
-    if (material_id == renderer::kInvalidMaterial) {
-        return cleanup_and_fail("failed to create startup material");
+    std::unordered_map<uint32_t, renderer::MaterialId> material_cache{};
+    material_cache.reserve(scene_meshes.size());
+    std::unordered_map<uint32_t, renderer::MaterialDesc> material_desc_by_index{};
+    material_desc_by_index.reserve(scene_meshes.size());
+    for (const auto& entry : scene_meshes) {
+        auto [it, inserted] = material_desc_by_index.emplace(entry.material_index, entry.material);
+        if (inserted && entry.mesh.albedo && !entry.mesh.albedo->pixels.empty()) {
+            it->second.albedo = entry.mesh.albedo;
+        } else if (!inserted && !it->second.albedo && entry.mesh.albedo && !entry.mesh.albedo->pixels.empty()) {
+            it->second.albedo = entry.mesh.albedo;
+        }
     }
-    out_resources.materials.push_back(material_id);
 
     for (const auto& entry : scene_meshes) {
-        const renderer::MeshId mesh_id = graphics.createMesh(entry.mesh);
+        renderer::MaterialId material_id = renderer::kInvalidMaterial;
+        const auto material_it = material_cache.find(entry.material_index);
+        if (material_it != material_cache.end()) {
+            material_id = material_it->second;
+        } else {
+            const auto desc_it = material_desc_by_index.find(entry.material_index);
+            if (desc_it == material_desc_by_index.end()) {
+                spdlog::error("EngineApp: missing material descriptor for startup world material index={}", entry.material_index);
+                continue;
+            }
+            material_id = graphics.createMaterial(desc_it->second);
+            if (material_id == renderer::kInvalidMaterial) {
+                spdlog::error("EngineApp: failed to create material for startup world {}", world_path.string());
+                continue;
+            }
+            material_cache.emplace(entry.material_index, material_id);
+            out_resources.materials.push_back(material_id);
+        }
+
+        renderer::MeshData mesh_data = entry.mesh;
+        mesh_data.albedo.reset();
+        const renderer::MeshId mesh_id = graphics.createMesh(mesh_data);
         if (mesh_id == renderer::kInvalidMesh) {
             spdlog::error("EngineApp: failed to create mesh for startup world {}", world_path.string());
             continue;
@@ -113,8 +141,9 @@ bool PopulateStartupWorld(renderer::GraphicsDevice& graphics,
     }
 
     KARMA_TRACE("ecs.world",
-                "EngineApp: startup world entities={} world_entities={}",
+                "EngineApp: startup world entities={} materials={} world_entities={}",
                 out_resources.entities.size(),
+                out_resources.materials.size(),
                 world.entities().size());
     return true;
 }
