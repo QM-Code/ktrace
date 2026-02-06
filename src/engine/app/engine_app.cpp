@@ -108,6 +108,7 @@ void EngineApp::tick() {
         requestStop();
     }
 
+    ui_system_.beginFrame(dt, window_->events());
     input_system_.update(window_->events());
     KARMA_TRACE_CHANGED("ecs.world",
                         std::to_string(world_.entities().size()),
@@ -115,14 +116,15 @@ void EngineApp::tick() {
                         world_.entities().size());
 
     game_->onUpdate(dt);
-    ui_system_.beginFrame(dt);
     game_->onUiUpdate(dt);
 
     int fb_w = 0;
     int fb_h = 0;
     window_->getFramebufferSize(fb_w, fb_h);
     if (render_system_) {
-        roaming_camera_.setActive(input_system_.mode() == input::InputMode::Roaming);
+        const bool ui_capturing =
+            ui_system_.wantsMouseCapture() || ui_system_.wantsKeyboardCapture();
+        roaming_camera_.setActive(input_system_.mode() == input::InputMode::Roaming && !ui_capturing);
         roaming_camera_.update(dt, input_system_, *render_system_);
         scene_.updateWorldTransforms();
         ui_system_.update(*render_system_);

@@ -1,14 +1,17 @@
 #include "karma/common/logging.hpp"
 
 #include <spdlog/spdlog.h>
-#include <cctype>
-#include <memory>
-#include <sstream>
-#include <unordered_set>
-#include <mutex>
+#include <array>
 #include <atomic>
+#include <cctype>
 #include <cstdio>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -27,6 +30,29 @@ std::string named_pattern;
 std::once_flag trace_color_once;
 bool trace_color_enabled = false;
 
+constexpr std::array<const char*, 20> kKnownTraceChannels = {
+    "config",
+    "config.bindings",
+    "ecs.world",
+    "engine.app",
+    "engine.server",
+    "input.events",
+    "net.client",
+    "net.server",
+    "platform.sdl",
+    "render.bgfx",
+    "render.bgfx.internal",
+    "render.camera",
+    "render.diligent",
+    "render.diligent.internal",
+    "render.mesh",
+    "render.system",
+    "ui.system",
+    "ui.system.imgui",
+    "ui.system.overlay",
+    "world"
+};
+
 std::string trimCopy(const std::string& value) {
     size_t start = 0;
     while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0) {
@@ -40,6 +66,52 @@ std::string trimCopy(const std::string& value) {
         --end;
     }
     return value.substr(start, end - start + 1);
+}
+
+const std::unordered_set<std::string>& KnownTraceChannelSet() {
+    static const std::unordered_set<std::string> channels = []() {
+        std::unordered_set<std::string> set;
+        set.reserve(kKnownTraceChannels.size());
+        for (const char* channel : kKnownTraceChannels) {
+            set.insert(channel);
+        }
+        return set;
+    }();
+    return channels;
+}
+
+std::vector<std::string> ParseAndValidateTraceChannels(const std::string& list,
+                                                       std::vector<std::string>& invalid_tokens) {
+    std::vector<std::string> valid_tokens;
+    std::unordered_set<std::string> valid_seen;
+    std::unordered_set<std::string> invalid_seen;
+    bool has_empty_token = false;
+
+    std::stringstream ss(list);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        const std::string name = trimCopy(token);
+        if (name.empty()) {
+            has_empty_token = true;
+            continue;
+        }
+
+        if (KnownTraceChannelSet().find(name) == KnownTraceChannelSet().end()) {
+            if (invalid_seen.insert(name).second) {
+                invalid_tokens.push_back(name);
+            }
+            continue;
+        }
+
+        if (valid_seen.insert(name).second) {
+            valid_tokens.push_back(name);
+        }
+    }
+
+    if (has_empty_token) {
+        invalid_tokens.push_back("<empty>");
+    }
+    return valid_tokens;
 }
 
 } // namespace
@@ -113,6 +185,27 @@ void EnableTraceChannels(const std::string& list) {
     if (list.empty()) {
         return;
     }
+
+    std::vector<std::string> invalid_tokens;
+    const std::vector<std::string> valid_tokens =
+        ParseAndValidateTraceChannels(list, invalid_tokens);
+    if (!invalid_tokens.empty()) {
+        std::ostringstream message;
+        message << "Invalid trace channel";
+        if (invalid_tokens.size() > 1) {
+            message << "s";
+        }
+        message << ": ";
+        for (size_t i = 0; i < invalid_tokens.size(); ++i) {
+            if (i > 0) {
+                message << ", ";
+            }
+            message << "'" << invalid_tokens[i] << "'";
+        }
+        message << "\n\nAvailable trace channels:\n" << GetDefaultTraceChannelsHelp();
+        throw std::runtime_error(message.str());
+    }
+
     trace_enabled.store(true, std::memory_order_relaxed);
     auto base = spdlog::default_logger();
     if (!base) {
@@ -123,19 +216,12 @@ void EnableTraceChannels(const std::string& list) {
     {
         std::lock_guard<std::mutex> lock(trace_mutex);
         enabled_trace_channels.clear();
-    }
-
-    std::stringstream ss(list);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        const std::string name = trimCopy(token);
-        if (name.empty()) {
-            continue;
-        }
-        {
-            std::lock_guard<std::mutex> lock(trace_mutex);
+        for (const std::string& name : valid_tokens) {
             enabled_trace_channels.insert(name);
         }
+    }
+
+    for (const std::string& name : valid_tokens) {
         auto logger = spdlog::get(name);
         if (!logger) {
             logger = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
@@ -176,37 +262,15 @@ spdlog::logger* GetTraceLogger(const std::string& name) {
 }
 
 const char* GetDefaultTraceChannelsHelp() {
-    return "    platform.sdl\n"
-           "    platform.sdl.resize\n"
-           "    engine.app\n"
-           "    engine.client\n"
-           "    engine.server\n"
-           "    ui\n"
-           "    ui.rmlui\n"
-           "    ui.rmlui.bgfx\n"
-           "    ui.rmlui.fonts\n"
-           "    ui.rmlui.resize\n"
-           "    ui.imgui\n"
-           "    audio\n"
-           "    config\n"
-           "    world\n"
-           "    ecs.world\n"
-           "    physics.jolt\n"
-           "    render\n"
-           "    render.frame\n"
-           "    render.system\n"
-           "    render.bgfx\n"
-           "    render.bgfx.internal\n"
-           "    render.bgfx.ui\n"
-           "    render.mesh\n"
-           "    render.diligent\n"
-           "    render.diligent.radar\n"
-           "    render.diligent.internal\n"
-           "    render.diligent.ui\n"
-           "    game.client\n"
-           "    game.radar\n"
-           "    net.client\n"
-           "    net.server\n\n";
+    static const std::string help = []() {
+        std::ostringstream out;
+        for (const char* channel : kKnownTraceChannels) {
+            out << "    " << channel << "\n";
+        }
+        out << "\n";
+        return out.str();
+    }();
+    return help.c_str();
 }
 
 } // namespace karma::logging

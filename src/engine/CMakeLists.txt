@@ -18,6 +18,8 @@ set(ENGINE_CLIENT_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_app.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/input/input_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/physics_system.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend_imgui.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/geometry/mesh_loader.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/scene/roaming_camera.cpp
@@ -67,6 +69,12 @@ target_include_directories(karma_engine_client PUBLIC
 target_link_libraries(karma_engine_client PUBLIC
     karma_engine_core
 )
+
+find_package(imgui CONFIG QUIET)
+if(TARGET imgui::imgui)
+    target_link_libraries(karma_engine_client PUBLIC imgui::imgui)
+    target_compile_definitions(karma_engine_client PUBLIC KARMA_HAS_IMGUI)
+endif()
 
 if(X11_FOUND)
     if(DEFINED X11_INCLUDE_DIR)
