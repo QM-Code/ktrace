@@ -15,6 +15,7 @@ class RenderSystem {
     void beginFrame(int width, int height, float dt);
     void submit(const DrawItem& item);
     void setCamera(const CameraData& camera);
+    const CameraData& camera() const;
     void setDirectionalLight(const DirectionalLightData& light);
     void setWorld(karma::ecs::World* world);
     void renderFrame();

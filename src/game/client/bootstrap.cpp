@@ -59,13 +59,13 @@ void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
     }
 
     if (options.name_explicit) {
-        KARMA_TRACE("engine.app", "CLI option --name parsed (not wired yet): '{}'", options.player_name);
+        KARMA_TRACE("engine.app", "CLI option --name set: '{}'", options.player_name);
     }
     if (options.addr_explicit) {
-        KARMA_TRACE("engine.app", "CLI option --addr parsed (not wired yet): '{}'", options.connect_addr);
+        KARMA_TRACE("engine.app", "CLI option --addr set: '{}'", options.connect_addr);
     }
     if (options.port_explicit) {
-        KARMA_TRACE("engine.app", "CLI option --port parsed (not wired yet): {}", options.connect_port);
+        KARMA_TRACE("engine.app", "CLI option --port set: {}", options.connect_port);
     }
     if (options.dev_quick_start) {
         KARMA_TRACE("engine.app", "CLI option --dev-quick-start parsed (not wired yet)");

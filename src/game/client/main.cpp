@@ -9,6 +9,7 @@
 #include <spdlog/spdlog.h>
 
 #include <exception>
+#include <stdexcept>
 
 namespace {
 
@@ -29,6 +30,33 @@ glm::vec4 ReadRequiredColor(const char* path) {
         return {values[0], values[1], values[2], values[3]};
     }
     throw std::runtime_error(std::string("Config '") + path + "' must have 3 or 4 elements");
+}
+
+bz3::GameStartupOptions ResolveGameStartupOptions(const bz3::client::CLIOptions& options) {
+    bz3::GameStartupOptions startup{};
+    startup.player_name = options.name_explicit
+        ? options.player_name
+        : karma::config::ReadStringConfig({"userDefaults.username"}, "Player");
+
+    const bool connect_requested = options.addr_explicit || options.port_explicit;
+    if (!connect_requested) {
+        return startup;
+    }
+
+    startup.connect_addr = options.addr_explicit ? options.connect_addr : std::string("localhost");
+    startup.connect_port = options.port_explicit
+        ? options.connect_port
+        : karma::config::ReadUInt16Config({"network.ServerPort"}, static_cast<uint16_t>(11899));
+
+    if (startup.connect_addr.empty()) {
+        throw std::runtime_error("Client connect requested but address is empty.");
+    }
+    if (startup.connect_port == 0) {
+        throw std::runtime_error("Client connect requested but port is 0.");
+    }
+
+    startup.connect_on_start = true;
+    return startup;
 }
 
 } // namespace
@@ -58,8 +86,10 @@ int main(int argc, char** argv) {
         config.default_light.ambient = ReadRequiredColor("graphics.lighting.ambientColor");
         config.default_light.unlit = karma::config::ReadFloatConfig({"graphics.lighting.unlit"}, 0.0f);
 
+        const bz3::GameStartupOptions startup = ResolveGameStartupOptions(options);
+
         karma::app::EngineApp app;
-        bz3::Game game;
+        bz3::Game game{startup};
         app.start(game, config);
         while (app.isRunning()) {
             app.tick();

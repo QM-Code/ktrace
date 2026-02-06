@@ -8,6 +8,7 @@
 #include "karma/renderer/render_system.hpp"
 #include "karma/input/input_system.hpp"
 #include "karma/ecs/world.hpp"
+#include "karma/ui/ui_system.hpp"
 #include "karma/scene/roaming_camera.hpp"
 #include "karma/scene/scene.hpp"
 #include "karma/scene/scene_bootstrap.hpp"
@@ -52,6 +53,7 @@ class EngineApp {
     scene::StartupSceneResources startup_scene_resources_{};
     input::InputContext input_system_{};
     scene::RoamingCameraController roaming_camera_{};
+    ui::UiSystem ui_system_{};
 
     bool running_ = false;
 };

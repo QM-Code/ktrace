@@ -110,6 +110,7 @@ if(NOT nlohmann_json_FOUND)
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
+find_package(Protobuf REQUIRED)
 find_package(CURL REQUIRED)
 
 find_package(X11 QUIET)
@@ -133,6 +134,15 @@ endif()
 if(KARMA_WINDOW_BACKEND STREQUAL "sdl3")
     find_package(SDL3 CONFIG REQUIRED)
 endif()
+
+FetchContent_Declare(
+    enet
+    GIT_REPOSITORY https://github.com/zpl-c/enet.git
+    GIT_TAG master
+)
+set(ENET_TEST OFF CACHE BOOL "" FORCE)
+set(ENET_SHARED OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(enet)
 
 if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
     find_package(bgfx CONFIG QUIET)

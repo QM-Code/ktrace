@@ -13,6 +13,9 @@ class GameInterface {
     virtual ~GameInterface() = default;
     virtual void onStart() = 0;
     virtual void onUpdate(float dt) = 0;
+    virtual void onUiStart() {}
+    virtual void onUiUpdate(float dt) { (void)dt; }
+    virtual void onUiShutdown() {}
     virtual void onShutdown() = 0;
 
  protected:

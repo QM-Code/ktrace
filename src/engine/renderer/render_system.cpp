@@ -30,6 +30,10 @@ void RenderSystem::setCamera(const CameraData& camera) {
     camera_ = camera;
 }
 
+const CameraData& RenderSystem::camera() const {
+    return camera_;
+}
+
 void RenderSystem::setDirectionalLight(const DirectionalLightData& light) {
     light_ = light;
     KARMA_TRACE("render.system",

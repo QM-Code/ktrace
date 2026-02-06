@@ -174,6 +174,8 @@ class DiligentBackend final : public Backend {
         if (!initialized_) {
             return;
         }
+        draw_items_.clear();
+        frame_cleared_ = false;
         if (width == width_ && height == height_) {
             return;
         }
@@ -307,11 +309,14 @@ class DiligentBackend final : public Backend {
 
         auto* rtv = swapchain_->GetCurrentBackBufferRTV();
         auto* dsv = swapchain_->GetDepthBufferDSV();
-        const float clear[4] = {0.18f, 0.18f, 0.18f, 1.0f};
         context_->SetRenderTargets(1, &rtv, dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        context_->ClearRenderTarget(rtv, clear, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        if (dsv) {
-            context_->ClearDepthStencil(dsv, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        if (!frame_cleared_) {
+            const float clear[4] = {0.18f, 0.18f, 0.18f, 1.0f};
+            context_->ClearRenderTarget(rtv, clear, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            if (dsv) {
+                context_->ClearDepthStencil(dsv, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            }
+            frame_cleared_ = true;
         }
 
         context_->SetPipelineState(pso_);
@@ -366,8 +371,6 @@ class DiligentBackend final : public Backend {
             context_->DrawIndexed(draw);
         }
 
-        // TODO(bz3-rewrite): keep per-layer queues so multiple layers can render in a frame.
-        draw_items_.clear();
     }
 
     void setCamera(const renderer::CameraData& camera) override {
@@ -593,6 +596,7 @@ float4 main(PSInput input) : SV_TARGET {
     std::unordered_map<renderer::MeshId, Mesh> meshes_;
     std::unordered_map<renderer::MaterialId, Material> materials_;
     std::vector<renderer::DrawItem> draw_items_;
+    bool frame_cleared_ = false;
 
     renderer::CameraData camera_{};
     renderer::DirectionalLightData light_{};

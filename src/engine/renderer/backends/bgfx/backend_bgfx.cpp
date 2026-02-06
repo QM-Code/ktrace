@@ -239,6 +239,7 @@ class BgfxBackend final : public Backend {
         if (!initialized_) {
             return;
         }
+        draw_items_.clear();
         width_ = width;
         height_ = height;
         bgfx::reset(static_cast<uint32_t>(width), static_cast<uint32_t>(height), BGFX_RESET_VSYNC | BGFX_RESET_SRGB_BACKBUFFER);
@@ -409,8 +410,6 @@ class BgfxBackend final : public Backend {
             bgfx::submit(0, program_);
         }
 
-        // TODO(bz3-rewrite): keep per-layer queues so multiple layers can render in a frame.
-        draw_items_.clear();
     }
 
     void setCamera(const renderer::CameraData& camera) override {

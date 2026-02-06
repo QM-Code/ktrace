@@ -12,6 +12,7 @@ EngineApp::EngineApp() : scene_(world_) {}
 
 EngineApp::~EngineApp() {
     if (game_ && running_) {
+        game_->onUiShutdown();
         game_->onShutdown();
     }
     shutdownSubsystems();
@@ -45,10 +46,14 @@ void EngineApp::initSubsystems() {
         render_system_->setWorld(&world_);
         roaming_camera_.loadFromConfig();
         roaming_camera_.initialize(*render_system_);
+        ui_system_.init(*graphics_);
     }
 }
 
 void EngineApp::shutdownSubsystems() {
+    if (graphics_) {
+        ui_system_.shutdown(*graphics_);
+    }
     if (graphics_) {
         scene::ReleaseStartupSceneResources(*graphics_, world_, startup_scene_resources_);
     }
@@ -79,6 +84,7 @@ void EngineApp::start(GameInterface& game, const EngineConfig& config) {
     game_ = &game;
     game_->bind(*window_, *graphics_, *render_system_, world_, scene_, input_system_);
     game_->onStart();
+    game_->onUiStart();
     KARMA_TRACE("ecs.world", "EngineApp: world ready entities={}", world_.entities().size());
     running_ = true;
 }
@@ -109,6 +115,8 @@ void EngineApp::tick() {
                         world_.entities().size());
 
     game_->onUpdate(dt);
+    ui_system_.beginFrame(dt);
+    game_->onUiUpdate(dt);
 
     int fb_w = 0;
     int fb_h = 0;
@@ -117,6 +125,8 @@ void EngineApp::tick() {
         roaming_camera_.setActive(input_system_.mode() == input::InputMode::Roaming);
         roaming_camera_.update(dt, input_system_, *render_system_);
         scene_.updateWorldTransforms();
+        ui_system_.update(*render_system_);
+        ui_system_.endFrame();
         render_system_->beginFrame(fb_w, fb_h, dt);
         render_system_->renderFrame();
         render_system_->endFrame();
@@ -125,6 +135,7 @@ void EngineApp::tick() {
     window_->clearEvents();
 
     if (!running_) {
+        game_->onUiShutdown();
         game_->onShutdown();
         shutdownSubsystems();
         game_ = nullptr;
