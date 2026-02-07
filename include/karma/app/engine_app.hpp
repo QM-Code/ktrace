@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include "karma/app/game_interface.hpp"
 #include "karma/platform/window.hpp"
@@ -27,6 +28,8 @@ struct EngineConfig {
     int shadow_pcf_radius = 1;
     renderer::CameraData default_camera{};
     renderer::DirectionalLightData default_light{};
+    renderer_backend::BackendKind render_backend = renderer_backend::BackendKind::Auto;
+    std::optional<ui::Backend> ui_backend_override{};
 };
 
 class EngineApp {

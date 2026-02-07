@@ -66,11 +66,6 @@ void Game::onUiUpdate(float dt, karma::ui::UiDrawContext& ui) {
         panel.lines.push_back("Connection: offline");
     }
     ui.addTextPanel(std::move(panel));
-
-    if (ui.backendKind() == karma::ui::UiBackendKind::RmlUi) {
-        // Placeholder until RmlUi document/context bridge is wired.
-        ui.addRmlUiDraw([]() {});
-    }
 }
 
 void Game::onShutdown() {

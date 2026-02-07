@@ -36,14 +36,23 @@ set(KARMA_ENGINE_SDK_COMPONENT
     CACHE STRING "Install component name for the Karma engine SDK payload")
 option(KARMA_ENABLE_RMLUI_BACKEND "Enable native RmlUi backend integration in engine client" OFF)
 
-set(KARMA_RENDER_BACKEND "bgfx" CACHE STRING "Render backend (bgfx|diligent)")
-set_property(CACHE KARMA_RENDER_BACKEND PROPERTY STRINGS bgfx diligent)
-if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
-    add_compile_definitions(KARMA_RENDER_BACKEND_BGFX)
-elseif(KARMA_RENDER_BACKEND STREQUAL "diligent")
-    add_compile_definitions(KARMA_RENDER_BACKEND_DILIGENT)
-else()
-    message(FATAL_ERROR "Unknown KARMA_RENDER_BACKEND: ${KARMA_RENDER_BACKEND}")
+set(KARMA_RENDER_BACKENDS "bgfx" CACHE STRING "Render backends to compile (semicolon list: bgfx;diligent)")
+set(KARMA_RENDER_BACKEND_BGFX_ENABLED OFF)
+set(KARMA_RENDER_BACKEND_DILIGENT_ENABLED OFF)
+foreach(_backend IN LISTS KARMA_RENDER_BACKENDS)
+    string(TOLOWER "${_backend}" _backend_norm)
+    if(_backend_norm STREQUAL "bgfx")
+        set(KARMA_RENDER_BACKEND_BGFX_ENABLED ON)
+    elseif(_backend_norm STREQUAL "diligent")
+        set(KARMA_RENDER_BACKEND_DILIGENT_ENABLED ON)
+    elseif(_backend_norm STREQUAL "")
+        # Ignore empty list entries.
+    else()
+        message(FATAL_ERROR "Unknown renderer backend in KARMA_RENDER_BACKENDS: ${_backend}")
+    endif()
+endforeach()
+if(NOT KARMA_RENDER_BACKEND_BGFX_ENABLED AND NOT KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
+    message(FATAL_ERROR "KARMA_RENDER_BACKENDS must enable at least one backend (bgfx and/or diligent)")
 endif()
 
 set(KARMA_WINDOW_BACKEND "sdl3" CACHE STRING "Window backend (sdl3|sdl2|glfw)")
@@ -156,8 +165,20 @@ set(ENET_TEST OFF CACHE BOOL "" FORCE)
 set(ENET_SHARED OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(enet)
 
-if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
-    find_package(bgfx CONFIG QUIET)
+if(KARMA_RENDER_BACKEND_BGFX_ENABLED)
+    set(KARMA_USE_BGFX_PACKAGE ON)
+    if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
+        # vcpkg bgfx package enables shader tool deps (including glslang), which
+        # collides with Diligent's bundled glslang targets in dual-backend builds.
+        # Prefer the in-tree bgfx.cmake path there.
+        set(KARMA_USE_BGFX_PACKAGE OFF)
+        set(bgfx_FOUND OFF)
+    endif()
+
+    if(KARMA_USE_BGFX_PACKAGE)
+        find_package(bgfx CONFIG QUIET)
+    endif()
+
     if(NOT bgfx_FOUND)
         set(BGFX_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(BGFX_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
@@ -231,7 +252,7 @@ if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
     endif()
 endif()
 
-if(KARMA_RENDER_BACKEND STREQUAL "diligent")
+if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
     set(DILIGENT_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DILIGENT_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
     set(DILIGENT_BUILD_FX OFF CACHE BOOL "" FORCE)
@@ -270,7 +291,7 @@ if(KARMA_INSTALL_ENGINE_SDK)
         karma_engine_core
         karma_engine_client
     )
-    if(KARMA_RENDER_BACKEND STREQUAL "diligent")
+    if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
         # Diligent is currently consumed as in-tree targets, which cannot be exported
         # in a relocatable SDK package without exporting the entire dependency graph.
         set(KARMA_ENGINE_PACKAGE_HAS_CLIENT OFF)
@@ -315,6 +336,16 @@ if(KARMA_INSTALL_ENGINE_SDK)
     set(KARMA_ENGINE_PACKAGE_WITH_RMLUI OFF)
     if(KARMA_ENGINE_HAS_RMLUI)
         set(KARMA_ENGINE_PACKAGE_WITH_RMLUI ON)
+    endif()
+
+    set(KARMA_ENGINE_PACKAGE_WITH_RENDER_BGFX OFF)
+    if(KARMA_RENDER_BACKEND_BGFX_ENABLED)
+        set(KARMA_ENGINE_PACKAGE_WITH_RENDER_BGFX ON)
+    endif()
+
+    set(KARMA_ENGINE_PACKAGE_WITH_RENDER_DILIGENT OFF)
+    if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
+        set(KARMA_ENGINE_PACKAGE_WITH_RENDER_DILIGENT ON)
     endif()
 
     configure_package_config_file(

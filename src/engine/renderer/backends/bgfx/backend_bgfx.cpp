@@ -1,5 +1,7 @@
 #include "karma/renderer/backend.hpp"
 
+#include "../backend_factory_internal.hpp"
+
 #include "karma/common/logging.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/platform/window.hpp"
@@ -405,8 +407,13 @@ class BgfxBackend final : public Backend {
             } else if (bgfx::isValid(white_tex_)) {
                 bgfx::setTexture(0, s_tex_, white_tex_);
             }
-            const uint64_t cull_cw = (BGFX_STATE_DEFAULT & ~BGFX_STATE_CULL_MASK) | BGFX_STATE_CULL_CW;
-            bgfx::setState(cull_cw | BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z);
+            // Keep default depth/cull behavior; BGFX_STATE_DEFAULT includes
+            // depth test, depth write, and CW culling.
+            uint64_t state = BGFX_STATE_DEFAULT;
+            if (mat_it->second.alpha_mode == renderer::MaterialAlphaMode::Blend) {
+                state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+            }
+            bgfx::setState(state);
             bgfx::submit(0, program_);
         }
 
@@ -449,13 +456,8 @@ class BgfxBackend final : public Backend {
     bool initialized_ = false;
 };
 
-std::unique_ptr<Backend> CreateBackend(karma::platform::Window& window) {
-#if defined(KARMA_RENDER_BACKEND_BGFX)
+std::unique_ptr<Backend> CreateBgfxBackend(karma::platform::Window& window) {
     return std::make_unique<BgfxBackend>(window);
-#else
-    (void)window;
-    return nullptr;
-#endif
 }
 
 } // namespace karma::renderer_backend

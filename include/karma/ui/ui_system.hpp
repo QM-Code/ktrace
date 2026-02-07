@@ -31,7 +31,7 @@ class UiSystem : public UiDrawContext {
     UiSystem() = default;
     ~UiSystem();
 
-    void setBackend(Backend backend) { backend_ = backend; }
+    void setBackend(Backend backend);
     Backend backend() const { return backend_; }
 
     void init(renderer::GraphicsDevice& graphics);
@@ -62,7 +62,9 @@ class UiSystem : public UiDrawContext {
     float overlay_height_ = 0.7f;
     float frame_dt_ = 0.0f;
     Backend backend_ = Backend::RmlUi;
+    bool backend_forced_ = false;
     bool initialized_ = false;
+    bool capture_input_enabled_ = false;
     bool overlay_fallback_enabled_ = true;
     renderer::MeshData::TextureData fallback_texture_{};
     uint64_t fallback_texture_revision_ = 1;

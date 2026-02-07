@@ -30,9 +30,11 @@ if(@KARMA_ENGINE_PACKAGE_HAS_CLIENT@)
         find_dependency(SDL3 CONFIG REQUIRED)
     endif()
 
-    if("@KARMA_RENDER_BACKEND@" STREQUAL "bgfx")
+    if(@KARMA_ENGINE_PACKAGE_WITH_RENDER_BGFX@)
         find_dependency(bgfx CONFIG REQUIRED)
-    elseif("@KARMA_RENDER_BACKEND@" STREQUAL "diligent")
+    endif()
+
+    if(@KARMA_ENGINE_PACKAGE_WITH_RENDER_DILIGENT@)
         find_dependency(DiligentEngine CONFIG REQUIRED)
     endif()
 endif()

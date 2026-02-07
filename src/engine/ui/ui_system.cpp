@@ -103,6 +103,11 @@ std::unique_ptr<UiBackend, UiBackendDeleter> adopt_backend(std::unique_ptr<UiBac
 UiSystem::~UiSystem() = default;
 void UiBackendDeleter::operator()(UiBackend* backend) const { delete backend; }
 
+void UiSystem::setBackend(Backend backend) {
+    backend_ = backend;
+    backend_forced_ = true;
+}
+
 UiBackendKind UiSystem::backendKind() const {
     switch (backend_) {
         case Backend::ImGui:
@@ -149,7 +154,10 @@ void UiSystem::init(renderer::GraphicsDevice& graphics) {
     rmlui_draw_callbacks_.clear();
     text_panels_.clear();
 
-    backend_ = ParseBackendFromConfig(backend_);
+    if (!backend_forced_) {
+        backend_ = ParseBackendFromConfig(backend_);
+    }
+    capture_input_enabled_ = config::ReadBoolConfig({"ui.captureInput"}, false);
     overlay_fallback_enabled_ = config::ReadBoolConfig({"ui.overlayFallback.Enabled"}, true);
     overlay_distance_ = config::ReadFloatConfig({"ui.overlayFallback.Distance", "ui.overlayTest.Distance"}, 0.75f);
     overlay_width_ = config::ReadFloatConfig({"ui.overlayFallback.Width", "ui.overlayTest.Width"}, 1.2f);
@@ -184,9 +192,10 @@ void UiSystem::init(renderer::GraphicsDevice& graphics) {
             }
         } else {
             KARMA_TRACE("ui.system",
-                        "UiSystem: backend selected '{}', mode='{}'",
+                        "UiSystem: backend selected '{}', mode='{}', captureInput={}",
                         backend_impl_->name(),
-                        BackendName(backend_));
+                        BackendName(backend_),
+                        capture_input_enabled_ ? 1 : 0);
         }
     }
 }
@@ -242,8 +251,8 @@ void UiSystem::update(renderer::RenderSystem& render) {
     }
     const bool prev_mouse_capture = wants_mouse_capture_;
     const bool prev_keyboard_capture = wants_keyboard_capture_;
-    wants_mouse_capture_ = frame.wants_mouse_capture;
-    wants_keyboard_capture_ = frame.wants_keyboard_capture;
+    wants_mouse_capture_ = capture_input_enabled_ ? frame.wants_mouse_capture : false;
+    wants_keyboard_capture_ = capture_input_enabled_ ? frame.wants_keyboard_capture : false;
     if (prev_mouse_capture != wants_mouse_capture_ ||
         prev_keyboard_capture != wants_keyboard_capture_) {
         KARMA_TRACE("ui.system",
@@ -292,6 +301,8 @@ void UiSystem::update(renderer::RenderSystem& render) {
         renderer::MaterialDesc material{};
         material.base_color = {1.0f, 1.0f, 1.0f, 1.0f};
         material.albedo = *active_texture;
+        material.alpha_mode = renderer::MaterialAlphaMode::Blend;
+        material.double_sided = true;
         overlay_material_ = graphics_->createMaterial(material);
         if (overlay_material_ == renderer::kInvalidMaterial) {
             KARMA_TRACE("ui.system",

@@ -21,6 +21,7 @@ set(ENGINE_CLIENT_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend_imgui.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend_rmlui.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_rmlui_adapter_rmlui.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_rmlui_adapter_stub.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/geometry/mesh_loader.cpp
@@ -30,15 +31,18 @@ set(ENGINE_CLIENT_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/platform/backends/window_sdl3.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/platform/backends/window_sdl2_stub.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/platform/backends/window_glfw_stub.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/renderer/backend_factory.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/renderer/device.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/renderer/render_system.cpp
 )
 
-if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
+if(KARMA_RENDER_BACKEND_BGFX_ENABLED)
     list(APPEND ENGINE_CLIENT_SOURCES
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/backend_bgfx.cpp
     )
-elseif(KARMA_RENDER_BACKEND STREQUAL "diligent")
+endif()
+
+if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
     list(APPEND ENGINE_CLIENT_SOURCES
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/backend_diligent.cpp
     )
@@ -88,6 +92,14 @@ target_link_libraries(karma_engine_client PUBLIC
     karma_engine_core
 )
 
+if(KARMA_RENDER_BACKEND_BGFX_ENABLED)
+    target_compile_definitions(karma_engine_client PRIVATE KARMA_HAS_RENDER_BGFX)
+endif()
+
+if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
+    target_compile_definitions(karma_engine_client PRIVATE KARMA_HAS_RENDER_DILIGENT)
+endif()
+
 find_package(imgui CONFIG QUIET)
 set(KARMA_ENGINE_HAS_IMGUI OFF)
 if(TARGET imgui::imgui)
@@ -129,7 +141,7 @@ if(KARMA_WINDOW_BACKEND STREQUAL "sdl3")
     target_link_libraries(karma_engine_client PUBLIC SDL3::SDL3)
 endif()
 
-if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
+if(KARMA_RENDER_BACKEND_BGFX_ENABLED)
     target_link_libraries(karma_engine_client PUBLIC bgfx::bgfx)
     add_dependencies(karma_engine_client bz3_bgfx_shaders)
     if(TARGET bx::bx)
@@ -146,7 +158,7 @@ if(KARMA_RENDER_BACKEND STREQUAL "bgfx")
     endif()
 endif()
 
-if(KARMA_RENDER_BACKEND STREQUAL "diligent")
+if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
     target_link_libraries(karma_engine_client PUBLIC Diligent-GraphicsEngineVk-static)
     if(TARGET Diligent-Common)
         target_link_libraries(karma_engine_client PUBLIC Diligent-Common)

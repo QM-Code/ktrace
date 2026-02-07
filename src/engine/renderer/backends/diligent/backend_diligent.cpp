@@ -1,5 +1,7 @@
 #include "karma/renderer/backend.hpp"
 
+#include "../backend_factory_internal.hpp"
+
 #include "karma/common/logging.hpp"
 #include "karma/platform/window.hpp"
 
@@ -472,6 +474,14 @@ float4 main(PSInput input) : SV_TARGET {
         pso_ci.GraphicsPipeline.DSVFormat = swapchain_->GetDesc().DepthBufferFormat;
         pso_ci.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         pso_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = true;
+        auto& rt0 = pso_ci.GraphicsPipeline.BlendDesc.RenderTargets[0];
+        rt0.BlendEnable = true;
+        rt0.SrcBlend = Diligent::BLEND_FACTOR_SRC_ALPHA;
+        rt0.DestBlend = Diligent::BLEND_FACTOR_INV_SRC_ALPHA;
+        rt0.BlendOp = Diligent::BLEND_OPERATION_ADD;
+        rt0.SrcBlendAlpha = Diligent::BLEND_FACTOR_ONE;
+        rt0.DestBlendAlpha = Diligent::BLEND_FACTOR_INV_SRC_ALPHA;
+        rt0.BlendOpAlpha = Diligent::BLEND_OPERATION_ADD;
         pso_ci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_BACK;
         // Keep front-face consistent with BGFX (CCW).
         pso_ci.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise = true;
@@ -608,13 +618,8 @@ float4 main(PSInput input) : SV_TARGET {
     bool initialized_ = false;
 };
 
-std::unique_ptr<Backend> CreateBackend(karma::platform::Window& window) {
-#if defined(KARMA_RENDER_BACKEND_DILIGENT)
+std::unique_ptr<Backend> CreateDiligentBackend(karma::platform::Window& window) {
     return std::make_unique<DiligentBackend>(window);
-#else
-    (void)window;
-    return nullptr;
-#endif
 }
 
 } // namespace karma::renderer_backend

@@ -12,6 +12,21 @@
 #include <vector>
 
 namespace bz3::client {
+namespace {
+
+const char* CompiledPlatformBackendName() {
+#if defined(KARMA_WINDOW_BACKEND_SDL3)
+    return "sdl3";
+#elif defined(KARMA_WINDOW_BACKEND_SDL2)
+    return "sdl2";
+#elif defined(KARMA_WINDOW_BACKEND_GLFW)
+    return "glfw";
+#else
+    return "unknown";
+#endif
+}
+
+}
 
 void ConfigureLogging(const CLIOptions& options) {
     karma::logging::ConfigureLogPatterns(options.timestamp_logging);
@@ -42,6 +57,20 @@ void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
             throw std::runtime_error("Failed to apply CLI language override.");
         }
         KARMA_TRACE("config", "Applied CLI language override: {}", options.language);
+    }
+    if (options.backend_platform_explicit) {
+        const std::string compiled = CompiledPlatformBackendName();
+        if (options.backend_platform != compiled) {
+            throw std::runtime_error("Requested CLI platform backend '" + options.backend_platform +
+                                     "' but this build only supports '" + compiled + "'.");
+        }
+        KARMA_TRACE("engine.app", "CLI option --backend-platform set: '{}'", options.backend_platform);
+    }
+    if (options.backend_render_explicit) {
+        KARMA_TRACE("engine.app", "CLI option --backend-render set: '{}'", options.backend_render);
+    }
+    if (options.backend_ui_explicit) {
+        KARMA_TRACE("engine.app", "CLI option --backend-ui set: '{}'", options.backend_ui);
     }
 
     const auto issues = karma::config::ValidateRequiredKeys(karma::config::ClientRequiredKeys());

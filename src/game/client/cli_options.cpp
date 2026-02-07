@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <string_view>
 
@@ -26,6 +28,9 @@ void PrintHelp() {
         << "  -d, --data-dir <dir>            Data directory override\n"
         << "  -c, --config <path>             User config file path override\n"
         << "      --language <code>           Language override (applied to config)\n"
+        << "      --backend-render <name>     Render backend override (auto|bgfx|diligent)\n"
+        << "      --backend-ui <name>         UI backend override (imgui|rmlui)\n"
+        << "      --backend-platform <name>   Platform backend override (sdl3|sdl2|glfw)\n"
         << "      --dev-quick-start           Dev flag (parsed; not yet wired)\n"
         << "      --strict-config=<bool>      Required-config validation (default: true)\n"
         << "  -T, --timestamp-logging         Enable timestamped log output\n";
@@ -89,6 +94,34 @@ std::string ValueAfterEquals(const std::string& arg, std::string_view prefix) {
     return arg.substr(prefix.size());
 }
 
+std::string ToLower(std::string value) {
+    std::transform(value.begin(),
+                   value.end(),
+                   value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+std::string ParseChoice(const std::string& option,
+                        const std::string& raw_value,
+                        std::initializer_list<std::string_view> allowed) {
+    const std::string value = ToLower(raw_value);
+    for (const auto candidate : allowed) {
+        if (value == candidate) {
+            return value;
+        }
+    }
+
+    std::string expected;
+    for (const auto candidate : allowed) {
+        if (!expected.empty()) {
+            expected += "|";
+        }
+        expected += std::string(candidate);
+    }
+    Fail("Invalid value '" + raw_value + "' for " + option + ". Expected: " + expected + ".");
+}
+
 } // namespace
 
 CLIOptions ParseCLIOptions(int argc, char** argv) {
@@ -148,6 +181,34 @@ CLIOptions ParseCLIOptions(int argc, char** argv) {
         } else if (StartsWith(arg, "--language=")) {
             opts.language = ValueAfterEquals(arg, "--language=");
             opts.language_explicit = true;
+        } else if (arg == "--backend-render") {
+            opts.backend_render = ParseChoice(arg,
+                                              RequireValue(arg, i, argc, argv),
+                                              {"auto", "bgfx", "diligent"});
+            opts.backend_render_explicit = true;
+        } else if (StartsWith(arg, "--backend-render=")) {
+            opts.backend_render = ParseChoice("--backend-render",
+                                              ValueAfterEquals(arg, "--backend-render="),
+                                              {"auto", "bgfx", "diligent"});
+            opts.backend_render_explicit = true;
+        } else if (arg == "--backend-ui") {
+            opts.backend_ui = ParseChoice(arg, RequireValue(arg, i, argc, argv), {"imgui", "rmlui"});
+            opts.backend_ui_explicit = true;
+        } else if (StartsWith(arg, "--backend-ui=")) {
+            opts.backend_ui = ParseChoice("--backend-ui",
+                                          ValueAfterEquals(arg, "--backend-ui="),
+                                          {"imgui", "rmlui"});
+            opts.backend_ui_explicit = true;
+        } else if (arg == "--backend-platform") {
+            opts.backend_platform = ParseChoice(arg,
+                                                RequireValue(arg, i, argc, argv),
+                                                {"sdl3", "sdl2", "glfw"});
+            opts.backend_platform_explicit = true;
+        } else if (StartsWith(arg, "--backend-platform=")) {
+            opts.backend_platform = ParseChoice("--backend-platform",
+                                                ValueAfterEquals(arg, "--backend-platform="),
+                                                {"sdl3", "sdl2", "glfw"});
+            opts.backend_platform_explicit = true;
         } else if (arg == "--dev-quick-start") {
             opts.dev_quick_start = true;
         } else if (arg == "--strict-config") {

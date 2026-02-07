@@ -3,6 +3,7 @@
 
 #include "karma/app/engine_app.hpp"
 #include "karma/common/config_helpers.hpp"
+#include "karma/renderer/backend.hpp"
 
 #include "game.hpp"
 
@@ -10,6 +11,8 @@
 
 #include <exception>
 #include <stdexcept>
+#include <algorithm>
+#include <optional>
 
 namespace {
 
@@ -59,6 +62,45 @@ bz3::GameStartupOptions ResolveGameStartupOptions(const bz3::client::CLIOptions&
     return startup;
 }
 
+karma::renderer_backend::BackendKind ResolveRenderBackendFromOptions(
+    const bz3::client::CLIOptions& options) {
+    const std::string configured = options.backend_render_explicit
+        ? options.backend_render
+        : karma::config::ReadStringConfig("render.backend", "auto");
+    const auto parsed = karma::renderer_backend::ParseBackendKind(configured);
+    if (!parsed) {
+        const char* source = options.backend_render_explicit ? "--backend-render" : "config 'render.backend'";
+        throw std::runtime_error(std::string("Invalid value for ") + source + ": '" + configured +
+                                 "' (expected: auto|bgfx|diligent)");
+    }
+    if (*parsed != karma::renderer_backend::BackendKind::Auto) {
+        const auto compiled = karma::renderer_backend::CompiledBackends();
+        const bool supported = std::any_of(
+            compiled.begin(),
+            compiled.end(),
+            [parsed](karma::renderer_backend::BackendKind kind) { return kind == *parsed; });
+        if (!supported) {
+            throw std::runtime_error(
+                std::string("Configured render backend '") + configured + "' is not compiled into this binary.");
+        }
+    }
+    return *parsed;
+}
+
+std::optional<karma::ui::Backend> ResolveUiBackendOverride(const bz3::client::CLIOptions& options) {
+    if (!options.backend_ui_explicit) {
+        return std::nullopt;
+    }
+    if (options.backend_ui == "imgui") {
+        return karma::ui::Backend::ImGui;
+    }
+    if (options.backend_ui == "rmlui") {
+        return karma::ui::Backend::RmlUi;
+    }
+    throw std::runtime_error(
+        std::string("Invalid CLI value for --backend-ui: '") + options.backend_ui + "' (expected: imgui|rmlui)");
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -85,6 +127,8 @@ int main(int argc, char** argv) {
         config.default_light.color = ReadRequiredColor("graphics.lighting.sunColor");
         config.default_light.ambient = ReadRequiredColor("graphics.lighting.ambientColor");
         config.default_light.unlit = karma::config::ReadFloatConfig({"graphics.lighting.unlit"}, 0.0f);
+        config.render_backend = ResolveRenderBackendFromOptions(options);
+        config.ui_backend_override = ResolveUiBackendOverride(options);
 
         const bz3::GameStartupOptions startup = ResolveGameStartupOptions(options);
 

@@ -9,7 +9,8 @@ namespace karma::renderer {
 
 class GraphicsDevice {
  public:
-    explicit GraphicsDevice(karma::platform::Window& window);
+    explicit GraphicsDevice(karma::platform::Window& window,
+                            renderer_backend::BackendKind preferred_backend = renderer_backend::BackendKind::Auto);
     ~GraphicsDevice();
 
     void beginFrame(int width, int height, float dt);
@@ -28,9 +29,12 @@ class GraphicsDevice {
     void setCamera(const CameraData& camera);
     void setDirectionalLight(const DirectionalLightData& light);
     bool isValid() const;
+    renderer_backend::BackendKind backendKind() const { return backend_kind_; }
+    const char* backendName() const { return renderer_backend::BackendKindName(backend_kind_); }
 
  private:
     std::unique_ptr<renderer_backend::Backend> backend_;
+    renderer_backend::BackendKind backend_kind_ = renderer_backend::BackendKind::Auto;
 };
 
 } // namespace karma::renderer

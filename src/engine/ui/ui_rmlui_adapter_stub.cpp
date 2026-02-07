@@ -3,6 +3,8 @@
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/logging.hpp"
 
+#if !defined(KARMA_HAS_RMLUI)
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -106,3 +108,5 @@ std::unique_ptr<UiRmlUiAdapter> CreateRmlUiAdapter() {
 }
 
 } // namespace karma::ui
+
+#endif // !defined(KARMA_HAS_RMLUI)

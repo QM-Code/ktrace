@@ -12,6 +12,9 @@ struct CLIOptions {
     std::string language;
     std::string data_dir;
     std::string user_config_path;
+    std::string backend_render;
+    std::string backend_ui;
+    std::string backend_platform;
 
     bool name_explicit = false;
     bool addr_explicit = false;
@@ -19,6 +22,9 @@ struct CLIOptions {
     bool language_explicit = false;
     bool data_dir_explicit = false;
     bool user_config_explicit = false;
+    bool backend_render_explicit = false;
+    bool backend_ui_explicit = false;
+    bool backend_platform_explicit = false;
 
     bool dev_quick_start = false;
     bool strict_config = true;

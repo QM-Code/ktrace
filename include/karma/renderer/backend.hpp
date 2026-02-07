@@ -1,11 +1,25 @@
 #pragma once
 
 #include "karma/renderer/types.hpp"
+
 #include <memory>
+#include <optional>
+#include <string_view>
+#include <vector>
 
 namespace karma::platform { class Window; }
 
 namespace karma::renderer_backend {
+
+enum class BackendKind {
+    Auto,
+    Bgfx,
+    Diligent
+};
+
+const char* BackendKindName(BackendKind kind);
+std::optional<BackendKind> ParseBackendKind(std::string_view name);
+std::vector<BackendKind> CompiledBackends();
 
 class Backend {
  public:
@@ -29,6 +43,8 @@ class Backend {
     virtual bool isValid() const = 0;
 };
 
-std::unique_ptr<Backend> CreateBackend(karma::platform::Window& window);
+std::unique_ptr<Backend> CreateBackend(karma::platform::Window& window,
+                                       BackendKind preferred = BackendKind::Auto,
+                                       BackendKind* out_selected = nullptr);
 
 } // namespace karma::renderer_backend

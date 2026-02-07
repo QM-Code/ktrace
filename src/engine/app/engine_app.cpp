@@ -1,12 +1,31 @@
 #include "karma/app/engine_app.hpp"
 
 #include <chrono>
+#include <sstream>
 #include <string>
 
 #include "karma/common/logging.hpp"
 #include "karma/renderer/render_system.hpp"
 
 namespace karma::app {
+namespace {
+
+std::string CompiledBackendList() {
+    const auto compiled = renderer_backend::CompiledBackends();
+    if (compiled.empty()) {
+        return "(none)";
+    }
+    std::ostringstream out;
+    for (size_t i = 0; i < compiled.size(); ++i) {
+        if (i != 0) {
+            out << ",";
+        }
+        out << renderer_backend::BackendKindName(compiled[i]);
+    }
+    return out.str();
+}
+
+} // namespace
 
 EngineApp::EngineApp() : scene_(world_) {}
 
@@ -31,12 +50,19 @@ void EngineApp::initSubsystems() {
     }
     input_system_.setWindow(window_.get());
     input::LoadBindingsFromConfig(input_system_);
-    KARMA_TRACE("engine.app", "EngineApp: creating graphics device");
-    graphics_ = std::make_unique<renderer::GraphicsDevice>(*window_);
+    KARMA_TRACE("engine.app",
+                "EngineApp: creating graphics device (requested='{}', compiled='{}')",
+                renderer_backend::BackendKindName(config_.render_backend),
+                CompiledBackendList());
+    graphics_ = std::make_unique<renderer::GraphicsDevice>(*window_, config_.render_backend);
     if (graphics_ && graphics_->isValid()) {
-        KARMA_TRACE("engine.app", "EngineApp: graphics device ready");
+        KARMA_TRACE("engine.app",
+                    "EngineApp: graphics device ready backend='{}'",
+                    graphics_->backendName());
     } else {
-        spdlog::error("EngineApp: graphics device failed to initialize");
+        spdlog::error("EngineApp: graphics device failed to initialize (requested='{}', compiled='{}')",
+                      renderer_backend::BackendKindName(config_.render_backend),
+                      CompiledBackendList());
         graphics_.reset();
     }
     if (graphics_) {
@@ -46,6 +72,9 @@ void EngineApp::initSubsystems() {
         render_system_->setWorld(&world_);
         roaming_camera_.loadFromConfig();
         roaming_camera_.initialize(*render_system_);
+        if (config_.ui_backend_override.has_value()) {
+            ui_system_.setBackend(*config_.ui_backend_override);
+        }
         ui_system_.init(*graphics_);
     }
 }

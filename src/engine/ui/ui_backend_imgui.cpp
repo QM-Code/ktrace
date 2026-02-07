@@ -318,10 +318,17 @@ void RasterizeTriangle(const ImDrawVert& va,
             const float dst_b = static_cast<float>(target[dst_idx + 2]) / 255.0f;
             const float dst_a = static_cast<float>(target[dst_idx + 3]) / 255.0f;
 
-            const float out_r = (src_r * src_a) + (dst_r * (1.0f - src_a));
-            const float out_g = (src_g * src_a) + (dst_g * (1.0f - src_a));
-            const float out_b = (src_b * src_a) + (dst_b * (1.0f - src_a));
+            // Composite in straight-alpha space so backend blend state
+            // (src alpha / inv src alpha) produces expected overlay opacity.
             const float out_a = src_a + (dst_a * (1.0f - src_a));
+            float out_r = 0.0f;
+            float out_g = 0.0f;
+            float out_b = 0.0f;
+            if (out_a > 1e-6f) {
+                out_r = ((src_r * src_a) + (dst_r * dst_a * (1.0f - src_a))) / out_a;
+                out_g = ((src_g * src_a) + (dst_g * dst_a * (1.0f - src_a))) / out_a;
+                out_b = ((src_b * src_a) + (dst_b * dst_a * (1.0f - src_a))) / out_a;
+            }
 
             target[dst_idx + 0] = static_cast<uint8_t>(std::clamp(out_r * 255.0f, 0.0f, 255.0f));
             target[dst_idx + 1] = static_cast<uint8_t>(std::clamp(out_g * 255.0f, 0.0f, 255.0f));
