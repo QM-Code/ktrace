@@ -27,3 +27,7 @@ This file provides quick, repo-specific instructions for coding agents.
 ## Architecture Decision
 - **Render loop is engine-owned.** The EngineApp drives the frame lifecycle (beginFrame/render/endFrame). Games submit draw items during update; they do not own the render loop. This aligns with Unity/Unreal/Godot.
 - **Render layer order:** lower layer IDs render first. Default constants: `kLayerWorld = 0`, `kLayerUI = 1000` (see `include/karma/renderer/layers.hpp`).
+
+## UI Migration Guide
+- Canonical rewrite playbooks now live at top-level `../docs/`.
+- For UI integration goals, current status, and the execution plan for ImGui/RmlUi migration, read `../docs/ui-integration-playbook.md` before making UI architecture changes.

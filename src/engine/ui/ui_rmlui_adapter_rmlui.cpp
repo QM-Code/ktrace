@@ -609,7 +609,7 @@ body {
     border-width: 1px;
     border-style: solid;
     border-color: #7084a0;
-    background-color: rgba(12, 18, 26, 0.82);
+    background-color: rgba(12, 18, 26, 210);
 }
 .title {
     margin-bottom: 8px;
@@ -629,15 +629,33 @@ body {
 }
 
 std::string BuildPanelsMarkup(const std::vector<UiDrawContext::TextPanel>& text_panels) {
+    auto estimate_panel_size = [](const UiDrawContext::TextPanel& panel) -> std::pair<int, int> {
+        size_t max_chars = panel.title.size();
+        for (const auto& line : panel.lines) {
+            max_chars = std::max(max_chars, line.size());
+        }
+        // Conservative layout estimate for the temporary debug overlay.
+        const int text_width = static_cast<int>(max_chars * 9u);
+        const int width = std::max(280, text_width + 24);
+        const int height = std::max(96, 36 + static_cast<int>(panel.lines.size()) * 20 + 12);
+        return {width, height};
+    };
+
     std::string markup;
     markup.reserve(1024);
     for (const auto& panel : text_panels) {
+        const auto [panel_width, panel_height] = estimate_panel_size(panel);
+        const int bg_alpha = static_cast<int>(std::lround(std::clamp(panel.bg_alpha, 0.0f, 1.0f) * 255.0f));
         markup.append("<div class=\"panel\" style=\"left:");
         markup.append(std::to_string(static_cast<int>(std::lround(panel.x))));
         markup.append("px;top:");
         markup.append(std::to_string(static_cast<int>(std::lround(panel.y))));
+        markup.append("px;width:");
+        markup.append(std::to_string(panel_width));
+        markup.append("px;height:");
+        markup.append(std::to_string(panel_height));
         markup.append("px;background-color:rgba(12,18,26,");
-        markup.append(std::to_string(std::clamp(panel.bg_alpha, 0.0f, 1.0f)));
+        markup.append(std::to_string(bg_alpha));
         markup.append(");\">");
         markup.append("<div class=\"title\">");
         markup.append(EscapeRmlText(panel.title));
