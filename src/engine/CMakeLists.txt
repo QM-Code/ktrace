@@ -8,16 +8,24 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/common/file_utils.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/i18n.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/logging.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/simulation_clock.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/stb_image_impl.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/world_archive.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/world_content.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_server_app.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/audio/backend_factory.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/audio/audio_system.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/audio/backends/backend_sdl3audio_stub.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/audio/backends/backend_miniaudio_stub.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/backend_factory.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/physics_system.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/backends/backend_jolt_stub.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/backends/backend_physx_stub.cpp
 )
 
 set(ENGINE_CLIENT_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_app.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/input/input_system.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/physics/physics_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend_imgui.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend_rmlui.cpp
@@ -98,6 +106,22 @@ endif()
 
 if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
     target_compile_definitions(karma_engine_client PRIVATE KARMA_HAS_RENDER_DILIGENT)
+endif()
+
+if(KARMA_PHYSICS_BACKEND_JOLT_ENABLED)
+    target_compile_definitions(karma_engine_core PRIVATE KARMA_HAS_PHYSICS_JOLT)
+endif()
+
+if(KARMA_PHYSICS_BACKEND_PHYSX_ENABLED)
+    target_compile_definitions(karma_engine_core PRIVATE KARMA_HAS_PHYSICS_PHYSX)
+endif()
+
+if(KARMA_AUDIO_BACKEND_SDL3AUDIO_ENABLED)
+    target_compile_definitions(karma_engine_core PRIVATE KARMA_HAS_AUDIO_SDL3AUDIO)
+endif()
+
+if(KARMA_AUDIO_BACKEND_MINIAUDIO_ENABLED)
+    target_compile_definitions(karma_engine_core PRIVATE KARMA_HAS_AUDIO_MINIAUDIO)
 endif()
 
 find_package(imgui CONFIG QUIET)

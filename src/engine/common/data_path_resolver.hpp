@@ -56,8 +56,28 @@ struct DataPathSpec {
     std::vector<ConfigLayerSpec> fallbackAssetLayers;
 };
 
+enum class ContentMountType {
+    FileSystem,
+    Package
+};
+
+struct ContentMount {
+    std::string id;
+    ContentMountType type = ContentMountType::FileSystem;
+    std::filesystem::path source;
+    std::filesystem::path mountPoint;
+};
+
 void SetDataPathSpec(DataPathSpec spec);
 DataPathSpec GetDataPathSpec();
+
+// Registers package metadata for future package-backed content loading.
+// Current Resolve() behavior remains filesystem-root based.
+void RegisterPackageMount(const std::string &id,
+                          const std::filesystem::path &packagePath,
+                          const std::filesystem::path &mountPoint = {});
+void ClearPackageMounts();
+std::vector<ContentMount> GetContentMounts();
 
 
 // Returns the directory containing the running executable.

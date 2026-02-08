@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "direction": "ltr"
+  },
+  "languages": {
+    "en": "英語",
+    "es": "スペイン語",
+    "fr": "フランス語",
+    "de": "ドイツ語",
+    "pt": "ポルトガル語",
+    "ru": "ロシア語",
+    "jp": "日本語",
+    "zh": "中国語",
+    "ko": "韓国語",
+    "it": "イタリア語",
+    "hi": "ヒンディー語",
+    "ar": "アラビア語"
+  },
+  "ui": {
+    "console": {
+      "title": "BZ3 - BZFlag Revisited",
+      "tabs": {
+        "community": "コミュニティ",
+        "settings": "設定",
+        "documentation": "ドキュメント",
+        "start_server": "サーバーを開始",
+        "bindings": "キー割り当て",
+        "help": "ヘルプ"
+      },
+      "start_server": {
+        "title": "サーバーを開始",
+        "new_server": "新規サーバー",
+        "ip_address": "IPアドレス",
+        "port": "ポート",
+        "community": "コミュニティ",
+        "world_directory": "ワールドディレクトリ",
+        "data_directory": "データディレクトリ",
+        "logging": "ログ",
+        "action": "操作",
+        "server_binary_missing": "bz3-server の実行ファイルが見つかりません。",
+        "start_button": "開始"
+      }
+    },
+    "hud": {
+      "chat_placeholder": "T を押して入力",
+      "fps_label": "FPS: {value}",
+      "spawn_hint": "{binding} を押してスポーン",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
+    },
+    "settings": {
+      "language_label": "言語",
+      "hud_background_label": "背景",
+      "hud_background_edit": "編集",
+      "hud_text_color_label": "文字色",
+      "hud_text_size_label": "文字サイズ"
+    }
+  }
+}

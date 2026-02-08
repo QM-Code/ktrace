@@ -28,19 +28,21 @@ float ClampPitch(float pitch) {
 } // namespace
 
 void RoamingCameraController::loadFromConfig() {
-    config_.move_speed = config::ReadRequiredFloatConfig("game.roamingCamera.MoveSpeed");
-    config_.fast_multiplier = config::ReadRequiredFloatConfig("game.roamingCamera.FastMultiplier");
-    config_.look_sensitivity = config::ReadRequiredFloatConfig("game.roamingCamera.LookSensitivity");
-    config_.look_smoothing = config::ReadRequiredFloatConfig("game.roamingCamera.LookSmoothing");
-    config_.invert_y = config::ReadRequiredBoolConfig("game.roamingCamera.InvertY");
-    config_.start_yaw_offset_deg = config::ReadRequiredFloatConfig("game.roamingCamera.StartYawOffsetDeg");
-    config_.start_pitch_offset_deg = config::ReadRequiredFloatConfig("game.roamingCamera.StartPitchOffsetDeg");
-    config_.start_position = ReadVec3Config("game.roamingCamera.StartPosition");
-    config_.start_target = ReadVec3Config("game.roamingCamera.StartTarget");
+    config_.move_speed = config::ReadRequiredFloatConfig("roamingMode.camera.roaming.MoveSpeed");
+    config_.fast_multiplier = config::ReadRequiredFloatConfig("roamingMode.camera.roaming.FastMultiplier");
+    config_.look_sensitivity = config::ReadRequiredFloatConfig("roamingMode.camera.roaming.LookSensitivity");
+    config_.look_smoothing = config::ReadRequiredFloatConfig("roamingMode.camera.roaming.LookSmoothing");
+    config_.invert_y = config::ReadRequiredBoolConfig("roamingMode.camera.roaming.InvertY");
+    config_.start_yaw_offset_deg =
+        config::ReadRequiredFloatConfig("roamingMode.camera.roaming.StartYawOffsetDeg");
+    config_.start_pitch_offset_deg =
+        config::ReadRequiredFloatConfig("roamingMode.camera.roaming.StartPitchOffsetDeg");
+    config_.start_position = ReadVec3Config("roamingMode.camera.roaming.StartPosition");
+    config_.start_target = ReadVec3Config("roamingMode.camera.roaming.StartTarget");
 
-    camera_.fov_y_degrees = config::ReadRequiredFloatConfig("camera.default.fovYDegrees");
-    camera_.near_clip = config::ReadRequiredFloatConfig("camera.default.nearClip");
-    camera_.far_clip = config::ReadRequiredFloatConfig("camera.default.farClip");
+    camera_.fov_y_degrees = config::ReadRequiredFloatConfig("roamingMode.camera.default.fovYDegrees");
+    camera_.near_clip = config::ReadRequiredFloatConfig("roamingMode.camera.default.nearClip");
+    camera_.far_clip = config::ReadRequiredFloatConfig("roamingMode.camera.default.farClip");
 }
 
 void RoamingCameraController::initialize(renderer::RenderSystem& render) {

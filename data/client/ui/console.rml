@@ -1,0 +1,30 @@
+<rml>
+<head>
+    <link type="text/rcss" href="console.rcss" />
+    <link type="text/rcss" href="rmlui_scrollbars.rcss" />
+    <link type="text/rcss" href="console_panel_community.rcss" />
+    <link type="text/rcss" href="console_panel_settings.rcss" />
+    <link type="text/rcss" href="console_panel_bindings.rcss" />
+    <link type="text/rcss" href="console_panel_documentation.rcss" />
+    <link type="text/rcss" href="console_panel_start_server.rcss" />
+</head>
+<body id="main-body">
+    <div id="main-window">
+        <div id="title" data-i18n="ui.console.title"></div>
+        <div id="tab-bar">
+            <span id="tab-community" class="tab default" data-i18n="ui.console.tabs.community"></span>
+            <span id="tab-start-server" class="tab" data-i18n="ui.console.tabs.start_server"></span>
+            <span id="tab-settings" class="tab" data-i18n="ui.console.tabs.settings"></span>
+            <span id="tab-bindings" class="tab" data-i18n="ui.console.tabs.bindings"></span>
+            <span id="tab-documentation" class="tab" data-i18n="ui.console.tabs.help"></span>
+        </div>
+        <div id="tab-content">
+            <div id="panel-community" class="tab-panel"></div>
+            <div id="panel-start-server" class="tab-panel"></div>
+            <div id="panel-settings" class="tab-panel"></div>
+            <div id="panel-bindings" class="tab-panel"></div>
+            <div id="panel-documentation" class="tab-panel"></div>
+        </div>
+    </div>
+</body>
+</rml>

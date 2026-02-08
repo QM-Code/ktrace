@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "direction": "ltr"
+  },
+  "languages": {
+    "en": "영어",
+    "es": "스페인어",
+    "fr": "프랑스어",
+    "de": "독일어",
+    "pt": "포르투갈어",
+    "ru": "러시아어",
+    "jp": "일본어",
+    "zh": "중국어",
+    "ko": "한국어",
+    "it": "이탈리아어",
+    "hi": "힌디어",
+    "ar": "아랍어"
+  },
+  "ui": {
+    "console": {
+      "title": "BZ3 - BZFlag Revisited",
+      "tabs": {
+        "community": "커뮤니티",
+        "settings": "설정",
+        "documentation": "문서",
+        "start_server": "서버 시작",
+        "bindings": "바인딩",
+        "help": "도움말"
+      },
+      "start_server": {
+        "title": "서버 시작",
+        "new_server": "새 서버",
+        "ip_address": "IP 주소",
+        "port": "포트",
+        "community": "커뮤니티",
+        "world_directory": "월드 디렉터리",
+        "data_directory": "데이터 디렉터리",
+        "logging": "로그",
+        "action": "동작",
+        "server_binary_missing": "bz3-server 실행 파일을 찾을 수 없습니다.",
+        "start_button": "시작"
+      }
+    },
+    "hud": {
+      "chat_placeholder": "T를 눌러 입력",
+      "fps_label": "FPS: {value}",
+      "spawn_hint": "{binding}를 눌러 스폰",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
+    },
+    "settings": {
+      "language_label": "언어",
+      "hud_background_label": "배경",
+      "hud_background_edit": "편집",
+      "hud_text_color_label": "텍스트 색상",
+      "hud_text_size_label": "텍스트 크기"
+    }
+  }
+}

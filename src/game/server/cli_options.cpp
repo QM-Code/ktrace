@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
+#include <cctype>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -26,6 +29,8 @@ void PrintHelp() {
         << "  -d, --data-dir <dir>            Data directory override\n"
         << "  -c, --config <path>             User config file path override\n"
         << "  -C, --community <url>           Community endpoint (parsed; not yet wired)\n"
+        << "      --backend-physics <name>    Physics backend override (auto|jolt|physx)\n"
+        << "      --backend-audio <name>      Audio backend override (auto|sdl3audio|miniaudio)\n"
         << "      --strict-config=<bool>      Required-config validation (default: true)\n"
         << "  -T, --timestamp-logging         Enable timestamped log output\n";
 }
@@ -49,6 +54,34 @@ bool StartsWith(std::string_view value, std::string_view prefix) {
 
 std::string ValueAfterEquals(const std::string& arg, std::string_view prefix) {
     return arg.substr(prefix.size());
+}
+
+std::string ToLower(std::string value) {
+    std::transform(value.begin(),
+                   value.end(),
+                   value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+std::string ParseChoice(const std::string& option,
+                        const std::string& raw_value,
+                        std::initializer_list<std::string_view> allowed) {
+    const std::string value = ToLower(raw_value);
+    for (const auto candidate : allowed) {
+        if (value == candidate) {
+            return value;
+        }
+    }
+
+    std::string expected;
+    for (const auto candidate : allowed) {
+        if (!expected.empty()) {
+            expected += "|";
+        }
+        expected += std::string(candidate);
+    }
+    Fail("Invalid value '" + raw_value + "' for " + option + ". Expected: " + expected + ".");
 }
 
 uint16_t ParsePort(const std::string& value) {
@@ -143,6 +176,26 @@ CLIOptions ParseCLIOptions(int argc, char** argv) {
         } else if (StartsWith(arg, "--community=")) {
             opts.community = ValueAfterEquals(arg, "--community=");
             opts.community_explicit = true;
+        } else if (arg == "--backend-physics") {
+            opts.backend_physics = ParseChoice(arg,
+                                               RequireValue(arg, i, argc, argv),
+                                               {"auto", "jolt", "physx"});
+            opts.backend_physics_explicit = true;
+        } else if (StartsWith(arg, "--backend-physics=")) {
+            opts.backend_physics = ParseChoice("--backend-physics",
+                                               ValueAfterEquals(arg, "--backend-physics="),
+                                               {"auto", "jolt", "physx"});
+            opts.backend_physics_explicit = true;
+        } else if (arg == "--backend-audio") {
+            opts.backend_audio = ParseChoice(arg,
+                                             RequireValue(arg, i, argc, argv),
+                                             {"auto", "sdl3audio", "miniaudio"});
+            opts.backend_audio_explicit = true;
+        } else if (StartsWith(arg, "--backend-audio=")) {
+            opts.backend_audio = ParseChoice("--backend-audio",
+                                             ValueAfterEquals(arg, "--backend-audio="),
+                                             {"auto", "sdl3audio", "miniaudio"});
+            opts.backend_audio_explicit = true;
         } else if (arg == "--strict-config") {
             opts.strict_config = true;
         } else if (StartsWith(arg, "--strict-config=")) {

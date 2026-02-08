@@ -1,0 +1,42 @@
+{
+    "defaultWorld" : "server/worlds/Default",
+    "network" : {
+        "ServerAdvertiseHost": "192.168.1.6"
+    },
+    "community": {
+        "server" : "http://192.168.1.6:8080/",
+        "enabled" : true,
+        "heartbeatIntervalSeconds" : 10
+    },
+    "DataDir" : "/home/karmak/www/bz3/data",
+    "maxPlayers": 20,
+    "defaultPlayerParameters": {
+        "speed": 5.0,
+        "turnSpeed": 2.0,
+        "jumpSpeed": 8.0,
+        "shotSpeed": 20.0,
+        "shotLifetime": 3.0,
+        "gravity": -9.81,
+        "forwardSpeedMultiplier": 1.0,
+        "backwardSpeedMultiplier": 0.8,
+        "leftTurnSpeedMultiplier": 1,
+        "rightTurnSpeedMultiplier": 1,
+        "x_extent": 2,
+        "y_extent": 1.5,
+        "z_extent": 2.8
+    },
+    "plugins" : [
+        {
+            "name" : "core_commands",
+            "options" : {
+                "enableAdminCommands" : true
+            },
+            "enabled" : true
+        },
+        {
+            "name" : "cheat",
+            "enabled" : true
+        }
+    ]
+
+}

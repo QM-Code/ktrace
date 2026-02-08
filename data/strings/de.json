@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "direction": "ltr"
+  },
+  "languages": {
+    "en": "Englisch",
+    "es": "Spanisch",
+    "fr": "Französisch",
+    "de": "Deutsch",
+    "pt": "Portugiesisch",
+    "ru": "Russisch",
+    "jp": "Japanisch",
+    "zh": "Chinesisch",
+    "ko": "Koreanisch",
+    "it": "Italienisch",
+    "hi": "Hindi",
+    "ar": "Arabisch"
+  },
+  "ui": {
+    "console": {
+      "title": "BZ3 - BZFlag Revisited",
+      "tabs": {
+        "community": "Community",
+        "settings": "Einstellungen",
+        "documentation": "Dokumentation",
+        "start_server": "Server starten",
+        "bindings": "Belegungen",
+        "help": "Hilfe"
+      },
+      "start_server": {
+        "title": "Server starten",
+        "new_server": "Neuer Server",
+        "ip_address": "IP-Adresse",
+        "port": "Port",
+        "community": "Community",
+        "world_directory": "Weltverzeichnis",
+        "data_directory": "Datenverzeichnis",
+        "logging": "Protokollierung",
+        "action": "Aktion",
+        "server_binary_missing": "bz3-server-Binary nicht gefunden.",
+        "start_button": "Starten"
+      }
+    },
+    "hud": {
+      "chat_placeholder": "drücke T zum Tippen",
+      "fps_label": "FPS: {value}",
+      "spawn_hint": "Drücke {binding} zum Spawnen",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
+    },
+    "settings": {
+      "language_label": "Sprache",
+      "hud_background_label": "Hintergrund",
+      "hud_background_edit": "Bearbeiten",
+      "hud_text_color_label": "Textfarbe",
+      "hud_text_size_label": "Textgröße"
+    }
+  }
+}

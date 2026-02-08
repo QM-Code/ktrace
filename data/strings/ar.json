@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "direction": "rtl"
+  },
+  "languages": {
+    "en": "الإنجليزية",
+    "es": "الإسبانية",
+    "fr": "الفرنسية",
+    "de": "الألمانية",
+    "pt": "البرتغالية",
+    "ru": "الروسية",
+    "jp": "اليابانية",
+    "zh": "الصينية",
+    "ko": "الكورية",
+    "it": "الإيطالية",
+    "hi": "الهندية",
+    "ar": "العربية"
+  },
+  "ui": {
+    "console": {
+      "title": "BZ3 - BZFlag Revisited",
+      "tabs": {
+        "community": "المجتمع",
+        "settings": "الإعدادات",
+        "documentation": "التوثيق",
+        "start_server": "بدء الخادم",
+        "bindings": "تعيينات المفاتيح",
+        "help": "المساعدة"
+      },
+      "start_server": {
+        "title": "بدء الخادم",
+        "new_server": "خادم جديد",
+        "ip_address": "عنوان IP",
+        "port": "المنفذ",
+        "community": "المجتمع",
+        "world_directory": "مجلد العالم",
+        "data_directory": "مجلد البيانات",
+        "logging": "السجل",
+        "action": "إجراء",
+        "server_binary_missing": "تعذر العثور على ملف bz3-server التنفيذي.",
+        "start_button": "بدء"
+      }
+    },
+    "hud": {
+      "chat_placeholder": "اضغط T للكتابة",
+      "fps_label": "FPS: {value}",
+      "spawn_hint": "اضغط {binding} للظهور",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
+    },
+    "settings": {
+      "language_label": "اللغة",
+      "hud_background_label": "الخلفية",
+      "hud_background_edit": "تعديل",
+      "hud_text_color_label": "لون النص",
+      "hud_text_size_label": "حجم النص"
+    }
+  }
+}

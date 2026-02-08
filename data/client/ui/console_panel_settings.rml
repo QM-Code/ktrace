@@ -1,0 +1,138 @@
+<div class="panel settings-panel">
+    <div class="panel-header settings-header">
+        <span class="panel-header-title" data-i18n="ui.console.tabs.settings"></span>
+    </div>
+    <div class="settings-body">
+        <div class="settings-columns settings-columns-3">
+            <div class="settings-column">
+                <div class="settings-language">
+                    <span class="settings-language-label" data-i18n="ui.settings.language_label"></span>
+                    <select id="settings-language-select" class="settings-language-select"></select>
+                </div>
+                <div class="settings-brightness">
+                    <div class="settings-brightness-row">
+                        <span class="settings-brightness-label">Brightness</span>
+                        <span id="settings-brightness-value" class="settings-brightness-value">1.00x</span>
+                    </div>
+                    <input id="settings-brightness-slider" class="settings-brightness-slider" type="range" min="0.5" max="1.5" step="0.05" value="1.0" />
+                </div>
+            </div>
+            <div class="settings-column">
+                <div class="settings-hud">
+                    <div class="settings-hud-title">HUD</div>
+                    <div class="settings-hud-background">
+                        <div class="settings-hud-background-row">
+                            <span class="settings-hud-background-label" data-i18n="ui.settings.hud_background_label"></span>
+                            <div class="settings-hud-background-actions">
+                                <div id="settings-hud-background-swatch" class="settings-color-swatch"></div>
+                                <button id="settings-hud-background-edit" class="settings-color-edit" data-i18n="ui.settings.hud_background_edit"></button>
+                            </div>
+                        </div>
+                        <div id="settings-hud-background-popup" class="settings-color-popup hidden">
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">R</span>
+                                <input id="settings-hud-background-r" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="0.0" />
+                                <span id="settings-hud-background-r-value" class="settings-color-value">0.00</span>
+                            </div>
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">G</span>
+                                <input id="settings-hud-background-g" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="0.0" />
+                                <span id="settings-hud-background-g-value" class="settings-color-value">0.00</span>
+                            </div>
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">B</span>
+                                <input id="settings-hud-background-b" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="0.0" />
+                                <span id="settings-hud-background-b-value" class="settings-color-value">0.00</span>
+                            </div>
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">A</span>
+                                <input id="settings-hud-background-a" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="1.0" />
+                                <span id="settings-hud-background-a-value" class="settings-color-value">1.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-hud-text">
+                        <div class="settings-hud-background-row">
+                            <span class="settings-hud-background-label" data-i18n="ui.settings.hud_text_color_label"></span>
+                            <div class="settings-hud-background-actions">
+                                <div id="settings-hud-text-swatch" class="settings-color-swatch"></div>
+                                <button id="settings-hud-text-edit" class="settings-color-edit" data-i18n="ui.settings.hud_background_edit"></button>
+                            </div>
+                        </div>
+                        <div id="settings-hud-text-popup" class="settings-color-popup hidden">
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">R</span>
+                                <input id="settings-hud-text-r" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="1.0" />
+                                <span id="settings-hud-text-r-value" class="settings-color-value">1.00</span>
+                            </div>
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">G</span>
+                                <input id="settings-hud-text-g" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="1.0" />
+                                <span id="settings-hud-text-g-value" class="settings-color-value">1.00</span>
+                            </div>
+                            <div class="settings-color-slider">
+                                <span class="settings-color-label">B</span>
+                                <input id="settings-hud-text-b" class="settings-color-range" type="range" min="0.0" max="1.0" step="0.01" value="1.0" />
+                                <span id="settings-hud-text-b-value" class="settings-color-value">1.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-hud-text-size">
+                        <div class="settings-brightness-row">
+                            <span class="settings-brightness-label" data-i18n="ui.settings.hud_text_size_label"></span>
+                            <span id="settings-hud-text-size-value" class="settings-brightness-value">1.00x</span>
+                        </div>
+                        <input id="settings-hud-text-size-slider" class="settings-brightness-slider" type="range" min="0.5" max="1.5" step="0.05" value="1.0" />
+                    </div>
+                    <div class="settings-hud-items">
+                        <div class="settings-hud-item">
+                            <span>Scoreboard</span>
+                            <div class="settings-toggle">
+                                <button id="settings-hud-scoreboard-on" class="toggle">On</button>
+                                <button id="settings-hud-scoreboard-off" class="toggle">Off</button>
+                            </div>
+                        </div>
+                        <div class="settings-hud-item">
+                            <span>Chat</span>
+                            <div class="settings-toggle">
+                                <button id="settings-hud-chat-on" class="toggle">On</button>
+                                <button id="settings-hud-chat-off" class="toggle">Off</button>
+                            </div>
+                        </div>
+                        <div class="settings-hud-item">
+                            <span>Radar</span>
+                            <div class="settings-toggle">
+                                <button id="settings-hud-radar-on" class="toggle">On</button>
+                                <button id="settings-hud-radar-off" class="toggle">Off</button>
+                            </div>
+                        </div>
+                        <div class="settings-hud-item">
+                            <span>FPS</span>
+                            <div class="settings-toggle">
+                                <button id="settings-hud-fps-on" class="toggle">On</button>
+                                <button id="settings-hud-fps-off" class="toggle">Off</button>
+                            </div>
+                        </div>
+                        <div class="settings-hud-item">
+                            <span>Crosshair</span>
+                            <div class="settings-toggle">
+                                <button id="settings-hud-crosshair-on" class="toggle">On</button>
+                                <button id="settings-hud-crosshair-off" class="toggle">Off</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-column">
+                <div class="settings-vsync">
+                    <div class="settings-vsync-title">VSync</div>
+                    <div class="settings-toggle">
+                        <button id="settings-vsync-on" class="toggle">On</button>
+                        <button id="settings-vsync-off" class="toggle">Off</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="settings-status" class="status hidden"></div>
+    </div>
+</div>

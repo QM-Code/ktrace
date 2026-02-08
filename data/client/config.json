@@ -1,0 +1,348 @@
+{
+  "userDefaults": {
+    "username": "MPCarbon",
+    "password": "securepassword123",
+    "serverList": "http://192.168.1.6/servers.json"
+  },
+  "serverLists": {
+    "default": "http://192.168.1.6/servers.json",
+    "showLAN": true,
+    "communities": []
+  },
+  "gui": {
+    "radar": {
+      "shotRadius": 0.6,
+      "playerRadius": 1,
+      "clientRadius": 1
+    }
+  },
+  "ui": {
+    "RenderScale": 1.0,
+    "Validate": false,
+    "backend": "rmlui",
+    "hud": {
+      "scoreboard": true,
+      "chat": true,
+      "radar": true,
+      "fps": false,
+      "crosshair": true,
+      "backgroundColor": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "textColor": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "textScale": 1.0
+    }
+  },
+  "roamingMode": {
+    "camera": {
+      "roaming": {
+        "MoveSpeed": 8.0,
+        "FastMultiplier": 3.0,
+        "LookSensitivity": 0.002,
+        "LookSmoothing": 20.0,
+        "InvertY": false,
+        "StartYawOffsetDeg": 0.0,
+        "StartPitchOffsetDeg": 0.0,
+        "StartPosition": [
+          0.5,
+          13,
+          25
+        ],
+        "StartTarget": [
+          0.472,
+          12.652,
+          24.061
+        ]
+      },
+      "default": {
+        "position": [
+          0.0,
+          6.0,
+          12.0
+        ],
+        "target": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "fovYDegrees": 60.0,
+        "nearClip": 0.1,
+        "farClip": 2000.0
+      }
+    },
+    "graphics": {
+      "theme": "classic",
+      "skybox": {
+        "Mode": "cubemap",
+        "Cubemap": {
+          "Name": "classic"
+        }
+      },
+      "lighting": {
+        "sunDirection": [
+          -0.4,
+          -1.0,
+          -0.2
+        ],
+        "sunColor": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "ambientColor": [
+          0.2,
+          0.2,
+          0.2
+        ],
+        "unlit": 0.0
+      }
+    }
+  },
+  "bindings": {
+    "global": {
+      "quickMenu": [
+        "escape"
+      ],
+      "console": [
+        "grave"
+      ]
+    },
+    "game": {
+      "fire": [
+        "enter",
+        "left_mouse"
+      ],
+      "dropFlag": [
+        "space",
+        "middle_mouse"
+      ],
+      "spawn": [
+        "i",
+        "right_mouse"
+      ],
+      "jump": [
+        "tab"
+      ],
+      "quickQuit": [
+        "f12"
+      ],
+      "toggleFullscreen": [
+        "f1"
+      ],
+      "chat": [
+        "n"
+      ],
+      "chatTeam": [
+        "m"
+      ],
+      "chatReply": [
+        "period"
+      ],
+      "chatAdmins": [
+        "z"
+      ],
+      "moveLeft": [
+        "left"
+      ],
+      "moveRight": [
+        "right"
+      ],
+      "moveForward": [
+        "up"
+      ],
+      "moveBackward": [
+        "down"
+      ]
+    },
+    "roaming": {
+      "cameraStats": [
+        "c"
+      ],
+      "moveForward": [
+        "w"
+      ],
+      "moveBackward": [
+        "s"
+      ],
+      "moveLeft": [
+        "a"
+      ],
+      "moveRight": [
+        "d"
+      ],
+      "moveUp": [
+        "e"
+      ],
+      "moveDown": [
+        "q"
+      ],
+      "look": [
+        "right_mouse"
+      ],
+      "moveFast": [
+        "left_shift"
+      ]
+    }
+  },
+  "assets": {
+    "models": {
+      "playerModel": "models/tank_final.glb",
+      "shotModel": "models/shot.glb",
+      "world": "models/world.glb"
+    },
+    "shaders": {
+      "radar": {
+        "fragment": "shaders/radar.frag",
+        "vertex": "shaders/radar.vert"
+      },
+      "vintage": {
+        "fragment": "shaders/vintage.frag",
+        "vertex": "shaders/vintage.vert"
+      }
+    },
+    "hud": {
+      "fonts": {
+        "console": {
+          "Emoji": {
+            "Font": "fonts/NotoEmoji-VariableFont_wght.ttf",
+            "Size": 20
+          },
+          "Regular": {
+            "Font": "fonts/GoogleSans.ttf",
+            "Size": 20,
+            "Color": [
+              1.0,
+              1.0,
+              0.0,
+              1.0
+            ]
+          },
+          "FallbackLatin": {
+            "Font": "fonts/NotoSans-Regular.ttf",
+            "Size": 20
+          },
+          "FallbackArabic": {
+            "Font": "fonts/NotoSansArabic-Regular.ttf",
+            "Size": 20
+          },
+          "FallbackDevanagari": {
+            "Font": "fonts/NotoSansDevanagari-Regular.ttf",
+            "Size": 20
+          },
+          "FallbackCJK_JP": {
+            "Font": "fonts/NotoSansCJKjp-Regular.otf",
+            "Size": 20
+          },
+          "FallbackCJK_KR": {
+            "Font": "fonts/NotoSansCJKkr-Regular.otf",
+            "Size": 20
+          },
+          "FallbackCJK_SC": {
+            "Font": "fonts/NotoSansCJKsc-Regular.otf",
+            "Size": 20
+          },
+          "FallbackCJK_TC": {
+            "Font": "fonts/NotoSansCJKtc-Regular.otf",
+            "Size": 20
+          },
+          "Title": {
+            "Font": "fonts/GoogleSans.ttf",
+            "Size": 28,
+            "Color": [
+              0.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "Heading": {
+            "Font": "fonts/Audiowide.ttf",
+            "Size": 28,
+            "Color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "Button": {
+            "Font": "fonts/Roboto.ttf",
+            "Size": 18,
+            "Color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          },
+          "Extras": [
+            "fonts/Tourney.ttf"
+          ]
+        }
+      }
+    },
+    "audio": {
+      "player": {
+        "Die": "audio/die.wav",
+        "Jump": "audio/jump.wav",
+        "Land": "audio/land.wav",
+        "Spawn": "audio/spawn.wav"
+      },
+      "shot": {
+        "Fire": "audio/fire.wav",
+        "Ricochet": "audio/ricochet.wav"
+      }
+    },
+    "effects": {
+      "shot": "effects/orb/orb.efkefc",
+      "explosion": "effects/explosion/explosion.efkefc"
+    }
+  },
+  "network": {
+    "ConnectTimeoutMs": 2000,
+    "ConnectionTimeout": 5,
+    "MaxRetries": 3
+  },
+  "platform": {
+    "SdlVideoDriver": "wayland",
+    "WindowTitle": "BZFlag v3",
+    "WindowWidth": 1280,
+    "WindowHeight": 720,
+    "VSync": true,
+    "Fullscreen": false,
+    "WaylandLibdecor": true
+  },
+  "graphics": {
+    "Bgfx": {
+      "NoGl": true
+    }
+  },
+  "controls": {
+    "MouseSensitivity": 1.0,
+    "InvertYAxis": false
+  },
+  "logging": {
+    "LogLevel": "info",
+    "LogToFile": true,
+    "LogFilePath": "logs/client.log"
+  },
+  "performance": {
+    "MaxFPS": 60,
+    "EnableShadows": true,
+    "TextureQuality": "high"
+  },
+  "mods": {
+    "EnabledMods": []
+  },
+  "debug": {
+    "ShowFPS": false
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "direction": "ltr"
+  },
+  "languages": {
+    "en": "英语",
+    "es": "西班牙语",
+    "fr": "法语",
+    "de": "德语",
+    "pt": "葡萄牙语",
+    "ru": "俄语",
+    "jp": "日语",
+    "zh": "中文",
+    "ko": "韩语",
+    "it": "意大利语",
+    "hi": "印地语",
+    "ar": "阿拉伯语"
+  },
+  "ui": {
+    "console": {
+      "title": "BZ3 - BZFlag Revisited",
+      "tabs": {
+        "community": "社区",
+        "settings": "设置",
+        "documentation": "文档",
+        "start_server": "启动服务器",
+        "bindings": "绑定",
+        "help": "帮助"
+      },
+      "start_server": {
+        "title": "启动服务器",
+        "new_server": "新服务器",
+        "ip_address": "IP 地址",
+        "port": "端口",
+        "community": "社区",
+        "world_directory": "世界目录",
+        "data_directory": "数据目录",
+        "logging": "日志",
+        "action": "操作",
+        "server_binary_missing": "未找到 bz3-server 可执行文件。",
+        "start_button": "启动"
+      }
+    },
+    "hud": {
+      "chat_placeholder": "按 T 输入",
+      "fps_label": "FPS: {value}",
+      "spawn_hint": "按 {binding} 出生",
+      "quick_menu": {
+        "title": "Menu",
+        "resume": "Resume",
+        "disconnect": "Disconnect",
+        "quit": "Quit",
+        "console": "Console"
+      }
+    },
+    "settings": {
+      "language_label": "语言",
+      "hud_background_label": "背景",
+      "hud_background_edit": "编辑",
+      "hud_text_color_label": "文字颜色",
+      "hud_text_size_label": "文字大小"
+    }
+  }
+}

@@ -1,0 +1,105 @@
+.bindings-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.bindings-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+    min-height: 0;
+}
+
+.bindings-subtitle {
+    color: #9fb4c6;
+    font-size: 14px;
+}
+
+.bindings-table {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+    border-width: 1px;
+    border-color: #22303d;
+    border-radius: 6px;
+    background-color: #0b1118;
+}
+
+.bindings-list {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.bindings-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom-width: 1px;
+    border-color: #1c2833;
+}
+
+.bindings-row.header {
+    font-size: 13px;
+    color: #9fb0c0;
+    background-color: #0f1822;
+    border-color: #243543;
+}
+
+.bindings-row.section {
+    font-size: 13px;
+    color: #c1d3e2;
+    background-color: #111c27;
+    border-color: #2a3b4a;
+    font-weight: bold;
+}
+
+.bindings-cell {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.bindings-cell.action {
+    flex: 0 0 180px;
+}
+
+.bindings-cell.keyboard,
+.bindings-cell.mouse,
+.bindings-cell.controller {
+    flex: 1 1 0;
+}
+
+.binding-cell {
+    padding: 4px 6px;
+    border-width: 1px;
+    border-color: #22303d;
+    border-radius: 4px;
+    background-color: #0f1720;
+    color: #e8f4ff;
+    min-height: 20px;
+    line-height: 16px;
+    cursor: pointer;
+}
+
+.binding-cell.selected {
+    border-color: #7de3ff;
+    background-color: #152435;
+}
+
+.bindings-selected {
+    color: #9fb4c6;
+    font-size: 13px;
+}
+
+.bindings-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.bindings-actions button {
+    padding: 4px 10px;
+}

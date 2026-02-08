@@ -1,23 +1,36 @@
 #pragma once
 
-namespace karma::physics {
+#include "karma/physics/backend.hpp"
 
-enum class Backend {
-    Jolt,
-    PhysX
-};
+#include <memory>
+#include <string>
+
+namespace karma::physics {
 
 class PhysicsSystem {
  public:
-    void setBackend(Backend backend) { backend_ = backend; }
-    Backend backend() const { return backend_; }
+    void setBackend(physics_backend::BackendKind backend) { requested_backend_ = backend; }
+    physics_backend::BackendKind requestedBackend() const { return requested_backend_; }
+    physics_backend::BackendKind selectedBackend() const { return selected_backend_; }
+    const char* selectedBackendName() const;
+    bool isInitialized() const { return initialized_; }
 
     void init();
     void shutdown();
-    void update(float dt);
+    void beginFrame(float dt);
+    void simulateFixedStep(float fixed_dt);
+    void endFrame();
+
+    physics_backend::BodyId createBody(const physics_backend::BodyDesc& desc);
+    void destroyBody(physics_backend::BodyId body);
+    bool setBodyTransform(physics_backend::BodyId body, const physics_backend::BodyTransform& transform);
+    bool getBodyTransform(physics_backend::BodyId body, physics_backend::BodyTransform& out_transform) const;
 
  private:
-    Backend backend_ = Backend::Jolt;
+    physics_backend::BackendKind requested_backend_ = physics_backend::BackendKind::Auto;
+    physics_backend::BackendKind selected_backend_ = physics_backend::BackendKind::Auto;
+    std::unique_ptr<physics_backend::Backend> backend_{};
+    bool initialized_ = false;
 };
 
 } // namespace karma::physics

@@ -30,6 +30,8 @@ void PrintHelp() {
         << "      --language <code>           Language override (applied to config)\n"
         << "      --backend-render <name>     Render backend override (auto|bgfx|diligent)\n"
         << "      --backend-ui <name>         UI backend override (imgui|rmlui)\n"
+        << "      --backend-physics <name>    Physics backend override (auto|jolt|physx)\n"
+        << "      --backend-audio <name>      Audio backend override (auto|sdl3audio|miniaudio)\n"
         << "      --backend-platform <name>   Platform backend override (sdl3|sdl2|glfw)\n"
         << "      --dev-quick-start           Dev flag (parsed; not yet wired)\n"
         << "      --strict-config=<bool>      Required-config validation (default: true)\n"
@@ -199,6 +201,26 @@ CLIOptions ParseCLIOptions(int argc, char** argv) {
                                           ValueAfterEquals(arg, "--backend-ui="),
                                           {"imgui", "rmlui"});
             opts.backend_ui_explicit = true;
+        } else if (arg == "--backend-physics") {
+            opts.backend_physics = ParseChoice(arg,
+                                               RequireValue(arg, i, argc, argv),
+                                               {"auto", "jolt", "physx"});
+            opts.backend_physics_explicit = true;
+        } else if (StartsWith(arg, "--backend-physics=")) {
+            opts.backend_physics = ParseChoice("--backend-physics",
+                                               ValueAfterEquals(arg, "--backend-physics="),
+                                               {"auto", "jolt", "physx"});
+            opts.backend_physics_explicit = true;
+        } else if (arg == "--backend-audio") {
+            opts.backend_audio = ParseChoice(arg,
+                                             RequireValue(arg, i, argc, argv),
+                                             {"auto", "sdl3audio", "miniaudio"});
+            opts.backend_audio_explicit = true;
+        } else if (StartsWith(arg, "--backend-audio=")) {
+            opts.backend_audio = ParseChoice("--backend-audio",
+                                             ValueAfterEquals(arg, "--backend-audio="),
+                                             {"auto", "sdl3audio", "miniaudio"});
+            opts.backend_audio_explicit = true;
         } else if (arg == "--backend-platform") {
             opts.backend_platform = ParseChoice(arg,
                                                 RequireValue(arg, i, argc, argv),

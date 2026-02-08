@@ -29,7 +29,7 @@ i18n, file helpers, and global setup.
   - Small filesystem helper routines used across engine.
 
 ## How it connects to game code
-- Game config lives in `data/` and is **merged by ConfigStore**.
+- Game config lives in `m-rewrite/data/` and is **merged by ConfigStore**.
 - Game UI reads and writes config through the engine store.
 - Game uses i18n for UI strings.
 

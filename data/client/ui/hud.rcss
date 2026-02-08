@@ -1,0 +1,304 @@
+body#hud-body
+{
+    margin: 0px;
+    padding: 0px;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    font-family: Google Sans;
+}
+
+#hud-root
+{
+    width: 100%;
+    height: 100%;
+}
+
+.hud-dialog
+{
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none;
+}
+
+.hud-dialog.hidden
+{
+    display: none;
+}
+
+.hud-dialog-text
+{
+    font-size: 36px;
+    font-weight: 500;
+    color: #ffffff;
+}
+
+.hud-quick-menu
+{
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #0b0f1499;
+    z-index: 50;
+}
+
+.hud-quick-menu.hidden
+{
+    display: none;
+}
+
+.hud-quick-menu-panel
+{
+    width: 320px;
+    padding: 18px;
+    background-color: #0b0f14e6;
+    border-width: 1px;
+    border-color: #223040;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.hud-quick-menu-title
+{
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.hud-quick-menu-button
+{
+    width: 100%;
+    height: 32px;
+    background-color: #16212b;
+    border-width: 1px;
+    border-color: #223040;
+    border-radius: 6px;
+    color: #e7f0fa;
+    font-size: 14px;
+    text-align: center;
+}
+
+.hud-quick-menu-button:hover
+{
+    background-color: #1b2a36;
+    border-color: #2f89c4;
+}
+
+.hud-crosshair
+{
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 50px;
+    height: 50px;
+    margin-left: -25px;
+    margin-top: -25px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.hud-crosshair.hidden
+{
+    display: none;
+}
+
+.hud-crosshair-box
+{
+    position: absolute;
+    left: 0px;
+    top: 0px;
+    width: 50px;
+    height: 50px;
+    border-width: 1px;
+    border-color: #c8c8c8b4;
+}
+
+.hud-crosshair-plus
+{
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin-left: -4px;
+    margin-top: -8px;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 16px;
+}
+
+.hud-fps
+{
+    position: absolute;
+    right: 16px;
+    top: 12px;
+    padding: 4px 8px;
+    background-color: #0b0f1499;
+    border-width: 1px;
+    border-color: #223040;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 14px;
+    z-index: 10;
+}
+
+.hud-fps.hidden
+{
+    display: none;
+}
+
+.scroll-frame
+{
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-sizing: border-box;
+}
+
+.scroll-content
+{
+    width: 100%;
+    padding-right: 6px;
+    box-sizing: border-box;
+}
+
+.hud-chat-panel
+{
+    position: absolute;
+    right: 5%;
+    width: 65%;
+    bottom: 10px;
+    height: 22.5%;
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    background-color: #0b0f14b0;
+    border-width: 1px;
+    border-color: #223040;
+    border-radius: 6px;
+    z-index: 10;
+}
+
+.hud-chat-panel.hidden
+{
+    display: none;
+}
+
+.hud-chat-log
+{
+    flex: 1 1 auto;
+    min-height: 0px;
+    padding: 8px 10px;
+}
+
+.hud-chat-line
+{
+    display: block;
+    margin: 2px 0px;
+    color: #d5e3f0;
+    font-size: 15px;
+}
+
+.hud-chat-footer
+{
+    padding: 6px 10px 10px 10px;
+    border-width: 1px;
+    border-color: #223040;
+}
+
+.hud-chat-footer input
+{
+    width: 100%;
+    height: 28px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background-color: #0b141d;
+    border-width: 1px;
+    border-color: #1d2a36;
+    color: #e7f0fa;
+    box-sizing: border-box;
+    font-family: Google Sans;
+}
+
+.hud-chat-footer input:focus
+{
+    border-width: 1px;
+    border-color: #2f89c4;
+}
+
+.emoji {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.1em;
+}
+
+.hud-scoreboard
+{
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    width: 300px;
+    height: 400px;
+    padding: 10px 12px;
+    color: #ffffff;
+    font-size: 18px;
+    background-color: #0b0f1499;
+    border-width: 1px;
+    border-color: #223040;
+    border-radius: 6px;
+    overflow: hidden;
+    box-sizing: border-box;
+    z-index: 10;
+}
+
+.hud-scoreboard.hidden
+{
+    display: none;
+}
+
+.hud-scoreboard-line
+{
+    margin: 2px 0px;
+    color: #ffffff;
+}
+
+.hud-radar-panel
+{
+    position: absolute;
+    left: 5%;
+    bottom: 10px;
+    width: 22.5%;
+    height: 22.5%;
+    min-width: 240px;
+    min-height: 240px;
+    max-width: 460px;
+    max-height: 460px;
+    background-color: #0b0f14b0;
+    border-width: 1px;
+    border-color: #223040;
+    border-radius: 6px;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-start;
+    z-index: 10;
+}
+
+.hud-radar-panel.hidden
+{
+    display: none;
+}
+
+.hud-radar-image
+{
+    width: 100%;
+    height: 100%;
+    transform: scale(1, -1);
+}

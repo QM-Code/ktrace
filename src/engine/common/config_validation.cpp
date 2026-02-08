@@ -86,25 +86,27 @@ std::vector<RequiredKey> CommonKeys() {
         {"platform.WindowWidth", RequiredType::UInt16},
         {"platform.WindowHeight", RequiredType::UInt16},
         {"platform.WindowTitle", RequiredType::String},
-        {"graphics.theme", RequiredType::String},
-        {"graphics.skybox.Mode", RequiredType::String},
-        {"graphics.skybox.Cubemap.Name", RequiredType::String},
-        {"camera.default.fovYDegrees", RequiredType::Float},
-        {"camera.default.nearClip", RequiredType::Float},
-        {"camera.default.farClip", RequiredType::Float}
+        {"roamingMode.graphics.theme", RequiredType::String},
+        {"roamingMode.graphics.skybox.Mode", RequiredType::String},
+        {"roamingMode.graphics.skybox.Cubemap.Name", RequiredType::String},
+        {"roamingMode.camera.default.fovYDegrees", RequiredType::Float},
+        {"roamingMode.camera.default.nearClip", RequiredType::Float},
+        {"roamingMode.camera.default.farClip", RequiredType::Float}
     });
     return keys;
 }
 
 std::vector<RequiredKey> ClientOnlyKeys() {
     std::vector<RequiredKey> keys;
-    keys.reserve(10);
+    keys.reserve(12);
     AppendKeys(keys, {
-        {"game.roamingCamera.MoveSpeed", RequiredType::Float},
-        {"game.roamingCamera.FastMultiplier", RequiredType::Float},
-        {"game.roamingCamera.LookSensitivity", RequiredType::Float},
-        {"game.roamingCamera.InvertY", RequiredType::Bool},
-        {"game.roamingCamera.StartYawOffsetDeg", RequiredType::Float},
+        {"roamingMode.camera.roaming.MoveSpeed", RequiredType::Float},
+        {"roamingMode.camera.roaming.FastMultiplier", RequiredType::Float},
+        {"roamingMode.camera.roaming.LookSensitivity", RequiredType::Float},
+        {"roamingMode.camera.roaming.LookSmoothing", RequiredType::Float},
+        {"roamingMode.camera.roaming.InvertY", RequiredType::Bool},
+        {"roamingMode.camera.roaming.StartYawOffsetDeg", RequiredType::Float},
+        {"roamingMode.camera.roaming.StartPitchOffsetDeg", RequiredType::Float},
         {"assets.hud.fonts.console.Regular.Size", RequiredType::Float},
         {"assets.hud.fonts.console.Title.Size", RequiredType::Float},
         {"assets.hud.fonts.console.Heading.Size", RequiredType::Float},

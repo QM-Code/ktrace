@@ -1,0 +1,30 @@
+.scrollable {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.scrollable scrollbarvertical {
+    width: 10px;
+}
+
+.scrollable scrollbarvertical sliderarrowdec,
+.scrollable scrollbarvertical sliderarrowinc {
+    width: 10px;
+    height: 0px;
+}
+
+.scrollable scrollbarvertical slidertrack {
+    width: 10px;
+    background-color: #0b1118;
+}
+
+.scrollable scrollbarvertical sliderbar {
+    width: 10px;
+    min-height: 24px;
+    background-color: #2e3c47;
+    border-radius: 4px;
+}
+
+.scrollable scrollbarvertical sliderbar:hover {
+    background-color: #3d4f5f;
+}

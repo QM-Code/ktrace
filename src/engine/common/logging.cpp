@@ -30,15 +30,23 @@ std::string named_pattern;
 std::once_flag trace_color_once;
 bool trace_color_enabled = false;
 
-constexpr std::array<const char*, 24> kKnownTraceChannels = {
+constexpr std::array<const char*, 32> kKnownTraceChannels = {
+    "audio.system",
+    "audio.sdl3audio",
+    "audio.miniaudio",
     "config",
     "config.bindings",
     "ecs.world",
     "engine.app",
+    "engine.sim",
+    "engine.sim.frames",
     "engine.server",
     "input.events",
     "net.client",
     "net.server",
+    "physics.system",
+    "physics.jolt",
+    "physics.physx",
     "platform.sdl",
     "render.bgfx",
     "render.bgfx.internal",
@@ -171,12 +179,14 @@ const char* TraceCategoryColor(const std::string& category) {
         {"reset", "\x1b[0m"}
     };
     static const std::unordered_map<std::string, const char*> colors = {
+        {"audio", ansi_colors.at("bright_yellow")},
         {"ui", ansi_colors.at("bright_magenta")},
         {"render", ansi_colors.at("bright_red")},
         {"console", ansi_colors.at("bright_yellow")},
         {"config", ansi_colors.at("bright_cyan")},
         {"net", ansi_colors.at("bright_green")},
         {"ecs", ansi_colors.at("bright_green")},
+        {"physics", ansi_colors.at("green")},
         {"engine", ansi_colors.at("bright_blue")},
         {"platform", ansi_colors.at("cyan")},
         {"input", ansi_colors.at("bright_black")}

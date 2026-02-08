@@ -1,0 +1,35 @@
+<div class="panel bindings-panel">
+    <div class="panel-header">
+        <span class="panel-header-title" data-i18n="ui.console.tabs.bindings"></span>
+    </div>
+    <div class="bindings-body">
+        <div class="bindings-subtitle">Select a cell, then press a key/button to add it. Changes apply on next launch.</div>
+        <div class="bindings-table">
+            <div class="bindings-row header">
+                <div class="bindings-cell action">Action</div>
+                <div class="bindings-cell keyboard">Keyboard</div>
+                <div class="bindings-cell mouse">Mouse</div>
+                <div class="bindings-cell controller">Controller</div>
+            </div>
+            <div class="bindings-list scrollable scroll-frame scroll-fill">
+                <div id="bindings-list-inner" class="bindings-list-inner scroll-content"></div>
+            </div>
+        </div>
+        <div id="bindings-selected" class="bindings-selected">Selected cell: None</div>
+        <div class="bindings-actions">
+            <button id="bindings-clear" class="danger">Clear Selected</button>
+            <button id="bindings-save" class="primary">Save Bindings</button>
+            <button id="bindings-reset">Reset to Defaults</button>
+        </div>
+        <div id="bindings-status" class="status hidden"></div>
+    </div>
+    <div id="bindings-reset-overlay" class="modal hidden">
+        <div class="modal-content">
+            <div id="bindings-reset-message" class="modal-text"></div>
+            <div class="modal-actions">
+                <button id="bindings-reset-yes" class="danger">Reset</button>
+                <button id="bindings-reset-no" class="primary">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>

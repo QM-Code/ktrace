@@ -1,0 +1,10 @@
+{
+    "language": "en",
+    "config": {
+        "SaveIntervalSeconds": 3,
+        "MergeIntervalSeconds": 0.1
+    },
+    "network": {
+        "ServerPort": 11899
+    }
+}

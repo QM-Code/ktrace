@@ -1,0 +1,100 @@
+<div class="panel community-panel">
+    <div class="panel-header">
+        <span class="panel-header-title" data-i18n="ui.console.tabs.community"></span>
+    </div>
+    <div class="community-body">
+        <div class="community-layout">
+            <div class="community-left">
+                <div class="row select-row">
+                    <label>Community</label>
+                    <select id="community-select">
+                        <option>Local Area Network</option>
+                    </select>
+                    <button id="community-info-button" class="icon-button">?</button>
+                </div>
+                <div class="row">
+                    <label>Username</label>
+                    <input id="community-username-input" type="text" />
+                    <label id="community-password-label" style="margin-left: 12px;">Password</label>
+                    <input id="community-password-input" type="password" />
+                </div>
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-header-title">Servers</span>
+                        <button id="community-refresh-button">Refresh</button>
+                    </div>
+                    <div id="server-list" class="server-list scrollable"></div>
+                </div>
+                <div class="row" id="new-community-row">
+                    <label>New&nbsp;Community</label>
+                    <input id="community-add-input" type="text" />
+                    <button id="community-add-button">Add</button>
+                </div>
+            </div>
+            <div class="community-right">
+                <div class="panel">
+                    <div class="panel-header panel-header-details">
+                        <span id="server-detail-title" class="panel-header-title panel-header-title-details">Server Details</span>
+                        <div class="panel-header-actions">
+                            <button id="server-join-button">Join</button>
+                            <button id="server-roam-button">Roam</button>
+                            <button id="server-quit-button" class="danger">Quit</button>
+                            <button id="community-delete-button" class="danger">Delete</button>
+                        </div>
+                    </div>
+                    <div class="details-scroll scrollable">
+                        <div id="detail-server-section" class="details-section">
+                            <span class="label">Server</span>
+                            <span id="server-detail-name">Server Name Here</span>
+                        </div>
+                        <div id="detail-website-section" class="details-section">
+                            <span class="label">Website</span>
+                            <a id="server-detail-website" href=""></a>
+                        </div>
+                        <div id="detail-overview-section" class="details-section">
+                            <span class="label">Overview</span>
+                            <span id="server-detail-overview"></span>
+                        </div>
+                        <div id="detail-description-section" class="details-section">
+                            <span class="label">Description</span>
+                            <div id="server-detail-description" class="markdown"></div>
+                        </div>
+                        <div id="detail-screenshot-section" class="details-section">
+                            <span class="label">Screenshot ID</span>
+                            <span id="server-detail-screenshot"></span>
+                        </div>
+                        <div id="detail-lan-info" class="details-section hidden">
+                            <div id="lan-info-text"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="join-confirm-overlay" class="modal hidden">
+            <div class="modal-content">
+                <div id="join-confirm-message" class="modal-text"></div>
+                <div class="modal-actions">
+                    <button id="join-confirm-yes" class="danger">Quit &amp; Join</button>
+                    <button id="join-confirm-no">Cancel</button>
+                </div>
+            </div>
+        </div>
+        <div id="error-dialog-overlay" class="modal hidden">
+            <div class="modal-content">
+                <div id="error-dialog-message" class="modal-text"></div>
+                <div class="modal-actions">
+                    <button id="error-dialog-ok" class="primary">OK</button>
+                </div>
+            </div>
+        </div>
+        <div id="delete-confirm-overlay" class="modal hidden">
+            <div class="modal-content">
+                <div id="delete-confirm-message" class="modal-text"></div>
+                <div class="modal-actions">
+                    <button id="delete-confirm-yes" class="danger">Delete</button>
+                    <button id="delete-confirm-no" class="primary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

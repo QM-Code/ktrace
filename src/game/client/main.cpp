@@ -2,7 +2,9 @@
 #include "client/cli_options.hpp"
 
 #include "karma/app/engine_app.hpp"
+#include "karma/audio/backend.hpp"
 #include "karma/common/config_helpers.hpp"
+#include "karma/physics/backend.hpp"
 #include "karma/renderer/backend.hpp"
 
 #include "game.hpp"
@@ -101,6 +103,57 @@ std::optional<karma::ui::Backend> ResolveUiBackendOverride(const bz3::client::CL
         std::string("Invalid CLI value for --backend-ui: '") + options.backend_ui + "' (expected: imgui|rmlui)");
 }
 
+karma::physics_backend::BackendKind ResolvePhysicsBackendFromOptions(
+    const bz3::client::CLIOptions& options) {
+    const std::string configured = options.backend_physics_explicit
+        ? options.backend_physics
+        : karma::config::ReadStringConfig("physics.backend", "auto");
+    const auto parsed = karma::physics_backend::ParseBackendKind(configured);
+    if (!parsed) {
+        const char* source =
+            options.backend_physics_explicit ? "--backend-physics" : "config 'physics.backend'";
+        throw std::runtime_error(std::string("Invalid value for ") + source + ": '" + configured +
+                                 "' (expected: auto|jolt|physx)");
+    }
+    if (*parsed != karma::physics_backend::BackendKind::Auto) {
+        const auto compiled = karma::physics_backend::CompiledBackends();
+        const bool supported = std::any_of(
+            compiled.begin(),
+            compiled.end(),
+            [parsed](karma::physics_backend::BackendKind kind) { return kind == *parsed; });
+        if (!supported) {
+            throw std::runtime_error(
+                std::string("Configured physics backend '") + configured + "' is not compiled into this binary.");
+        }
+    }
+    return *parsed;
+}
+
+karma::audio_backend::BackendKind ResolveAudioBackendFromOptions(
+    const bz3::client::CLIOptions& options) {
+    const std::string configured = options.backend_audio_explicit
+        ? options.backend_audio
+        : karma::config::ReadStringConfig("audio.backend", "auto");
+    const auto parsed = karma::audio_backend::ParseBackendKind(configured);
+    if (!parsed) {
+        const char* source = options.backend_audio_explicit ? "--backend-audio" : "config 'audio.backend'";
+        throw std::runtime_error(std::string("Invalid value for ") + source + ": '" + configured +
+                                 "' (expected: auto|sdl3audio|miniaudio)");
+    }
+    if (*parsed != karma::audio_backend::BackendKind::Auto) {
+        const auto compiled = karma::audio_backend::CompiledBackends();
+        const bool supported = std::any_of(
+            compiled.begin(),
+            compiled.end(),
+            [parsed](karma::audio_backend::BackendKind kind) { return kind == *parsed; });
+        if (!supported) {
+            throw std::runtime_error(
+                std::string("Configured audio backend '") + configured + "' is not compiled into this binary.");
+        }
+    }
+    return *parsed;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -118,16 +171,28 @@ int main(int argc, char** argv) {
         config.window.fullscreen = karma::config::ReadRequiredBoolConfig("platform.Fullscreen");
         config.window.wayland_libdecor = karma::config::ReadRequiredBoolConfig("platform.WaylandLibdecor");
         config.vsync = karma::config::ReadRequiredBoolConfig("platform.VSync");
-        config.default_camera.position = ReadRequiredVec3("camera.default.position");
-        config.default_camera.target = ReadRequiredVec3("camera.default.target");
-        config.default_camera.fov_y_degrees = karma::config::ReadRequiredFloatConfig("camera.default.fovYDegrees");
-        config.default_camera.near_clip = karma::config::ReadRequiredFloatConfig("camera.default.nearClip");
-        config.default_camera.far_clip = karma::config::ReadRequiredFloatConfig("camera.default.farClip");
-        config.default_light.direction = ReadRequiredVec3("graphics.lighting.sunDirection");
-        config.default_light.color = ReadRequiredColor("graphics.lighting.sunColor");
-        config.default_light.ambient = ReadRequiredColor("graphics.lighting.ambientColor");
-        config.default_light.unlit = karma::config::ReadFloatConfig({"graphics.lighting.unlit"}, 0.0f);
+        config.default_camera.position = ReadRequiredVec3("roamingMode.camera.default.position");
+        config.default_camera.target = ReadRequiredVec3("roamingMode.camera.default.target");
+        config.default_camera.fov_y_degrees =
+            karma::config::ReadRequiredFloatConfig("roamingMode.camera.default.fovYDegrees");
+        config.default_camera.near_clip =
+            karma::config::ReadRequiredFloatConfig("roamingMode.camera.default.nearClip");
+        config.default_camera.far_clip =
+            karma::config::ReadRequiredFloatConfig("roamingMode.camera.default.farClip");
+        config.default_light.direction = ReadRequiredVec3("roamingMode.graphics.lighting.sunDirection");
+        config.default_light.color = ReadRequiredColor("roamingMode.graphics.lighting.sunColor");
+        config.default_light.ambient = ReadRequiredColor("roamingMode.graphics.lighting.ambientColor");
+        config.default_light.unlit =
+            karma::config::ReadFloatConfig({"roamingMode.graphics.lighting.unlit"}, 0.0f);
         config.render_backend = ResolveRenderBackendFromOptions(options);
+        config.physics_backend = ResolvePhysicsBackendFromOptions(options);
+        config.audio_backend = ResolveAudioBackendFromOptions(options);
+        config.enable_audio = karma::config::ReadBoolConfig({"audio.enabled"}, true);
+        config.simulation_fixed_hz = karma::config::ReadFloatConfig({"simulation.fixedHz"}, 60.0f);
+        config.simulation_max_frame_dt =
+            karma::config::ReadFloatConfig({"simulation.maxFrameDeltaTime"}, 0.25f);
+        config.simulation_max_steps =
+            static_cast<int>(karma::config::ReadUInt16Config({"simulation.maxSubsteps"}, 4));
         config.ui_backend_override = ResolveUiBackendOverride(options);
 
         const bz3::GameStartupOptions startup = ResolveGameStartupOptions(options);

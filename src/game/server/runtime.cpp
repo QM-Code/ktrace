@@ -4,14 +4,20 @@
 #include "server/server_game.hpp"
 
 #include "karma/app/engine_server_app.hpp"
+#include "karma/audio/backend.hpp"
+#include "karma/common/config_helpers.hpp"
 #include "karma/common/config_validation.hpp"
 #include "karma/common/logging.hpp"
+#include "karma/physics/backend.hpp"
 
 #include <spdlog/spdlog.h>
 
 #include <atomic>
+#include <algorithm>
 #include <csignal>
 #include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -24,6 +30,56 @@ std::atomic<bool> g_running{true};
 void OnSignal(int signum) {
     KARMA_TRACE("engine.server", "bz3-server: received signal {}, requesting stop", signum);
     g_running.store(false);
+}
+
+karma::physics_backend::BackendKind ResolvePhysicsBackendFromOptions(const CLIOptions& options) {
+    const std::string configured = options.backend_physics_explicit
+        ? options.backend_physics
+        : karma::config::ReadStringConfig("physics.backend", "auto");
+    const auto parsed = karma::physics_backend::ParseBackendKind(configured);
+    if (!parsed) {
+        const char* source =
+            options.backend_physics_explicit ? "--backend-physics" : "config 'physics.backend'";
+        throw std::runtime_error(std::string("Invalid value for ") + source + ": '" + configured +
+                                 "' (expected: auto|jolt|physx)");
+    }
+    if (*parsed != karma::physics_backend::BackendKind::Auto) {
+        const auto compiled = karma::physics_backend::CompiledBackends();
+        const bool supported = std::any_of(
+            compiled.begin(),
+            compiled.end(),
+            [parsed](karma::physics_backend::BackendKind kind) { return kind == *parsed; });
+        if (!supported) {
+            throw std::runtime_error(
+                std::string("Configured physics backend '") + configured + "' is not compiled into this binary.");
+        }
+    }
+    return *parsed;
+}
+
+karma::audio_backend::BackendKind ResolveAudioBackendFromOptions(const CLIOptions& options) {
+    const std::string configured = options.backend_audio_explicit
+        ? options.backend_audio
+        : karma::config::ReadStringConfig("audio.backend", "auto");
+    const auto parsed = karma::audio_backend::ParseBackendKind(configured);
+    if (!parsed) {
+        const char* source =
+            options.backend_audio_explicit ? "--backend-audio" : "config 'audio.backend'";
+        throw std::runtime_error(std::string("Invalid value for ") + source + ": '" + configured +
+                                 "' (expected: auto|sdl3audio|miniaudio)");
+    }
+    if (*parsed != karma::audio_backend::BackendKind::Auto) {
+        const auto compiled = karma::audio_backend::CompiledBackends();
+        const bool supported = std::any_of(
+            compiled.begin(),
+            compiled.end(),
+            [parsed](karma::audio_backend::BackendKind kind) { return kind == *parsed; });
+        if (!supported) {
+            throw std::runtime_error(
+                std::string("Configured audio backend '") + configured + "' is not compiled into this binary.");
+        }
+    }
+    return *parsed;
 }
 
 } // namespace
@@ -57,12 +113,32 @@ int RunRuntime(const CLIOptions& options) {
                     "CLI option --community parsed (not wired yet): '{}'",
                     options.community);
     }
+    if (options.backend_physics_explicit) {
+        KARMA_TRACE("engine.server",
+                    "CLI option --backend-physics set: '{}'",
+                    options.backend_physics);
+    }
+    if (options.backend_audio_explicit) {
+        KARMA_TRACE("engine.server",
+                    "CLI option --backend-audio set: '{}'",
+                    options.backend_audio);
+    }
 
     std::signal(SIGINT, OnSignal);
     std::signal(SIGTERM, OnSignal);
 
     g_running.store(true);
     karma::app::EngineServerConfig engineConfig{};
+    engineConfig.target_tick_hz = karma::config::ReadFloatConfig({"simulation.fixedHz"}, engineConfig.target_tick_hz);
+    engineConfig.max_delta_time = karma::config::ReadFloatConfig({"simulation.maxFrameDeltaTime"},
+                                                                  engineConfig.max_delta_time);
+    engineConfig.max_substeps =
+        static_cast<int>(karma::config::ReadUInt16Config({"simulation.maxSubsteps"},
+                                                          static_cast<uint16_t>(engineConfig.max_substeps)));
+    engineConfig.physics_backend = ResolvePhysicsBackendFromOptions(options);
+    engineConfig.audio_backend = ResolveAudioBackendFromOptions(options);
+    engineConfig.enable_audio = options.backend_audio_explicit
+        || karma::config::ReadBoolConfig({"audio.serverEnabled"}, false);
     ServerGame game{world_context->world_name};
     std::unique_ptr<net::ServerEventSource> event_source = net::CreateServerEventSource(options);
     karma::app::EngineServerApp app{};

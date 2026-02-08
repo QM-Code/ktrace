@@ -1,5 +1,6 @@
 #include "common/data_path_resolver.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdlib>
@@ -32,6 +33,8 @@
 
 namespace {
 
+using karma::data::ContentMount;
+using karma::data::ContentMountType;
 using karma::data::DataPathSpec;
 
 std::filesystem::path TryCanonical(const std::filesystem::path &path) {
@@ -105,6 +108,93 @@ bool g_dataRootInitialized = false;
 std::mutex g_dataSpecMutex;
 DataPathSpec g_dataSpec;
 
+std::filesystem::path NormalizeMountPoint(const std::filesystem::path &mountPoint) {
+    if (mountPoint.empty()) {
+        return {};
+    }
+
+    std::filesystem::path normalized = mountPoint.lexically_normal();
+    if (normalized == ".") {
+        return {};
+    }
+    if (normalized.is_absolute()) {
+        normalized = normalized.relative_path();
+    }
+    return normalized;
+}
+
+class ContentMountManager {
+  public:
+    void setFilesystemRoot(const std::filesystem::path &root) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        filesystem_mount_ = ContentMount{
+            .id = "data-root",
+            .type = ContentMountType::FileSystem,
+            .source = root,
+            .mountPoint = {}
+        };
+    }
+
+    void registerPackageMount(const std::string &id,
+                              const std::filesystem::path &packagePath,
+                              const std::filesystem::path &mountPoint) {
+        if (id.empty()) {
+            throw std::runtime_error("data_path_resolver: package mount id must not be empty");
+        }
+        if (packagePath.empty()) {
+            throw std::runtime_error("data_path_resolver: package mount path must not be empty");
+        }
+
+        ContentMount mount{
+            .id = id,
+            .type = ContentMountType::Package,
+            .source = packagePath,
+            .mountPoint = NormalizeMountPoint(mountPoint)
+        };
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto existing = std::find_if(package_mounts_.begin(), package_mounts_.end(), [&id](const ContentMount &entry) {
+            return entry.id == id;
+        });
+        if (existing != package_mounts_.end()) {
+            *existing = std::move(mount);
+            return;
+        }
+        package_mounts_.push_back(std::move(mount));
+    }
+
+    void clearPackageMounts() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        package_mounts_.clear();
+    }
+
+    std::vector<ContentMount> snapshot() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<ContentMount> mounts;
+        mounts.reserve((filesystem_mount_.has_value() ? 1U : 0U) + package_mounts_.size());
+        if (filesystem_mount_.has_value()) {
+            mounts.push_back(*filesystem_mount_);
+        }
+        mounts.insert(mounts.end(), package_mounts_.begin(), package_mounts_.end());
+        return mounts;
+    }
+
+    std::filesystem::path resolve(const std::filesystem::path &relativePath) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!filesystem_mount_.has_value()) {
+            throw std::runtime_error("data_path_resolver: content mounts are not initialized");
+        }
+        return TryCanonical(filesystem_mount_->source / relativePath);
+    }
+
+  private:
+    mutable std::mutex mutex_;
+    std::optional<ContentMount> filesystem_mount_;
+    std::vector<ContentMount> package_mounts_;
+};
+
+ContentMountManager g_mountManager;
+
 std::filesystem::path ValidateDataRootCandidate(const std::filesystem::path &path) {
     const auto canonical = TryCanonical(path);
     std::error_code ec;
@@ -160,6 +250,29 @@ DataPathSpec GetDataPathSpec() {
     return g_dataSpec;
 }
 
+void RegisterPackageMount(const std::string &id,
+                          const std::filesystem::path &packagePath,
+                          const std::filesystem::path &mountPoint) {
+    std::filesystem::path resolvedPackagePath = packagePath;
+    if (resolvedPackagePath.is_absolute()) {
+        resolvedPackagePath = TryCanonical(resolvedPackagePath);
+    } else {
+        resolvedPackagePath = Resolve(resolvedPackagePath);
+    }
+
+    g_mountManager.registerPackageMount(id, resolvedPackagePath, mountPoint);
+}
+
+void ClearPackageMounts() {
+    g_mountManager.clearPackageMounts();
+}
+
+std::vector<ContentMount> GetContentMounts() {
+    // Ensure filesystem mount is initialized before snapshotting.
+    (void)DataRoot();
+    return g_mountManager.snapshot();
+}
+
 std::filesystem::path ExecutableDirectory() {
     return ::ExecutableDirectory();
 }
@@ -176,6 +289,7 @@ const std::filesystem::path &DataRoot() {
         }
 
         root = DetectDataRoot(overrideCopy);
+        g_mountManager.setFilesystemRoot(root);
 
         std::lock_guard<std::mutex> lock(g_dataRootMutex);
         g_dataRootInitialized = true;
@@ -198,7 +312,9 @@ std::filesystem::path Resolve(const std::filesystem::path &relativePath) {
         return TryCanonical(relativePath);
     }
 
-    return TryCanonical(DataRoot() / relativePath);
+    // DataRoot() initializes the default filesystem mount on first use.
+    (void)DataRoot();
+    return g_mountManager.resolve(relativePath);
 }
 
 std::filesystem::path ResolveWithBase(const std::filesystem::path &baseDir, const std::string &value) {

@@ -72,6 +72,12 @@ void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
     if (options.backend_ui_explicit) {
         KARMA_TRACE("engine.app", "CLI option --backend-ui set: '{}'", options.backend_ui);
     }
+    if (options.backend_physics_explicit) {
+        KARMA_TRACE("engine.app", "CLI option --backend-physics set: '{}'", options.backend_physics);
+    }
+    if (options.backend_audio_explicit) {
+        KARMA_TRACE("engine.app", "CLI option --backend-audio set: '{}'", options.backend_audio);
+    }
 
     const auto issues = karma::config::ValidateRequiredKeys(karma::config::ClientRequiredKeys());
     if (!issues.empty()) {
