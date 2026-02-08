@@ -109,6 +109,8 @@ if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
 endif()
 
 if(KARMA_PHYSICS_BACKEND_JOLT_ENABLED)
+    find_package(Jolt CONFIG REQUIRED)
+    target_link_libraries(karma_engine_core PUBLIC Jolt::Jolt)
     target_compile_definitions(karma_engine_core PRIVATE KARMA_HAS_PHYSICS_JOLT)
 endif()
 
