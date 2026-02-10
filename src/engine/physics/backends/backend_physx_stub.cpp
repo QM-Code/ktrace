@@ -9,6 +9,7 @@
 #include <PxPhysicsAPI.h>
 
 #include <algorithm>
+#include <cmath>
 #include <thread>
 #endif
 
@@ -229,7 +230,52 @@ class PhysXBackend final : public Backend {
         return true;
     }
 
+    bool raycastClosest(const glm::vec3& origin,
+                        const glm::vec3& direction,
+                        float max_distance,
+                        RaycastHit& out_hit) const override {
+        if (!scene_ || max_distance <= 0.0f) {
+            return false;
+        }
+
+        const float direction_length = glm::length(direction);
+        if (!std::isfinite(direction_length) || direction_length <= 1e-6f) {
+            return false;
+        }
+
+        const glm::vec3 unit_direction = direction / direction_length;
+        physx::PxRaycastBuffer hit_buffer;
+        const bool has_hit = scene_->raycast(ToPxVec3(origin), ToPxVec3(unit_direction), max_distance, hit_buffer);
+        if (!has_hit || !hit_buffer.hasBlock) {
+            return false;
+        }
+
+        const BodyId hit_body = findBodyId(hit_buffer.block.actor);
+        if (hit_body == kInvalidBodyId) {
+            return false;
+        }
+
+        out_hit.body = hit_body;
+        out_hit.position = ToGlmVec3(hit_buffer.block.position);
+        out_hit.distance = hit_buffer.block.distance;
+        out_hit.fraction = hit_buffer.block.distance / max_distance;
+        return true;
+    }
+
  private:
+    BodyId findBodyId(const physx::PxRigidActor* actor) const {
+        if (!actor) {
+            return kInvalidBodyId;
+        }
+
+        for (const auto& [id, candidate] : bodies_) {
+            if (candidate == actor) {
+                return id;
+            }
+        }
+        return kInvalidBodyId;
+    }
+
     physx::PxDefaultAllocator allocator_{};
     physx::PxDefaultErrorCallback error_callback_{};
     physx::PxFoundation* foundation_ = nullptr;
@@ -262,6 +308,7 @@ class PhysXBackendStub final : public Backend {
     void destroyBody(BodyId) override {}
     bool setBodyTransform(BodyId, const BodyTransform&) override { return false; }
     bool getBodyTransform(BodyId, BodyTransform&) const override { return false; }
+    bool raycastClosest(const glm::vec3&, const glm::vec3&, float, RaycastHit&) const override { return false; }
 };
 
 #endif

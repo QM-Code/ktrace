@@ -18,7 +18,10 @@
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/NarrowPhaseQuery.h>
 #include <Jolt/Physics/Collision/ObjectLayer.h>
+#include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/EPhysicsUpdateError.h>
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -26,6 +29,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <mutex>
@@ -353,7 +357,48 @@ class JoltBackend final : public Backend {
         return true;
     }
 
+    bool raycastClosest(const glm::vec3& origin,
+                        const glm::vec3& direction,
+                        float max_distance,
+                        RaycastHit& out_hit) const override {
+        if (!physics_system_ || max_distance <= 0.0f) {
+            return false;
+        }
+
+        const float direction_length = glm::length(direction);
+        if (!std::isfinite(direction_length) || direction_length <= 1e-6f) {
+            return false;
+        }
+
+        const glm::vec3 unit_direction = direction / direction_length;
+        const JPH::RRayCast ray(ToJoltRVec3(origin), ToJoltVec3(unit_direction * max_distance));
+        JPH::RayCastResult result;
+        if (!physics_system_->GetNarrowPhaseQuery().CastRay(ray, result)) {
+            return false;
+        }
+
+        const BodyId hit_body = findBodyId(result.mBodyID);
+        if (hit_body == kInvalidBodyId) {
+            return false;
+        }
+
+        out_hit.body = hit_body;
+        out_hit.fraction = result.mFraction;
+        out_hit.distance = max_distance * result.mFraction;
+        out_hit.position = ToGlmVec3(ray.GetPointOnRay(result.mFraction));
+        return true;
+    }
+
  private:
+    BodyId findBodyId(JPH::BodyID body_id) const {
+        for (const auto& [id, internal_id] : bodies_) {
+            if (internal_id == body_id) {
+                return id;
+            }
+        }
+        return kInvalidBodyId;
+    }
+
     std::unique_ptr<JPH::TempAllocatorImpl> temp_allocator_{};
     std::unique_ptr<JPH::JobSystemThreadPool> job_system_{};
     std::unique_ptr<JPH::PhysicsSystem> physics_system_{};
@@ -381,6 +426,7 @@ class JoltBackendStub final : public Backend {
     void destroyBody(BodyId) override {}
     bool setBodyTransform(BodyId, const BodyTransform&) override { return false; }
     bool getBodyTransform(BodyId, BodyTransform&) const override { return false; }
+    bool raycastClosest(const glm::vec3&, const glm::vec3&, float, RaycastHit&) const override { return false; }
 };
 
 #endif

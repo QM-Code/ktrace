@@ -124,4 +124,14 @@ bool PhysicsSystem::getBodyTransform(physics_backend::BodyId body,
     return backend_->getBodyTransform(body, out_transform);
 }
 
+bool PhysicsSystem::raycastClosest(const glm::vec3& origin,
+                                   const glm::vec3& direction,
+                                   float max_distance,
+                                   physics_backend::RaycastHit& out_hit) const {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->raycastClosest(origin, direction, max_distance, out_hit);
+}
+
 } // namespace karma::physics

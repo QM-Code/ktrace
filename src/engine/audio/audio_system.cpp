@@ -34,29 +34,52 @@ void AudioSystem::init() {
         return;
     }
 
+    initialized_ = false;
+    selected_backend_ = audio_backend::BackendKind::Auto;
+
+    const auto try_backend = [this](audio_backend::BackendKind backend_kind) -> bool {
+        audio_backend::BackendKind selected = audio_backend::BackendKind::Auto;
+        auto backend = audio_backend::CreateBackend(backend_kind, &selected);
+        if (!backend) {
+            KARMA_TRACE("audio.system",
+                        "AudioSystem: backend '{}' unavailable at creation time",
+                        audio_backend::BackendKindName(backend_kind));
+            return false;
+        }
+
+        if (!backend->init()) {
+            KARMA_TRACE("audio.system",
+                        "AudioSystem: backend '{}' init failed",
+                        backend->name());
+            backend->shutdown();
+            return false;
+        }
+
+        selected_backend_ = selected;
+        backend_ = std::move(backend);
+        initialized_ = true;
+        KARMA_TRACE("audio.system",
+                    "AudioSystem: backend ready selected='{}'",
+                    backend_->name());
+        return true;
+    };
+
     KARMA_TRACE("audio.system",
                 "AudioSystem: creating backend requested='{}' compiled='{}'",
                 audio_backend::BackendKindName(requested_backend_),
                 CompiledBackendList());
-    backend_ = audio_backend::CreateBackend(requested_backend_, &selected_backend_);
-    if (!backend_) {
-        selected_backend_ = audio_backend::BackendKind::Auto;
-        return;
-    }
-
-    if (!backend_->init()) {
+    if (requested_backend_ == audio_backend::BackendKind::Auto) {
+        for (const auto compiled_backend : audio_backend::CompiledBackends()) {
+            if (try_backend(compiled_backend)) {
+                return;
+            }
+        }
         KARMA_TRACE("audio.system",
-                    "AudioSystem: backend '{}' init failed",
-                    backend_->name());
-        backend_.reset();
-        selected_backend_ = audio_backend::BackendKind::Auto;
+                    "AudioSystem: no compiled backend could be initialized for auto selection");
         return;
     }
 
-    initialized_ = true;
-    KARMA_TRACE("audio.system",
-                "AudioSystem: backend ready selected='{}'",
-                backend_->name());
+    (void)try_backend(requested_backend_);
 }
 
 void AudioSystem::shutdown() {
@@ -122,4 +145,3 @@ void AudioSystem::stopVoice(audio_backend::VoiceId voice) {
 }
 
 } // namespace karma::audio
-

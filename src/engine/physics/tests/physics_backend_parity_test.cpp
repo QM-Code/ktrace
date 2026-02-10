@@ -16,6 +16,7 @@ using karma::physics_backend::BackendKindName;
 using karma::physics_backend::BodyDesc;
 using karma::physics_backend::BodyId;
 using karma::physics_backend::BodyTransform;
+using karma::physics_backend::RaycastHit;
 using karma::physics_backend::CompiledBackends;
 using karma::physics_backend::ParseBackendKind;
 
@@ -612,6 +613,149 @@ bool RunRestingStabilityChecks(BackendKind backend) {
     return true;
 }
 
+bool RunRaycastQueryChecks(BackendKind backend) {
+    karma::physics::PhysicsSystem physics;
+    physics.setBackend(backend);
+    physics.init();
+
+    if (!physics.isInitialized()) {
+        std::cerr << "backend=" << BackendKindName(backend) << " failed to initialize (raycast check)\n";
+        return false;
+    }
+
+    BodyDesc lower_desc{};
+    lower_desc.is_static = true;
+    lower_desc.transform.position = glm::vec3(0.0f, 0.0f, 0.0f);
+    lower_desc.transform.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    const BodyId lower_body = physics.createBody(lower_desc);
+    if (lower_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend) << " failed to create lower static body (raycast check)\n";
+        physics.shutdown();
+        return false;
+    }
+
+    BodyDesc upper_desc{};
+    upper_desc.is_static = true;
+    upper_desc.transform.position = glm::vec3(0.0f, 3.0f, 0.0f);
+    upper_desc.transform.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    const BodyId upper_body = physics.createBody(upper_desc);
+    if (upper_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend) << " failed to create upper static body (raycast check)\n";
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+
+    constexpr float ray_max_distance = 10.0f;
+    const glm::vec3 ray_origin(0.0f, 6.0f, 0.0f);
+    const glm::vec3 ray_direction(0.0f, -1.0f, 0.0f);
+
+    RaycastHit hit{};
+    if (!physics.raycastClosest(ray_origin, ray_direction, ray_max_distance, hit)) {
+        std::cerr << "backend=" << BackendKindName(backend) << " raycastClosest failed to hit closest body\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (hit.body != upper_body) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest hit unexpected body: expected=" << upper_body
+                  << " actual=" << hit.body << "\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!std::isfinite(hit.position.x) || !std::isfinite(hit.position.y) || !std::isfinite(hit.position.z)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest returned non-finite hit position\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!(hit.distance > 2.3f && hit.distance < 2.7f)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest distance out of range for closest hit: distance=" << hit.distance << "\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!(hit.fraction > 0.23f && hit.fraction < 0.27f)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest fraction out of range for closest hit: fraction=" << hit.fraction << "\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (std::fabs(hit.position.x) > 0.05f || std::fabs(hit.position.z) > 0.05f
+        || !(hit.position.y > 3.3f && hit.position.y < 3.7f)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest hit position unexpected: pos=("
+                  << hit.position.x << "," << hit.position.y << "," << hit.position.z << ")\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+
+    if (physics.raycastClosest(glm::vec3(2.0f, 6.0f, 0.0f), ray_direction, ray_max_distance, hit)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest unexpectedly hit for miss ray\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (physics.raycastClosest(ray_origin, glm::vec3(0.0f, 0.0f, 0.0f), ray_max_distance, hit)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest unexpectedly succeeded with zero direction\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (physics.raycastClosest(ray_origin, ray_direction, 0.0f, hit)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest unexpectedly succeeded with non-positive distance\n";
+        physics.destroyBody(upper_body);
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+
+    physics.destroyBody(upper_body);
+    if (!physics.raycastClosest(ray_origin, ray_direction, ray_max_distance, hit)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest failed after removing closest body\n";
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (hit.body != lower_body) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest after destroy hit unexpected body: expected=" << lower_body
+                  << " actual=" << hit.body << "\n";
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!(hit.distance > 5.3f && hit.distance < 5.7f)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest distance out of range after destroy: distance=" << hit.distance << "\n";
+        physics.destroyBody(lower_body);
+        physics.shutdown();
+        return false;
+    }
+
+    physics.destroyBody(lower_body);
+    physics.shutdown();
+    return true;
+}
+
 bool RunUninitializedApiChecks(BackendKind backend) {
     karma::physics::PhysicsSystem physics;
     physics.setBackend(backend);
@@ -623,6 +767,7 @@ bool RunUninitializedApiChecks(BackendKind backend) {
     transform.position = glm::vec3(4.0f, 5.0f, 6.0f);
     transform.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     BodyTransform out{};
+    RaycastHit hit{};
 
     const BodyId before_init = physics.createBody(desc);
     if (before_init != karma::physics_backend::kInvalidBodyId) {
@@ -638,6 +783,11 @@ bool RunUninitializedApiChecks(BackendKind backend) {
     if (physics.setBodyTransform(1, transform)) {
         std::cerr << "backend=" << BackendKindName(backend)
                   << " setBodyTransform succeeded before init\n";
+        return false;
+    }
+    if (physics.raycastClosest(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, hit)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest succeeded before init\n";
         return false;
     }
     physics.destroyBody(1);
@@ -672,6 +822,11 @@ bool RunUninitializedApiChecks(BackendKind backend) {
     if (physics.setBodyTransform(body, transform)) {
         std::cerr << "backend=" << BackendKindName(backend)
                   << " setBodyTransform succeeded after shutdown\n";
+        return false;
+    }
+    if (physics.raycastClosest(glm::vec3(0.0f, 2.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f, hit)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " raycastClosest succeeded after shutdown\n";
         return false;
     }
     physics.destroyBody(body);
@@ -917,6 +1072,9 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         if (!RunVelocityIntegrationChecks(backend)) {
+            return EXIT_FAILURE;
+        }
+        if (!RunRaycastQueryChecks(backend)) {
             return EXIT_FAILURE;
         }
         if (!RunGroundCollisionChecks(backend)) {

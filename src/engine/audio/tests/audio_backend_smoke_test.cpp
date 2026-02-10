@@ -23,6 +23,62 @@ bool ContainsBackend(const std::vector<BackendKind>& values, BackendKind needle)
     return false;
 }
 
+void SetEnvVar(const char* key, const char* value) {
+#if defined(_WIN32)
+    _putenv_s(key, value ? value : "");
+#else
+    if (value) {
+        setenv(key, value, 1);
+    } else {
+        unsetenv(key);
+    }
+#endif
+}
+
+class ScopedEnvOverride {
+ public:
+    ScopedEnvOverride(const char* key, const char* value) : key_(key ? key : "") {
+        if (key_.empty()) {
+            return;
+        }
+
+        const char* previous = std::getenv(key_.c_str());
+        had_previous_ = (previous != nullptr);
+        if (had_previous_) {
+            previous_value_ = previous;
+        }
+        SetEnvVar(key_.c_str(), value);
+    }
+
+    ~ScopedEnvOverride() {
+        if (key_.empty()) {
+            return;
+        }
+        if (had_previous_) {
+            SetEnvVar(key_.c_str(), previous_value_.c_str());
+        } else {
+            SetEnvVar(key_.c_str(), nullptr);
+        }
+    }
+
+ private:
+    std::string key_{};
+    bool had_previous_ = false;
+    std::string previous_value_{};
+};
+
+const char* BackendForceFailEnv(BackendKind backend) {
+    switch (backend) {
+        case BackendKind::Sdl3Audio:
+            return "KARMA_SDL3AUDIO_FORCE_INIT_FAIL";
+        case BackendKind::Miniaudio:
+            return "KARMA_MINIAUDIO_FORCE_INIT_FAIL";
+        case BackendKind::Auto:
+        default:
+            return nullptr;
+    }
+}
+
 bool RunSelectionChecks() {
     const std::vector<BackendKind> compiled_backends = CompiledBackends();
     if (compiled_backends.empty()) {
@@ -64,6 +120,41 @@ bool RunSelectionChecks() {
         audio.shutdown();
     }
 
+    return true;
+}
+
+bool RunAutoFallbackChecks() {
+    const std::vector<BackendKind> compiled_backends = CompiledBackends();
+    if (compiled_backends.size() < 2) {
+        return true;
+    }
+
+    const BackendKind first_backend = compiled_backends.front();
+    const BackendKind fallback_backend = compiled_backends[1];
+    const char* first_fail_env = BackendForceFailEnv(first_backend);
+    const char* fallback_fail_env = BackendForceFailEnv(fallback_backend);
+    if (!first_fail_env || !fallback_fail_env) {
+        std::cerr << "auto fallback check has unexpected backend ordering\n";
+        return false;
+    }
+
+    ScopedEnvOverride force_first_fail(first_fail_env, "1");
+    ScopedEnvOverride ensure_fallback_enabled(fallback_fail_env, nullptr);
+
+    karma::audio::AudioSystem audio;
+    audio.setBackend(BackendKind::Auto);
+    audio.init();
+    if (!audio.isInitialized()) {
+        std::cerr << "auto backend failed to initialize with primary backend forced to fail\n";
+        return false;
+    }
+    if (audio.selectedBackend() != fallback_backend) {
+        std::cerr << "auto backend fallback mismatch expected=" << BackendKindName(fallback_backend)
+                  << " selected=" << BackendKindName(audio.selectedBackend()) << "\n";
+        audio.shutdown();
+        return false;
+    }
+    audio.shutdown();
     return true;
 }
 
@@ -303,6 +394,9 @@ int main(int argc, char** argv) {
     }
 
     if (!RunSelectionChecks()) {
+        return EXIT_FAILURE;
+    }
+    if (!RunAutoFallbackChecks()) {
         return EXIT_FAILURE;
     }
 

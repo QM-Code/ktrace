@@ -61,14 +61,22 @@ float HashToFrequency(std::string_view asset_path) {
     return 220.0f + static_cast<float>(hash % 660u);
 }
 
-bool ShouldForceNullBackend() {
-    const char* value = std::getenv("KARMA_MINIAUDIO_FORCE_NULL");
+bool EnvFlagEnabled(const char* name) {
+    const char* value = std::getenv(name);
     if (!value) {
         return false;
     }
 
     const std::string_view text(value);
     return text == "1" || text == "true" || text == "TRUE" || text == "on" || text == "ON";
+}
+
+bool ShouldForceNullBackend() {
+    return EnvFlagEnabled("KARMA_MINIAUDIO_FORCE_NULL");
+}
+
+bool ShouldForceInitFail() {
+    return EnvFlagEnabled("KARMA_MINIAUDIO_FORCE_INIT_FAIL");
 }
 
 std::filesystem::path TryCanonical(const std::filesystem::path& path) {
@@ -212,6 +220,12 @@ class MiniaudioBackend final : public Backend {
     bool init() override {
         if (initialized_) {
             return true;
+        }
+
+        if (ShouldForceInitFail()) {
+            KARMA_TRACE("audio.miniaudio",
+                        "AudioBackend[miniaudio]: forced init failure via KARMA_MINIAUDIO_FORCE_INIT_FAIL");
+            return false;
         }
 
         if (!InitContextAndDevice()) {

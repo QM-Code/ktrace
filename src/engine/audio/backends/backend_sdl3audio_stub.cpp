@@ -5,6 +5,7 @@
 #include "karma/common/logging.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -59,6 +60,20 @@ float HashToFrequency(std::string_view asset_path) {
         hash *= 16777619u;
     }
     return 220.0f + static_cast<float>(hash % 660u);
+}
+
+bool EnvFlagEnabled(const char* name) {
+    const char* value = std::getenv(name);
+    if (!value) {
+        return false;
+    }
+
+    const std::string_view text(value);
+    return text == "1" || text == "true" || text == "TRUE" || text == "on" || text == "ON";
+}
+
+bool ShouldForceInitFail() {
+    return EnvFlagEnabled("KARMA_SDL3AUDIO_FORCE_INIT_FAIL");
 }
 
 std::filesystem::path TryCanonical(const std::filesystem::path& path) {
@@ -188,6 +203,12 @@ class Sdl3AudioBackend final : public Backend {
     bool init() override {
         if (initialized_) {
             return true;
+        }
+
+        if (ShouldForceInitFail()) {
+            KARMA_TRACE("audio.sdl3audio",
+                        "AudioBackend[sdl3audio]: forced init failure via KARMA_SDL3AUDIO_FORCE_INIT_FAIL");
+            return false;
         }
 
         if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
