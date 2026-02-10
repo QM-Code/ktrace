@@ -352,6 +352,7 @@ TestResult TestMultiClientBroadcasts() {
                                   "manifest-hash",
                                   0,
                                   0,
+                                  std::filesystem::path{},
                                   sessions,
                                   world_manifest,
                                   world_payload);
@@ -366,6 +367,7 @@ TestResult TestMultiClientBroadcasts() {
                                   "manifest-hash",
                                   0,
                                   0,
+                                  std::filesystem::path{},
                                   sessions,
                                   world_manifest,
                                   world_payload);

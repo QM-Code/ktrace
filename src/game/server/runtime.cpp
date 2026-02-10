@@ -220,6 +220,7 @@ int RunRuntime(const CLIOptions& options) {
                                                world_context->world_manifest_hash,
                                                world_context->world_manifest_file_count,
                                                world_context->world_package_size,
+                                               world_context->world_dir,
                                                sessions,
                                                world_manifest,
                                                world_package);

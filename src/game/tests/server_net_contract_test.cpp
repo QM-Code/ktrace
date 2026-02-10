@@ -153,6 +153,51 @@ bool TestServerInitRoundTrip() {
            && Expect(decoded->world_data.size() == world_data.size(), "init world_data size mismatch");
 }
 
+bool TestWorldTransferBeginRoundTrip() {
+    const auto payload = bz3::net::EncodeServerWorldTransferBegin("xfer-1",
+                                                                  "world-id-1",
+                                                                  "rev-9",
+                                                                  4096,
+                                                                  1024,
+                                                                  "pkg-hash-1",
+                                                                  "content-hash-1",
+                                                                  true,
+                                                                  "world-id-1",
+                                                                  "rev-8",
+                                                                  "pkg-hash-0",
+                                                                  "content-hash-0");
+    if (payload.empty()) {
+        return Fail("EncodeServerWorldTransferBegin returned empty payload");
+    }
+
+    const auto decoded = bz3::net::DecodeServerMessage(payload.data(), payload.size());
+    if (!decoded.has_value()) {
+        return Fail("DecodeServerMessage failed for world_transfer_begin payload");
+    }
+
+    return Expect(decoded->type == bz3::net::ServerMessageType::WorldTransferBegin,
+                  "world_transfer_begin type mismatch")
+           && Expect(decoded->transfer_id == "xfer-1", "world_transfer_begin transfer_id mismatch")
+           && Expect(decoded->transfer_world_id == "world-id-1", "world_transfer_begin world_id mismatch")
+           && Expect(decoded->transfer_world_revision == "rev-9",
+                     "world_transfer_begin world_revision mismatch")
+           && Expect(decoded->transfer_total_bytes == 4096, "world_transfer_begin total_bytes mismatch")
+           && Expect(decoded->transfer_chunk_size == 1024, "world_transfer_begin chunk_size mismatch")
+           && Expect(decoded->transfer_world_hash == "pkg-hash-1",
+                     "world_transfer_begin world_hash mismatch")
+           && Expect(decoded->transfer_world_content_hash == "content-hash-1",
+                     "world_transfer_begin world_content_hash mismatch")
+           && Expect(decoded->transfer_is_delta, "world_transfer_begin expected delta mode")
+           && Expect(decoded->transfer_delta_base_world_id == "world-id-1",
+                     "world_transfer_begin delta_base_world_id mismatch")
+           && Expect(decoded->transfer_delta_base_world_revision == "rev-8",
+                     "world_transfer_begin delta_base_world_revision mismatch")
+           && Expect(decoded->transfer_delta_base_world_hash == "pkg-hash-0",
+                     "world_transfer_begin delta_base_world_hash mismatch")
+           && Expect(decoded->transfer_delta_base_world_content_hash == "content-hash-0",
+                     "world_transfer_begin delta_base_world_content_hash mismatch");
+}
+
 bool TestCreateShotRoundTrip() {
     const auto payload = bz3::net::EncodeServerCreateShot(
         42,
@@ -265,6 +310,9 @@ int main() {
         return 1;
     }
     if (!TestCreateShotRoundTrip()) {
+        return 1;
+    }
+    if (!TestWorldTransferBeginRoundTrip()) {
         return 1;
     }
     if (!TestScriptedSourceParsesSpawnAndShot()) {

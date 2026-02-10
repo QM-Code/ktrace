@@ -185,4 +185,29 @@ if(BUILD_TESTING)
     set_tests_properties(enet_disconnect_lifecycle_integration_test PROPERTIES
                          RUN_SERIAL TRUE
                          SKIP_RETURN_CODE 77)
+
+    add_executable(client_world_package_safety_integration_test
+        ${PROJECT_SOURCE_DIR}/src/game/tests/client_world_package_safety_integration_test.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/client_connection.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/server/net/enet_event_source.cpp
+    )
+    target_include_directories(client_world_package_safety_integration_test PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src/game
+    )
+    target_link_libraries(client_world_package_safety_integration_test PRIVATE karma_engine_core)
+    target_link_libraries(client_world_package_safety_integration_test PRIVATE bz3_proto)
+
+    if(TARGET enet_static)
+        target_link_libraries(client_world_package_safety_integration_test PRIVATE enet_static)
+    elseif(TARGET enet)
+        target_link_libraries(client_world_package_safety_integration_test PRIVATE enet)
+    endif()
+
+    add_test(NAME client_world_package_safety_integration_test
+             COMMAND client_world_package_safety_integration_test)
+    set_tests_properties(client_world_package_safety_integration_test PROPERTIES
+                         RUN_SERIAL TRUE
+                         SKIP_RETURN_CODE 77)
 endif()

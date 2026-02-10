@@ -150,6 +150,11 @@ message ServerMsg_WorldTransferBegin {
   uint32 chunk_size = 5;
   string world_hash = 6;
   string world_content_hash = 7;
+  bool is_delta = 8;
+  string delta_base_world_id = 9;
+  string delta_base_world_revision = 10;
+  string delta_base_world_hash = 11;
+  string delta_base_world_content_hash = 12;
 }
 
 message ServerMsg_WorldTransferChunk {

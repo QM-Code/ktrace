@@ -79,6 +79,11 @@ class ClientConnection {
     struct ActiveWorldTransferState {
         bool active = false;
         std::string transfer_id{};
+        bool is_delta = false;
+        std::string delta_base_world_id{};
+        std::string delta_base_world_revision{};
+        std::string delta_base_world_hash{};
+        std::string delta_base_world_content_hash{};
         uint64_t total_bytes_expected = 0;
         uint32_t chunk_size = 0;
         uint32_t next_chunk_index = 0;

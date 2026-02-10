@@ -1,5 +1,6 @@
 #include "server/net/enet_event_source.hpp"
 
+#include "karma/common/world_archive.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/logging.hpp"
 #include "net/protocol_codec.hpp"
@@ -10,10 +11,14 @@
 
 #include <array>
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -96,33 +101,65 @@ std::string ResolvePlayerName(const bz3::net::ClientMessage& message, uint32_t c
     return DefaultPlayerName(client_id);
 }
 
-void LogServerManifestDiffPlan(uint32_t client_id,
-                               std::string_view world_name,
-                               const std::vector<WorldManifestEntry>& cached_manifest,
-                               const std::vector<WorldManifestEntry>& incoming_manifest) {
-    if (incoming_manifest.empty()) {
-        KARMA_TRACE("net.server",
-                    "ServerEventSource: manifest diff plan skipped client_id={} world='{}' (incoming manifest unavailable, cached_entries={})",
-                    client_id,
-                    world_name,
-                    cached_manifest.size());
-        return;
-    }
+constexpr const char* kDeltaRemovedPathsFile = "__bz3_delta_removed_paths.txt";
+constexpr const char* kDeltaMetaFile = "__bz3_delta_meta.txt";
 
+struct ManifestDiffPlan {
+    bool incoming_manifest_available = false;
+    size_t cached_entries = 0;
+    size_t incoming_entries = 0;
+    size_t unchanged_entries = 0;
+    size_t added_entries = 0;
+    size_t modified_entries = 0;
+    size_t removed_entries = 0;
     uint64_t potential_transfer_bytes = 0;
+    uint64_t reused_bytes = 0;
+    uint64_t delta_transfer_bytes = 0;
+    std::vector<std::string> changed_paths{};
+    std::vector<std::string> removed_paths{};
+};
+
+bool NormalizeRelativePath(std::string_view raw_path, std::filesystem::path* out) {
+    if (!out || raw_path.empty()) {
+        return false;
+    }
+    std::filesystem::path normalized = std::filesystem::path(raw_path).lexically_normal();
+    if (normalized.empty() || normalized == "." || normalized.is_absolute()
+        || normalized.has_root_path()) {
+        return false;
+    }
+    for (const auto& part : normalized) {
+        if (part == "..") {
+            return false;
+        }
+    }
+    *out = normalized;
+    return true;
+}
+
+ManifestDiffPlan BuildServerManifestDiffPlan(const std::vector<WorldManifestEntry>& cached_manifest,
+                                             const std::vector<WorldManifestEntry>& incoming_manifest) {
+    ManifestDiffPlan plan{};
+    plan.cached_entries = cached_manifest.size();
+    plan.incoming_entries = incoming_manifest.size();
+
+    if (incoming_manifest.empty()) {
+        return plan;
+    }
+    plan.incoming_manifest_available = true;
+
     for (const auto& entry : incoming_manifest) {
-        potential_transfer_bytes += entry.size;
+        plan.potential_transfer_bytes += entry.size;
     }
 
     if (cached_manifest.empty()) {
-        KARMA_TRACE("net.server",
-                    "ServerEventSource: manifest diff plan client_id={} world='{}' cached_entries=0 incoming_entries={} unchanged=0 added={} modified=0 removed=0 potential_transfer_bytes={} reused_bytes=0",
-                    client_id,
-                    world_name,
-                    incoming_manifest.size(),
-                    incoming_manifest.size(),
-                    potential_transfer_bytes);
-        return;
+        plan.added_entries = incoming_manifest.size();
+        plan.delta_transfer_bytes = plan.potential_transfer_bytes;
+        plan.changed_paths.reserve(incoming_manifest.size());
+        for (const auto& entry : incoming_manifest) {
+            plan.changed_paths.push_back(entry.path);
+        }
+        return plan;
     }
 
     std::unordered_map<std::string, const WorldManifestEntry*> cached_by_path{};
@@ -131,39 +168,169 @@ void LogServerManifestDiffPlan(uint32_t client_id,
         cached_by_path[entry.path] = &entry;
     }
 
-    size_t unchanged = 0;
-    size_t added = 0;
-    size_t modified = 0;
-    uint64_t reused_bytes = 0;
     for (const auto& entry : incoming_manifest) {
         const auto it = cached_by_path.find(entry.path);
         if (it == cached_by_path.end()) {
-            ++added;
+            ++plan.added_entries;
+            plan.changed_paths.push_back(entry.path);
             continue;
         }
         const WorldManifestEntry& cached_entry = *it->second;
         if (cached_entry.size == entry.size && cached_entry.hash == entry.hash) {
-            ++unchanged;
-            reused_bytes += entry.size;
+            ++plan.unchanged_entries;
+            plan.reused_bytes += entry.size;
         } else {
-            ++modified;
+            ++plan.modified_entries;
+            plan.changed_paths.push_back(entry.path);
         }
         cached_by_path.erase(it);
     }
-    const size_t removed = cached_by_path.size();
+    plan.removed_entries = cached_by_path.size();
+    plan.removed_paths.reserve(plan.removed_entries);
+    for (const auto& [path, entry_ptr] : cached_by_path) {
+        (void)entry_ptr;
+        plan.removed_paths.push_back(path);
+    }
+    plan.delta_transfer_bytes = plan.potential_transfer_bytes - plan.reused_bytes;
+    return plan;
+}
+
+void LogServerManifestDiffPlan(uint32_t client_id,
+                               std::string_view world_name,
+                               const ManifestDiffPlan& plan) {
+    if (!plan.incoming_manifest_available) {
+        KARMA_TRACE("net.server",
+                    "ServerEventSource: manifest diff plan skipped client_id={} world='{}' (incoming manifest unavailable, cached_entries={})",
+                    client_id,
+                    world_name,
+                    plan.cached_entries);
+        return;
+    }
 
     KARMA_TRACE("net.server",
-                "ServerEventSource: manifest diff plan client_id={} world='{}' cached_entries={} incoming_entries={} unchanged={} added={} modified={} removed={} potential_transfer_bytes={} reused_bytes={}",
+                "ServerEventSource: manifest diff plan client_id={} world='{}' cached_entries={} incoming_entries={} unchanged={} added={} modified={} removed={} potential_transfer_bytes={} reused_bytes={} delta_transfer_bytes={}",
                 client_id,
                 world_name,
-                cached_manifest.size(),
-                incoming_manifest.size(),
-                unchanged,
-                added,
-                modified,
-                removed,
-                potential_transfer_bytes,
-                reused_bytes);
+                plan.cached_entries,
+                plan.incoming_entries,
+                plan.unchanged_entries,
+                plan.added_entries,
+                plan.modified_entries,
+                plan.removed_entries,
+                plan.potential_transfer_bytes,
+                plan.reused_bytes,
+                plan.delta_transfer_bytes);
+}
+
+std::optional<std::vector<std::byte>> BuildWorldDeltaArchive(
+    const std::filesystem::path& world_dir,
+    const ManifestDiffPlan& diff_plan,
+    std::string_view world_id,
+    std::string_view target_world_revision,
+    std::string_view base_world_revision) {
+    try {
+        const auto nonce = static_cast<unsigned long long>(
+            std::chrono::steady_clock::now().time_since_epoch().count());
+        const std::filesystem::path staging_dir =
+            std::filesystem::temp_directory_path() /
+            ("bz3-world-delta-" + std::to_string(nonce));
+        const std::filesystem::path archive_path = staging_dir.string() + ".zip";
+        std::error_code ec;
+
+        auto cleanup = [&]() {
+            std::filesystem::remove_all(staging_dir, ec);
+            ec.clear();
+            std::filesystem::remove(archive_path, ec);
+        };
+
+        std::filesystem::remove_all(staging_dir, ec);
+        ec.clear();
+        std::filesystem::create_directories(staging_dir, ec);
+        if (ec) {
+            spdlog::error("ServerEventSource: failed to create delta staging dir '{}': {}",
+                          staging_dir.string(),
+                          ec.message());
+            cleanup();
+            return std::nullopt;
+        }
+
+        for (const auto& rel_path : diff_plan.changed_paths) {
+            std::filesystem::path normalized_rel{};
+            if (!NormalizeRelativePath(rel_path, &normalized_rel)) {
+                spdlog::error("ServerEventSource: invalid delta path '{}' for world '{}'",
+                              rel_path,
+                              world_id);
+                cleanup();
+                return std::nullopt;
+            }
+            const std::filesystem::path source_path = world_dir / normalized_rel;
+            if (!std::filesystem::exists(source_path) || !std::filesystem::is_regular_file(source_path)) {
+                spdlog::error("ServerEventSource: delta source missing '{}' for world '{}'",
+                              source_path.string(),
+                              world_id);
+                cleanup();
+                return std::nullopt;
+            }
+            const std::filesystem::path target_path = staging_dir / normalized_rel;
+            std::filesystem::create_directories(target_path.parent_path(), ec);
+            if (ec) {
+                spdlog::error("ServerEventSource: failed to create delta parent dir '{}': {}",
+                              target_path.parent_path().string(),
+                              ec.message());
+                cleanup();
+                return std::nullopt;
+            }
+            std::filesystem::copy_file(source_path,
+                                       target_path,
+                                       std::filesystem::copy_options::overwrite_existing,
+                                       ec);
+            if (ec) {
+                spdlog::error("ServerEventSource: failed to copy delta file '{}' -> '{}': {}",
+                              source_path.string(),
+                              target_path.string(),
+                              ec.message());
+                cleanup();
+                return std::nullopt;
+            }
+        }
+
+        {
+            std::ofstream removed_out(staging_dir / kDeltaRemovedPathsFile, std::ios::trunc);
+            if (!removed_out) {
+                spdlog::error("ServerEventSource: failed to write delta removals file for world '{}'",
+                              world_id);
+                cleanup();
+                return std::nullopt;
+            }
+            for (const auto& removed : diff_plan.removed_paths) {
+                removed_out << removed << '\n';
+            }
+        }
+
+        {
+            std::ofstream meta_out(staging_dir / kDeltaMetaFile, std::ios::trunc);
+            if (!meta_out) {
+                spdlog::error("ServerEventSource: failed to write delta meta file for world '{}'",
+                              world_id);
+                cleanup();
+                return std::nullopt;
+            }
+            meta_out << "world_id=" << world_id << '\n';
+            meta_out << "base_world_revision=" << base_world_revision << '\n';
+            meta_out << "target_world_revision=" << target_world_revision << '\n';
+            meta_out << "changed_entries=" << diff_plan.changed_paths.size() << '\n';
+            meta_out << "removed_entries=" << diff_plan.removed_paths.size() << '\n';
+        }
+
+        auto delta_bytes = world::BuildWorldArchive(staging_dir);
+        cleanup();
+        return delta_bytes;
+    } catch (const std::exception& ex) {
+        spdlog::error("ServerEventSource: failed to build world delta archive for world '{}': {}",
+                      world_id,
+                      ex.what());
+        return std::nullopt;
+    }
 }
 
 class EnetServerEventSource final : public ServerEventSource {
@@ -276,6 +443,7 @@ class EnetServerEventSource final : public ServerEventSource {
                       std::string_view world_manifest_hash,
                       uint32_t world_manifest_file_count,
                       uint64_t world_package_size,
+                      const std::filesystem::path& world_dir,
                       const std::vector<SessionSnapshotEntry>& sessions,
                       const std::vector<WorldManifestEntry>& world_manifest,
                       const std::vector<std::byte>& world_package) override {
@@ -311,6 +479,8 @@ class EnetServerEventSource final : public ServerEventSource {
                                               state.cached_world_manifest_file_count == world_manifest_file_count;
             const bool cache_hit =
                 cache_identity_match && (cache_hash_match || cache_content_match || cache_manifest_match);
+            const ManifestDiffPlan manifest_diff =
+                BuildServerManifestDiffPlan(state.cached_world_manifest, world_manifest);
             std::string_view cache_reason = "miss";
             if (cache_hit) {
                 if (cache_hash_match) {
@@ -327,9 +497,48 @@ class EnetServerEventSource final : public ServerEventSource {
             static const std::vector<WorldManifestEntry> empty_world_manifest{};
             const auto& world_payload = empty_world_package;
             const auto& world_manifest_payload = send_manifest_entries ? world_manifest : empty_world_manifest;
-            const std::string_view transfer_mode = send_world_package ? "chunked" : "none";
-            const uint64_t transfer_bytes = send_world_package ? world_package.size() : 0;
-            LogServerManifestDiffPlan(client_id, world_name, state.cached_world_manifest, world_manifest);
+            std::vector<std::byte> delta_world_package{};
+            const std::vector<std::byte>* transfer_payload = &empty_world_package;
+            std::string_view transfer_mode = "none";
+            uint64_t transfer_bytes = 0;
+            bool transfer_is_delta = false;
+            std::string transfer_delta_base_world_id{};
+            std::string transfer_delta_base_world_revision{};
+            std::string transfer_delta_base_world_hash{};
+            std::string transfer_delta_base_world_content_hash{};
+
+            LogServerManifestDiffPlan(client_id, world_name, manifest_diff);
+            if (send_world_package) {
+                transfer_mode = "chunked_full";
+                transfer_payload = &world_package;
+                transfer_bytes = world_package.size();
+
+                const bool can_try_delta = manifest_diff.incoming_manifest_available &&
+                                           state.cached_world_id == world_id &&
+                                           !state.cached_world_revision.empty() &&
+                                           (manifest_diff.reused_bytes > 0 ||
+                                            manifest_diff.removed_entries > 0);
+                if (can_try_delta) {
+                    const auto delta_archive =
+                        BuildWorldDeltaArchive(world_dir,
+                                               manifest_diff,
+                                               world_id,
+                                               world_revision,
+                                               state.cached_world_revision);
+                    if (delta_archive.has_value() && !delta_archive->empty() &&
+                        delta_archive->size() < world_package.size()) {
+                        delta_world_package = std::move(*delta_archive);
+                        transfer_payload = &delta_world_package;
+                        transfer_bytes = delta_world_package.size();
+                        transfer_is_delta = true;
+                        transfer_mode = "chunked_delta";
+                        transfer_delta_base_world_id = state.cached_world_id;
+                        transfer_delta_base_world_revision = state.cached_world_revision;
+                        transfer_delta_base_world_hash = state.cached_world_hash;
+                        transfer_delta_base_world_content_hash = state.cached_world_content_hash;
+                    }
+                }
+            }
 
             static_cast<void>(sendJoinResponse(*peer, true, ""));
             static_cast<void>(sendInit(*peer,
@@ -351,7 +560,12 @@ class EnetServerEventSource final : public ServerEventSource {
                                          world_revision,
                                          world_package_hash,
                                          world_content_hash,
-                                         world_package)) {
+                                         *transfer_payload,
+                                         transfer_is_delta,
+                                         transfer_delta_base_world_id,
+                                         transfer_delta_base_world_revision,
+                                         transfer_delta_base_world_hash,
+                                         transfer_delta_base_world_content_hash)) {
                 spdlog::error("ServerEventSource: failed to stream world package to client_id={} world='{}'",
                               client_id,
                               world_name);
@@ -360,7 +574,7 @@ class EnetServerEventSource final : public ServerEventSource {
             }
             const bool snapshot_sent = sendSessionSnapshot(*peer, sessions);
             KARMA_TRACE("net.server",
-                        "Session snapshot {} client_id={} world='{}' id='{}' rev='{}' sessions={} world_package_bytes={} world_transfer_mode={} world_transfer_bytes={} world_hash={} world_content_hash={} manifest_hash={} manifest_files={} manifest_entries_sent={} manifest_entries_total={} cache_identity_match={} cache_hash_match={} cache_content_match={} cache_manifest_match={} cache_hit={} cache_reason={}",
+                        "Session snapshot {} client_id={} world='{}' id='{}' rev='{}' sessions={} world_package_bytes={} world_transfer_mode={} world_transfer_bytes={} world_transfer_delta={} world_hash={} world_content_hash={} manifest_hash={} manifest_files={} manifest_entries_sent={} manifest_entries_total={} cache_identity_match={} cache_hash_match={} cache_content_match={} cache_manifest_match={} cache_hit={} cache_reason={}",
                         snapshot_sent ? "sent" : "send-failed",
                         client_id,
                         world_name,
@@ -370,6 +584,7 @@ class EnetServerEventSource final : public ServerEventSource {
                         world_payload.size(),
                         transfer_mode,
                         transfer_bytes,
+                        transfer_is_delta ? 1 : 0,
                         world_package_hash.empty() ? "-" : std::string(world_package_hash),
                         world_content_hash.empty() ? "-" : std::string(world_content_hash),
                         world_manifest_hash.empty() ? "-" : std::string(world_manifest_hash),
@@ -383,7 +598,7 @@ class EnetServerEventSource final : public ServerEventSource {
                         cache_hit ? 1 : 0,
                         cache_reason);
             KARMA_TRACE("engine.server",
-                        "ServerEventSource: join accepted client_id={} world='{}' id='{}' rev='{}' snapshot_sessions={} world_package_bytes={} world_transfer_mode={} world_transfer_bytes={} cache_hit={} cache_reason={}",
+                        "ServerEventSource: join accepted client_id={} world='{}' id='{}' rev='{}' snapshot_sessions={} world_package_bytes={} world_transfer_mode={} world_transfer_bytes={} world_transfer_delta={} cache_hit={} cache_reason={}",
                         client_id,
                         world_name,
                         world_id,
@@ -392,6 +607,7 @@ class EnetServerEventSource final : public ServerEventSource {
                         world_payload.size(),
                         transfer_mode,
                         transfer_bytes,
+                        transfer_is_delta ? 1 : 0,
                         cache_hit ? 1 : 0,
                         cache_reason);
             return;
@@ -788,7 +1004,12 @@ class EnetServerEventSource final : public ServerEventSource {
                                 uint64_t total_bytes,
                                 uint32_t chunk_size,
                                 std::string_view world_hash,
-                                std::string_view world_content_hash) {
+                                std::string_view world_content_hash,
+                                bool is_delta,
+                                std::string_view delta_base_world_id,
+                                std::string_view delta_base_world_revision,
+                                std::string_view delta_base_world_hash,
+                                std::string_view delta_base_world_content_hash) {
         return sendServerPayload(peer,
                                  bz3::net::EncodeServerWorldTransferBegin(transfer_id,
                                                                           world_id,
@@ -796,7 +1017,12 @@ class EnetServerEventSource final : public ServerEventSource {
                                                                           total_bytes,
                                                                           chunk_size,
                                                                           world_hash,
-                                                                          world_content_hash));
+                                                                          world_content_hash,
+                                                                          is_delta,
+                                                                          delta_base_world_id,
+                                                                          delta_base_world_revision,
+                                                                          delta_base_world_hash,
+                                                                          delta_base_world_content_hash));
     }
 
     bool sendWorldTransferChunk(ENetPeer& peer,
@@ -829,7 +1055,12 @@ class EnetServerEventSource final : public ServerEventSource {
                                  std::string_view world_revision,
                                  std::string_view world_hash,
                                  std::string_view world_content_hash,
-                                 const std::vector<std::byte>& world_package) {
+                                 const std::vector<std::byte>& world_package,
+                                 bool is_delta,
+                                 std::string_view delta_base_world_id,
+                                 std::string_view delta_base_world_revision,
+                                 std::string_view delta_base_world_hash,
+                                 std::string_view delta_base_world_content_hash) {
         if (world_package.empty()) {
             return true;
         }
@@ -847,7 +1078,12 @@ class EnetServerEventSource final : public ServerEventSource {
                                     world_package.size(),
                                     chunk_size,
                                     world_hash,
-                                    world_content_hash)) {
+                                    world_content_hash,
+                                    is_delta,
+                                    delta_base_world_id,
+                                    delta_base_world_revision,
+                                    delta_base_world_hash,
+                                    delta_base_world_content_hash)) {
             KARMA_TRACE("net.server",
                         "ServerEventSource: world transfer begin send failed client_id={} transfer_id='{}'",
                         client_id,
@@ -892,12 +1128,15 @@ class EnetServerEventSource final : public ServerEventSource {
         }
 
         KARMA_TRACE("net.server",
-                    "ServerEventSource: world transfer sent client_id={} transfer_id='{}' chunks={} bytes={} chunk_size={}",
+                    "ServerEventSource: world transfer sent client_id={} transfer_id='{}' mode={} chunks={} bytes={} chunk_size={} base_id='{}' base_rev='{}'",
                     client_id,
                     transfer_id,
+                    is_delta ? "delta" : "full",
                     chunk_count,
                     world_package.size(),
-                    chunk_size);
+                    chunk_size,
+                    delta_base_world_id.empty() ? "-" : std::string(delta_base_world_id),
+                    delta_base_world_revision.empty() ? "-" : std::string(delta_base_world_revision));
         return true;
     }
 

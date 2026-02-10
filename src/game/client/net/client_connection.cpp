@@ -83,6 +83,8 @@ constexpr const char* kWorldIdentityFile = "active_world_identity.txt";
 constexpr const char* kWorldManifestFile = "active_world_manifest.txt";
 constexpr const char* kWorldPackagesDir = "world-packages";
 constexpr const char* kWorldPackagesByWorldDir = "by-world";
+constexpr const char* kDeltaRemovedPathsFile = "__bz3_delta_removed_paths.txt";
+constexpr const char* kDeltaMetaFile = "__bz3_delta_meta.txt";
 constexpr size_t kMaxCachePathComponentLen = 96;
 constexpr uint16_t kDefaultMaxRevisionsPerWorld = 4;
 constexpr uint16_t kDefaultMaxPackagesPerRevision = 2;
@@ -115,11 +117,23 @@ uint64_t HashStringFNV1a(std::string_view value) {
     return hash;
 }
 
-void HashBytesFNV1a(uint64_t& hash, std::string_view value) {
+void HashStringFNV1a(uint64_t& hash, std::string_view value) {
     for (const char ch : value) {
         hash ^= static_cast<uint64_t>(static_cast<unsigned char>(ch));
         hash *= 1099511628211ULL;
     }
+}
+
+void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        hash ^= static_cast<uint64_t>(std::to_integer<unsigned char>(bytes[i]));
+        hash *= 1099511628211ULL;
+    }
+}
+
+void HashBytesFNV1a(uint64_t& hash, std::string_view value) {
+    const auto* bytes = reinterpret_cast<const std::byte*>(value.data());
+    HashBytesFNV1a(hash, bytes, value.size());
 }
 
 void HashSeparatorFNV1a(uint64_t& hash) {
@@ -180,6 +194,91 @@ std::string ResolveWorldPackageCacheKey(std::string_view world_content_hash, std
         return std::string(world_hash);
     }
     return "adhoc";
+}
+
+struct WorldDirectoryManifestSummary {
+    std::string content_hash{};
+    std::string manifest_hash{};
+    std::vector<bz3::net::WorldManifestEntry> entries{};
+};
+
+std::optional<WorldDirectoryManifestSummary> ComputeWorldDirectoryManifestSummary(
+    const std::filesystem::path& package_root) {
+    try {
+        std::vector<std::filesystem::path> files{};
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(package_root)) {
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+            files.push_back(entry.path());
+        }
+        std::sort(files.begin(), files.end());
+
+        uint64_t content_hash = 14695981039346656037ULL;
+        uint64_t manifest_hash = 14695981039346656037ULL;
+        std::array<char, 64 * 1024> buffer{};
+        const std::byte separator = std::byte{0};
+        std::vector<bz3::net::WorldManifestEntry> entries{};
+        entries.reserve(files.size());
+
+        for (const auto& file_path : files) {
+            const std::filesystem::path rel_path =
+                std::filesystem::relative(file_path, package_root);
+            const std::string rel = rel_path.generic_string();
+            HashStringFNV1a(content_hash, rel);
+            HashBytesFNV1a(content_hash, &separator, 1);
+
+            std::ifstream input(file_path, std::ios::binary);
+            if (!input) {
+                spdlog::error("ClientConnection: failed to open extracted file for verification '{}'",
+                              file_path.string());
+                return std::nullopt;
+            }
+
+            uint64_t file_hash = 14695981039346656037ULL;
+            uint64_t file_size = 0;
+            while (input.good()) {
+                input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+                const std::streamsize read_count = input.gcount();
+                if (read_count > 0) {
+                    const auto* bytes = reinterpret_cast<const std::byte*>(buffer.data());
+                    HashBytesFNV1a(content_hash, bytes, static_cast<size_t>(read_count));
+                    HashBytesFNV1a(file_hash, bytes, static_cast<size_t>(read_count));
+                    file_size += static_cast<uint64_t>(read_count);
+                }
+            }
+            if (!input.eof()) {
+                spdlog::error("ClientConnection: failed while hashing extracted file '{}'",
+                              file_path.string());
+                return std::nullopt;
+            }
+            HashBytesFNV1a(content_hash, &separator, 1);
+
+            const std::string file_hash_hex = Hash64Hex(file_hash);
+            const std::string file_size_text = std::to_string(file_size);
+            HashStringFNV1a(manifest_hash, rel);
+            HashBytesFNV1a(manifest_hash, &separator, 1);
+            HashStringFNV1a(manifest_hash, file_size_text);
+            HashBytesFNV1a(manifest_hash, &separator, 1);
+            HashStringFNV1a(manifest_hash, file_hash_hex);
+            HashBytesFNV1a(manifest_hash, &separator, 1);
+
+            entries.push_back(bz3::net::WorldManifestEntry{
+                .path = rel,
+                .size = file_size,
+                .hash = file_hash_hex});
+        }
+
+        return WorldDirectoryManifestSummary{
+            .content_hash = Hash64Hex(content_hash),
+            .manifest_hash = Hash64Hex(manifest_hash),
+            .entries = std::move(entries)};
+    } catch (const std::exception& ex) {
+        spdlog::error("ClientConnection: exception while verifying extracted world package '{}': {}",
+                      package_root.string(),
+                      ex.what());
+        return std::nullopt;
+    }
 }
 
 bool HasCachedWorldPackageForServer(const std::string& host,
@@ -304,33 +403,14 @@ void CleanupStaleTemporaryDirectories(const std::filesystem::path& package_root)
     }
 }
 
-bool ExtractWorldArchiveAtomically(const std::vector<std::byte>& world_data,
-                                   const std::filesystem::path& package_root) {
-    const std::filesystem::path staging_root = BuildPackageStagingRoot(package_root);
+bool ActivateStagedPackageRootAtomically(const std::filesystem::path& package_root,
+                                         const std::filesystem::path& staging_root) {
     const std::filesystem::path backup_root = BuildPackageBackupRoot(package_root);
     std::error_code ec;
-    std::filesystem::remove_all(staging_root, ec);
-    ec.clear();
-    std::filesystem::create_directories(staging_root, ec);
-    if (ec) {
-        spdlog::error("ClientConnection: failed to create staging directory '{}': {}",
-                      staging_root.string(),
-                      ec.message());
-        return false;
-    }
-
-    if (!world::ExtractWorldArchive(world_data, staging_root)) {
-        std::filesystem::remove_all(staging_root, ec);
-        spdlog::error("ClientConnection: failed to extract world archive into staging '{}'",
-                      staging_root.string());
-        return false;
-    }
-
     bool moved_existing_root = false;
     const bool package_root_exists = std::filesystem::exists(package_root, ec);
     if (ec) {
-        std::filesystem::remove_all(staging_root, ec);
-        spdlog::error("ClientConnection: failed to query existing package directory '{}': {}",
+        spdlog::error("ClientConnection: failed to query package directory '{}': {}",
                       package_root.string(),
                       ec.message());
         return false;
@@ -341,8 +421,7 @@ bool ExtractWorldArchiveAtomically(const std::vector<std::byte>& world_data,
         ec.clear();
         std::filesystem::rename(package_root, backup_root, ec);
         if (ec) {
-            std::filesystem::remove_all(staging_root, ec);
-            spdlog::error("ClientConnection: failed to move existing package '{}' -> '{}': {}",
+            spdlog::error("ClientConnection: failed to move package '{}' -> '{}': {}",
                           package_root.string(),
                           backup_root.string(),
                           ec.message());
@@ -385,6 +464,146 @@ bool ExtractWorldArchiveAtomically(const std::vector<std::byte>& world_data,
 
     CleanupStaleTemporaryDirectories(package_root);
     return true;
+}
+
+std::vector<bz3::net::WorldManifestEntry> SortedManifestEntries(
+    const std::vector<bz3::net::WorldManifestEntry>& entries) {
+    auto ordered = entries;
+    std::sort(ordered.begin(),
+              ordered.end(),
+              [](const bz3::net::WorldManifestEntry& lhs,
+                 const bz3::net::WorldManifestEntry& rhs) {
+                  if (lhs.path != rhs.path) {
+                      return lhs.path < rhs.path;
+                  }
+                  if (lhs.size != rhs.size) {
+                      return lhs.size < rhs.size;
+                  }
+                  return lhs.hash < rhs.hash;
+              });
+    return ordered;
+}
+
+bool ManifestEntriesEqual(const std::vector<bz3::net::WorldManifestEntry>& lhs,
+                          const std::vector<bz3::net::WorldManifestEntry>& rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (lhs[i].path != rhs[i].path || lhs[i].size != rhs[i].size || lhs[i].hash != rhs[i].hash) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool VerifyExtractedWorldPackage(const std::filesystem::path& package_root,
+                                 std::string_view world_name,
+                                 std::string_view expected_world_content_hash,
+                                 std::string_view expected_world_manifest_hash,
+                                 uint32_t expected_world_manifest_file_count,
+                                 const std::vector<bz3::net::WorldManifestEntry>& expected_world_manifest,
+                                 std::string_view stage_name) {
+    const auto summary = ComputeWorldDirectoryManifestSummary(package_root);
+    if (!summary.has_value()) {
+        spdlog::error("ClientConnection: failed to verify {} world package '{}' at '{}'",
+                      stage_name,
+                      world_name,
+                      package_root.string());
+        return false;
+    }
+
+    if (!expected_world_content_hash.empty() &&
+        summary->content_hash != expected_world_content_hash) {
+        spdlog::error("ClientConnection: {} content hash mismatch for world '{}' (expected='{}' got='{}')",
+                      stage_name,
+                      world_name,
+                      expected_world_content_hash,
+                      summary->content_hash);
+        return false;
+    }
+
+    if (!expected_world_manifest_hash.empty() &&
+        summary->manifest_hash != expected_world_manifest_hash) {
+        spdlog::error("ClientConnection: {} manifest hash mismatch for world '{}' (expected='{}' got='{}')",
+                      stage_name,
+                      world_name,
+                      expected_world_manifest_hash,
+                      summary->manifest_hash);
+        return false;
+    }
+
+    if (expected_world_manifest_file_count > 0 &&
+        summary->entries.size() != expected_world_manifest_file_count) {
+        spdlog::error("ClientConnection: {} manifest file count mismatch for world '{}' (expected={} got={})",
+                      stage_name,
+                      world_name,
+                      expected_world_manifest_file_count,
+                      summary->entries.size());
+        return false;
+    }
+
+    if (!expected_world_manifest.empty()) {
+        const auto expected = SortedManifestEntries(expected_world_manifest);
+        const auto actual = SortedManifestEntries(summary->entries);
+        if (!ManifestEntriesEqual(expected, actual)) {
+            spdlog::error("ClientConnection: {} manifest entries mismatch for world '{}' (expected_entries={} got_entries={})",
+                          stage_name,
+                          world_name,
+                          expected.size(),
+                          actual.size());
+            return false;
+        }
+    }
+
+    KARMA_TRACE("net.client",
+                "ClientConnection: verified {} world package world='{}' content_hash='{}' manifest_hash='{}' files={}",
+                stage_name,
+                world_name,
+                summary->content_hash,
+                summary->manifest_hash,
+                summary->entries.size());
+    return true;
+}
+
+bool ExtractWorldArchiveAtomically(const std::vector<std::byte>& world_data,
+                                   const std::filesystem::path& package_root,
+                                   std::string_view world_name,
+                                   std::string_view expected_world_content_hash,
+                                   std::string_view expected_world_manifest_hash,
+                                   uint32_t expected_world_manifest_file_count,
+                                   const std::vector<bz3::net::WorldManifestEntry>& expected_world_manifest) {
+    const std::filesystem::path staging_root = BuildPackageStagingRoot(package_root);
+    std::error_code ec;
+    std::filesystem::remove_all(staging_root, ec);
+    ec.clear();
+    std::filesystem::create_directories(staging_root, ec);
+    if (ec) {
+        spdlog::error("ClientConnection: failed to create staging directory '{}': {}",
+                      staging_root.string(),
+                      ec.message());
+        return false;
+    }
+
+    if (!world::ExtractWorldArchive(world_data, staging_root)) {
+        std::filesystem::remove_all(staging_root, ec);
+        spdlog::error("ClientConnection: failed to extract world archive into staging '{}'",
+                      staging_root.string());
+        return false;
+    }
+
+    if (!VerifyExtractedWorldPackage(staging_root,
+                                     world_name,
+                                     expected_world_content_hash,
+                                     expected_world_manifest_hash,
+                                     expected_world_manifest_file_count,
+                                     expected_world_manifest,
+                                     "staged full")) {
+        std::filesystem::remove_all(staging_root, ec);
+        return false;
+    }
+
+    return ActivateStagedPackageRootAtomically(package_root, staging_root);
 }
 
 void TouchPathIfPresent(const std::filesystem::path& path) {
@@ -799,6 +1018,158 @@ std::optional<CachedWorldIdentity> ReadCachedWorldIdentity(const std::filesystem
     return ReadCachedWorldIdentityFile(identity_file);
 }
 
+bool NormalizeRelativePath(std::string_view raw_path, std::filesystem::path* out) {
+    if (!out || raw_path.empty()) {
+        return false;
+    }
+    std::filesystem::path normalized = std::filesystem::path(raw_path).lexically_normal();
+    if (normalized.empty() || normalized == "." || normalized.is_absolute() ||
+        normalized.has_root_path()) {
+        return false;
+    }
+    for (const auto& part : normalized) {
+        if (part == "..") {
+            return false;
+        }
+    }
+    *out = normalized;
+    return true;
+}
+
+bool ApplyDeltaArchiveOverCachedBase(const std::filesystem::path& server_cache_dir,
+                                     std::string_view world_name,
+                                     std::string_view world_id,
+                                     std::string_view world_revision,
+                                     std::string_view world_hash,
+                                     std::string_view world_content_hash,
+                                     std::string_view world_manifest_hash,
+                                     uint32_t world_manifest_file_count,
+                                     const std::vector<bz3::net::WorldManifestEntry>& world_manifest,
+                                     std::string_view base_world_id,
+                                     std::string_view base_world_revision,
+                                     std::string_view base_world_hash,
+                                     std::string_view base_world_content_hash,
+                                     const std::vector<std::byte>& delta_archive) {
+    if (base_world_id.empty() || base_world_revision.empty()) {
+        spdlog::error("ClientConnection: delta transfer missing base world identity metadata");
+        return false;
+    }
+    if (base_world_id != world_id) {
+        spdlog::error("ClientConnection: delta transfer base world id mismatch target='{}' base='{}'",
+                      world_id,
+                      base_world_id);
+        return false;
+    }
+
+    const std::string target_package_cache_key = ResolveWorldPackageCacheKey(world_content_hash, world_hash);
+    const std::filesystem::path target_root =
+        PackageRootForIdentity(server_cache_dir, world_id, world_revision, target_package_cache_key);
+    const std::filesystem::path staging_root = BuildPackageStagingRoot(target_root);
+    const std::string base_package_cache_key =
+        ResolveWorldPackageCacheKey(base_world_content_hash, base_world_hash);
+    const std::filesystem::path base_root = PackageRootForIdentity(server_cache_dir,
+                                                                   base_world_id,
+                                                                   base_world_revision,
+                                                                   base_package_cache_key);
+    if (!std::filesystem::exists(base_root) || !std::filesystem::is_directory(base_root)) {
+        spdlog::error("ClientConnection: delta base world package is missing '{}' for id='{}' rev='{}'",
+                      base_root.string(),
+                      base_world_id,
+                      base_world_revision);
+        return false;
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(staging_root, ec);
+    ec.clear();
+    std::filesystem::create_directories(staging_root.parent_path(), ec);
+    if (ec) {
+        spdlog::error("ClientConnection: failed to create target package parent '{}': {}",
+                      staging_root.parent_path().string(),
+                      ec.message());
+        return false;
+    }
+
+    std::filesystem::copy(base_root, staging_root, std::filesystem::copy_options::recursive, ec);
+    if (ec) {
+        spdlog::error("ClientConnection: failed to clone delta base package '{}' -> '{}': {}",
+                      base_root.string(),
+                      staging_root.string(),
+                      ec.message());
+        return false;
+    }
+
+    if (!world::ExtractWorldArchive(delta_archive, staging_root)) {
+        spdlog::error("ClientConnection: failed to extract world delta archive into '{}'",
+                      staging_root.string());
+        std::filesystem::remove_all(staging_root, ec);
+        return false;
+    }
+
+    size_t removed_paths = 0;
+    const std::filesystem::path removed_paths_file = staging_root / kDeltaRemovedPathsFile;
+    if (std::filesystem::exists(removed_paths_file) && std::filesystem::is_regular_file(removed_paths_file)) {
+        std::ifstream removals_in(removed_paths_file);
+        if (!removals_in) {
+            spdlog::error("ClientConnection: failed to read delta removals file '{}'",
+                          removed_paths_file.string());
+            std::filesystem::remove_all(staging_root, ec);
+            return false;
+        }
+        std::string line{};
+        while (std::getline(removals_in, line)) {
+            if (line.empty()) {
+                continue;
+            }
+            std::filesystem::path normalized_rel{};
+            if (!NormalizeRelativePath(line, &normalized_rel)) {
+                spdlog::error("ClientConnection: invalid delta removal path '{}'", line);
+                std::filesystem::remove_all(staging_root, ec);
+                return false;
+            }
+            std::error_code remove_ec;
+            std::filesystem::remove_all(staging_root / normalized_rel, remove_ec);
+            if (remove_ec) {
+                spdlog::error("ClientConnection: failed to apply delta removal path '{}' in '{}': {}",
+                              line,
+                              staging_root.string(),
+                              remove_ec.message());
+                std::filesystem::remove_all(staging_root, ec);
+                return false;
+            }
+            ++removed_paths;
+        }
+    }
+
+    std::filesystem::remove(staging_root / kDeltaRemovedPathsFile, ec);
+    ec.clear();
+    std::filesystem::remove(staging_root / kDeltaMetaFile, ec);
+    ec.clear();
+
+    if (!VerifyExtractedWorldPackage(staging_root,
+                                     world_name,
+                                     world_content_hash,
+                                     world_manifest_hash,
+                                     world_manifest_file_count,
+                                     world_manifest,
+                                     "staged delta")) {
+        std::filesystem::remove_all(staging_root, ec);
+        return false;
+    }
+
+    if (!ActivateStagedPackageRootAtomically(target_root, staging_root)) {
+        std::filesystem::remove_all(staging_root, ec);
+        return false;
+    }
+
+    KARMA_TRACE("net.client",
+                "ClientConnection: applied world delta archive target='{}' base='{}' removed_paths={}",
+                target_root.string(),
+                base_root.string(),
+                removed_paths);
+    return true;
+}
+
 bool ValidateCachedWorldIdentity(const std::filesystem::path& server_cache_dir,
                                  std::string_view world_name,
                                  std::string_view expected_world_hash,
@@ -806,7 +1177,8 @@ bool ValidateCachedWorldIdentity(const std::filesystem::path& server_cache_dir,
                                  std::string_view expected_world_id,
                                  std::string_view expected_world_revision,
                                  std::string_view expected_world_manifest_hash,
-                                 uint32_t expected_world_manifest_file_count) {
+                                 uint32_t expected_world_manifest_file_count,
+                                 bool require_exact_revision = true) {
     const auto identity = ReadCachedWorldIdentity(server_cache_dir);
     if (!identity.has_value()) {
         spdlog::error("ClientConnection: cache identity metadata is missing for world '{}'", world_name);
@@ -830,8 +1202,8 @@ bool ValidateCachedWorldIdentity(const std::filesystem::path& server_cache_dir,
     }
 
     const bool package_match = hash_match || content_hash_match || manifest_match;
-    if (!id_match || !revision_match || !package_match) {
-        spdlog::error("ClientConnection: cache identity mismatch for world '{}' (expected hash='{}' content_hash='{}' id='{}' rev='{}' manifest_hash='{}' manifest_files={}, got hash='{}' content_hash='{}' id='{}' rev='{}' manifest_hash='{}' manifest_files={})",
+    if (!id_match || (require_exact_revision && !revision_match) || !package_match) {
+        spdlog::error("ClientConnection: cache identity mismatch for world '{}' (expected hash='{}' content_hash='{}' id='{}' rev='{}' manifest_hash='{}' manifest_files={} require_exact_revision={}, got hash='{}' content_hash='{}' id='{}' rev='{}' manifest_hash='{}' manifest_files={})",
                       world_name,
                       expected_world_hash,
                       expected_world_content_hash,
@@ -839,6 +1211,7 @@ bool ValidateCachedWorldIdentity(const std::filesystem::path& server_cache_dir,
                       expected_world_revision,
                       expected_world_manifest_hash,
                       expected_world_manifest_file_count,
+                      require_exact_revision ? 1 : 0,
                       identity->world_hash,
                       identity->world_content_hash,
                       identity->world_id,
@@ -866,7 +1239,12 @@ bool ApplyWorldPackageForServer(const std::string& host,
                                 uint32_t world_manifest_file_count,
                                 uint64_t world_size,
                                 const std::vector<bz3::net::WorldManifestEntry>& world_manifest,
-                                const std::vector<std::byte>& world_data) {
+                                const std::vector<std::byte>& world_data,
+                                bool is_delta_transfer = false,
+                                std::string_view delta_base_world_id = {},
+                                std::string_view delta_base_world_revision = {},
+                                std::string_view delta_base_world_hash = {},
+                                std::string_view delta_base_world_content_hash = {}) {
     const std::filesystem::path server_cache_dir =
         karma::data::EnsureUserWorldDirectoryForServer(host, port);
     if (world_id.empty() || world_revision.empty()) {
@@ -921,27 +1299,56 @@ bool ApplyWorldPackageForServer(const std::string& host,
         PackageRootForIdentity(server_cache_dir, world_id, world_revision, world_package_cache_key);
 
     if (!world_data.empty()) {
-        if (world_size > 0 && world_size != world_data.size()) {
-            spdlog::error("ClientConnection: world package size mismatch for '{}' (expected={} got={})",
-                          world_name,
-                          world_size,
-                          world_data.size());
-            return false;
-        }
-        if (!world_hash.empty()) {
-            const std::string computed_hash = ComputeWorldPackageHash(world_data);
-            if (computed_hash != world_hash) {
-                spdlog::error("ClientConnection: world package hash mismatch for '{}' (expected={} got={})",
+        if (is_delta_transfer) {
+            if (!ApplyDeltaArchiveOverCachedBase(server_cache_dir,
+                                                 world_name,
+                                                 world_id,
+                                                 world_revision,
+                                                 world_hash,
+                                                 world_content_hash,
+                                                 world_manifest_hash,
+                                                 world_manifest_file_count,
+                                                 effective_world_manifest,
+                                                 delta_base_world_id,
+                                                 delta_base_world_revision,
+                                                 delta_base_world_hash,
+                                                 delta_base_world_content_hash,
+                                                 world_data)) {
+                spdlog::error("ClientConnection: failed to apply world delta package for world '{}' (base id='{}' rev='{}')",
                               world_name,
-                              world_hash,
-                              computed_hash);
+                              delta_base_world_id,
+                              delta_base_world_revision);
                 return false;
             }
-        }
+        } else {
+            if (world_size > 0 && world_size != world_data.size()) {
+                spdlog::error("ClientConnection: world package size mismatch for '{}' (expected={} got={})",
+                              world_name,
+                              world_size,
+                              world_data.size());
+                return false;
+            }
+            if (!world_hash.empty()) {
+                const std::string computed_hash = ComputeWorldPackageHash(world_data);
+                if (computed_hash != world_hash) {
+                    spdlog::error("ClientConnection: world package hash mismatch for '{}' (expected={} got={})",
+                                  world_name,
+                                  world_hash,
+                                  computed_hash);
+                    return false;
+                }
+            }
 
-        if (!ExtractWorldArchiveAtomically(world_data, package_root)) {
-            spdlog::error("ClientConnection: failed to extract world package for world '{}'", world_name);
-            return false;
+            if (!ExtractWorldArchiveAtomically(world_data,
+                                               package_root,
+                                               world_name,
+                                               world_content_hash,
+                                               world_manifest_hash,
+                                               world_manifest_file_count,
+                                               effective_world_manifest)) {
+                spdlog::error("ClientConnection: failed to extract world package for world '{}'", world_name);
+                return false;
+            }
         }
     } else {
         if (!std::filesystem::exists(package_root) || !std::filesystem::is_directory(package_root)) {
@@ -959,7 +1366,8 @@ bool ApplyWorldPackageForServer(const std::string& host,
                                          world_id,
                                          world_revision,
                                          world_manifest_hash,
-                                         world_manifest_file_count)) {
+                                         world_manifest_file_count,
+                                         true)) {
             ClearCachedWorldIdentity(server_cache_dir);
             return false;
         }
@@ -1012,7 +1420,7 @@ bool ApplyWorldPackageForServer(const std::string& host,
                            world_package_cache_key);
 
     KARMA_TRACE("net.client",
-                "ClientConnection: applied world package world='{}' id='{}' rev='{}' hash='{}' content_hash='{}' bytes={} manifest_entries={} cache='{}' cache_hit={}",
+                "ClientConnection: applied world package world='{}' id='{}' rev='{}' hash='{}' content_hash='{}' bytes={} manifest_entries={} cache='{}' cache_hit={} transfer_mode={}",
                 world_name,
                 world_id,
                 world_revision,
@@ -1021,7 +1429,8 @@ bool ApplyWorldPackageForServer(const std::string& host,
                 world_data.size(),
                 effective_world_manifest.size(),
                 package_root.string(),
-                world_data.empty() ? 1 : 0);
+                world_data.empty() ? 1 : 0,
+                world_data.empty() ? "none" : (is_delta_transfer ? "delta" : "full"));
     return true;
 }
 
@@ -1267,8 +1676,28 @@ void ClientConnection::poll() {
                                     enet_peer_disconnect(peer_, 0);
                                     break;
                                 }
+                                if (message->transfer_is_delta &&
+                                    (message->transfer_delta_base_world_id.empty() ||
+                                     message->transfer_delta_base_world_revision.empty())) {
+                                    spdlog::error("ClientConnection: world delta transfer begin missing base identity transfer_id='{}' base_id='{}' base_rev='{}'",
+                                                  message->transfer_id,
+                                                  message->transfer_delta_base_world_id,
+                                                  message->transfer_delta_base_world_revision);
+                                    should_exit_ = true;
+                                    enet_peer_disconnect(peer_, 0);
+                                    break;
+                                }
                                 active_world_transfer_.active = true;
                                 active_world_transfer_.transfer_id = message->transfer_id;
+                                active_world_transfer_.is_delta = message->transfer_is_delta;
+                                active_world_transfer_.delta_base_world_id =
+                                    message->transfer_delta_base_world_id;
+                                active_world_transfer_.delta_base_world_revision =
+                                    message->transfer_delta_base_world_revision;
+                                active_world_transfer_.delta_base_world_hash =
+                                    message->transfer_delta_base_world_hash;
+                                active_world_transfer_.delta_base_world_content_hash =
+                                    message->transfer_delta_base_world_content_hash;
                                 active_world_transfer_.total_bytes_expected = message->transfer_total_bytes;
                                 active_world_transfer_.chunk_size = message->transfer_chunk_size;
                                 active_world_transfer_.next_chunk_index = 0;
@@ -1278,13 +1707,20 @@ void ClientConnection::poll() {
                                         static_cast<size_t>(message->transfer_total_bytes));
                                 }
                                 KARMA_TRACE("net.client",
-                                            "ClientConnection: world transfer begin transfer_id='{}' world='{}' id='{}' rev='{}' total_bytes={} chunk_size={}",
+                                            "ClientConnection: world transfer begin transfer_id='{}' mode={} world='{}' id='{}' rev='{}' total_bytes={} chunk_size={} base_id='{}' base_rev='{}'",
                                             active_world_transfer_.transfer_id,
+                                            active_world_transfer_.is_delta ? "delta" : "full",
                                             pending_world_package_.world_name,
                                             pending_world_package_.world_id,
                                             pending_world_package_.world_revision,
                                             active_world_transfer_.total_bytes_expected,
-                                            active_world_transfer_.chunk_size);
+                                            active_world_transfer_.chunk_size,
+                                            active_world_transfer_.delta_base_world_id.empty()
+                                                ? "-"
+                                                : active_world_transfer_.delta_base_world_id,
+                                            active_world_transfer_.delta_base_world_revision.empty()
+                                                ? "-"
+                                                : active_world_transfer_.delta_base_world_revision);
                                 break;
                             case bz3::net::ServerMessageType::WorldTransferChunk:
                                 if (!active_world_transfer_.active) {
@@ -1353,8 +1789,9 @@ void ClientConnection::poll() {
                                     break;
                                 }
                                 KARMA_TRACE("net.client",
-                                            "ClientConnection: world transfer end transfer_id='{}' chunks={} bytes={}",
+                                            "ClientConnection: world transfer end transfer_id='{}' mode={} chunks={} bytes={}",
                                             active_world_transfer_.transfer_id,
+                                            active_world_transfer_.is_delta ? "delta" : "full",
                                             active_world_transfer_.next_chunk_index,
                                             active_world_transfer_.payload.size());
                                 if (!ApplyWorldPackageForServer(host_,
@@ -1368,7 +1805,12 @@ void ClientConnection::poll() {
                                                                 pending_world_package_.world_manifest_file_count,
                                                                 pending_world_package_.world_size,
                                                                 pending_world_package_.world_manifest,
-                                                                active_world_transfer_.payload)) {
+                                                                active_world_transfer_.payload,
+                                                                active_world_transfer_.is_delta,
+                                                                active_world_transfer_.delta_base_world_id,
+                                                                active_world_transfer_.delta_base_world_revision,
+                                                                active_world_transfer_.delta_base_world_hash,
+                                                                active_world_transfer_.delta_base_world_content_hash)) {
                                     spdlog::error("ClientConnection: failed to apply chunked world package for '{}'",
                                                   pending_world_package_.world_name);
                                     should_exit_ = true;

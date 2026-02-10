@@ -240,6 +240,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                   "manifest-hash",
                                   static_cast<uint32_t>(world_manifest.size()),
                                   world_payload.size(),
+                                  std::filesystem::path{},
                                   sessions,
                                   world_manifest,
                                   world_payload);

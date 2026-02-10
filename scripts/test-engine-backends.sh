@@ -8,6 +8,8 @@ TEST_REGEX="physics_backend_parity_jolt|physics_backend_parity_physx|audio_backe
 
 cd "${REPO_ROOT}"
 
+cmake -S . -B build-dev
+
 cmake --build build-dev --target \
   physics_backend_parity_test \
   audio_backend_smoke_test

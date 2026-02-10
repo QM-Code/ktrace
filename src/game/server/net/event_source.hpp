@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -76,6 +77,7 @@ class ServerEventSource {
                               std::string_view world_manifest_hash,
                               uint32_t world_manifest_file_count,
                               uint64_t world_package_size,
+                              const std::filesystem::path& world_dir,
                               const std::vector<SessionSnapshotEntry>& sessions,
                               const std::vector<WorldManifestEntry>& world_manifest,
                               const std::vector<std::byte>& world_package) {
@@ -90,6 +92,7 @@ class ServerEventSource {
         (void)world_manifest_hash;
         (void)world_manifest_file_count;
         (void)world_package_size;
+        (void)world_dir;
         (void)sessions;
         (void)world_manifest;
         (void)world_package;

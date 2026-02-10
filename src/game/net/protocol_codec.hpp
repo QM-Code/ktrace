@@ -92,6 +92,11 @@ struct ServerMessage {
     std::string transfer_world_revision{};
     std::string transfer_world_hash{};
     std::string transfer_world_content_hash{};
+    bool transfer_is_delta = false;
+    std::string transfer_delta_base_world_id{};
+    std::string transfer_delta_base_world_revision{};
+    std::string transfer_delta_base_world_hash{};
+    std::string transfer_delta_base_world_content_hash{};
     uint64_t transfer_total_bytes = 0;
     uint32_t transfer_chunk_size = 0;
     uint32_t transfer_chunk_index = 0;
@@ -145,7 +150,12 @@ std::vector<std::byte> EncodeServerWorldTransferBegin(std::string_view transfer_
                                                       uint64_t total_bytes,
                                                       uint32_t chunk_size,
                                                       std::string_view world_hash,
-                                                      std::string_view world_content_hash);
+                                                      std::string_view world_content_hash,
+                                                      bool is_delta = false,
+                                                      std::string_view delta_base_world_id = {},
+                                                      std::string_view delta_base_world_revision = {},
+                                                      std::string_view delta_base_world_hash = {},
+                                                      std::string_view delta_base_world_content_hash = {});
 std::vector<std::byte> EncodeServerWorldTransferChunk(std::string_view transfer_id,
                                                       uint32_t chunk_index,
                                                       const std::vector<std::byte>& chunk_data);

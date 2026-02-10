@@ -218,6 +218,12 @@ std::optional<ServerMessage> DecodeServerMessage(const void* data, size_t size) 
             out.transfer_chunk_size = wire.world_transfer_begin().chunk_size();
             out.transfer_world_hash = wire.world_transfer_begin().world_hash();
             out.transfer_world_content_hash = wire.world_transfer_begin().world_content_hash();
+            out.transfer_is_delta = wire.world_transfer_begin().is_delta();
+            out.transfer_delta_base_world_id = wire.world_transfer_begin().delta_base_world_id();
+            out.transfer_delta_base_world_revision = wire.world_transfer_begin().delta_base_world_revision();
+            out.transfer_delta_base_world_hash = wire.world_transfer_begin().delta_base_world_hash();
+            out.transfer_delta_base_world_content_hash =
+                wire.world_transfer_begin().delta_base_world_content_hash();
             return out;
         case karma::ServerMsg::kWorldTransferChunk:
             out.type = ServerMessageType::WorldTransferChunk;
@@ -432,7 +438,12 @@ std::vector<std::byte> EncodeServerWorldTransferBegin(std::string_view transfer_
                                                       uint64_t total_bytes,
                                                       uint32_t chunk_size,
                                                       std::string_view world_hash,
-                                                      std::string_view world_content_hash) {
+                                                      std::string_view world_content_hash,
+                                                      bool is_delta,
+                                                      std::string_view delta_base_world_id,
+                                                      std::string_view delta_base_world_revision,
+                                                      std::string_view delta_base_world_hash,
+                                                      std::string_view delta_base_world_content_hash) {
     karma::ServerMsg message{};
     message.set_type(karma::ServerMsg::WORLD_TRANSFER_BEGIN);
     auto* begin = message.mutable_world_transfer_begin();
@@ -446,6 +457,19 @@ std::vector<std::byte> EncodeServerWorldTransferBegin(std::string_view transfer_
     }
     if (!world_content_hash.empty()) {
         begin->set_world_content_hash(std::string(world_content_hash));
+    }
+    begin->set_is_delta(is_delta);
+    if (!delta_base_world_id.empty()) {
+        begin->set_delta_base_world_id(std::string(delta_base_world_id));
+    }
+    if (!delta_base_world_revision.empty()) {
+        begin->set_delta_base_world_revision(std::string(delta_base_world_revision));
+    }
+    if (!delta_base_world_hash.empty()) {
+        begin->set_delta_base_world_hash(std::string(delta_base_world_hash));
+    }
+    if (!delta_base_world_content_hash.empty()) {
+        begin->set_delta_base_world_content_hash(std::string(delta_base_world_content_hash));
     }
     return SerializeOrEmpty(message);
 }
