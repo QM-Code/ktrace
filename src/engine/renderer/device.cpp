@@ -64,6 +64,12 @@ void GraphicsDevice::submit(const DrawItem& item) {
     }
 }
 
+void GraphicsDevice::submitDebugLine(const DebugLineItem& line) {
+    if (backend_) {
+        backend_->submitDebugLine(line);
+    }
+}
+
 void GraphicsDevice::renderFrame() {
     if (backend_) {
         backend_->renderFrame();
@@ -85,6 +91,12 @@ void GraphicsDevice::setCamera(const CameraData& camera) {
 void GraphicsDevice::setDirectionalLight(const DirectionalLightData& light) {
     if (backend_) {
         backend_->setDirectionalLight(light);
+    }
+}
+
+void GraphicsDevice::setEnvironmentLighting(const EnvironmentLightingData& environment) {
+    if (backend_) {
+        backend_->setEnvironmentLighting(environment);
     }
 }
 

@@ -1,0 +1,785 @@
+#include "renderer/backends/debug_line_internal.hpp"
+#include "renderer/backends/directional_shadow_internal.hpp"
+#include "renderer/backends/environment_lighting_internal.hpp"
+#include "renderer/backends/material_lighting_internal.hpp"
+#include "renderer/backends/material_semantics_internal.hpp"
+
+#include "karma/renderer/types.hpp"
+
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <cmath>
+#include <iostream>
+#include <limits>
+#include <vector>
+
+namespace {
+
+using karma::renderer_backend::detail::ComputeDirectionalShadowFactor;
+using karma::renderer_backend::detail::ComputeEnvironmentAmbientColor;
+using karma::renderer_backend::detail::ComputeEnvironmentClearColor;
+using karma::renderer_backend::detail::ComputeEnvironmentSpecularBoost;
+using karma::renderer_backend::detail::ExpandTextureToRgba8;
+using karma::renderer_backend::detail::ResolveDebugLineSemantics;
+using karma::renderer_backend::detail::DirectionalShadowCaster;
+using karma::renderer_backend::detail::DirectionalShadowMap;
+using karma::renderer_backend::detail::ResolveEnvironmentLightingSemantics;
+using karma::renderer_backend::detail::ResolveMaterialLighting;
+using karma::renderer_backend::detail::ResolveMaterialSemantics;
+using karma::renderer_backend::detail::ResolveDirectionalShadowSemantics;
+using karma::renderer_backend::detail::ResolvedDebugLineSemantics;
+using karma::renderer_backend::detail::ResolvedEnvironmentLightingSemantics;
+using karma::renderer_backend::detail::ResolvedMaterialLighting;
+using karma::renderer_backend::detail::ResolvedMaterialSemantics;
+using karma::renderer_backend::detail::ResolvedDirectionalShadowSemantics;
+using karma::renderer_backend::detail::SampleDirectionalShadowVisibility;
+using karma::renderer_backend::detail::ValidateResolvedDebugLineSemantics;
+using karma::renderer_backend::detail::ValidateResolvedEnvironmentLightingSemantics;
+using karma::renderer_backend::detail::ValidateResolvedMaterialLighting;
+using karma::renderer_backend::detail::ValidateResolvedMaterialSemantics;
+using karma::renderer_backend::detail::ValidateResolvedDirectionalShadowSemantics;
+using karma::renderer_backend::detail::BuildDirectionalShadowMap;
+
+bool NearlyEqual(float lhs, float rhs, float epsilon = 1e-4f) {
+    return std::fabs(lhs - rhs) <= epsilon;
+}
+
+bool RunShadowSemanticsClampChecks() {
+    karma::renderer::DirectionalLightData light{};
+    light.shadow.enabled = true;
+    light.shadow.strength = std::numeric_limits<float>::quiet_NaN();
+    light.shadow.bias = -1.0f;
+    light.shadow.extent = 10000.0f;
+    light.shadow.map_size = 2;
+    light.shadow.pcf_radius = 99;
+
+    const ResolvedDirectionalShadowSemantics semantics = ResolveDirectionalShadowSemantics(light);
+    if (!ValidateResolvedDirectionalShadowSemantics(semantics)) {
+        std::cerr << "resolved directional shadow semantics failed validation\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.strength, 0.65f)) {
+        std::cerr << "expected non-finite strength to fall back to 0.65\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.bias, 0.0f)) {
+        std::cerr << "expected finite out-of-range bias to clamp to 0.0\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.extent, 512.0f)) {
+        std::cerr << "expected finite out-of-range extent to clamp to 512.0\n";
+        return false;
+    }
+    if (semantics.map_size != 256) {
+        std::cerr << "expected invalid map size to fall back to 256\n";
+        return false;
+    }
+    if (semantics.pcf_radius != 1) {
+        std::cerr << "expected invalid pcf radius to fall back to 1\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool RunShadowMapBuildAndSampleChecks() {
+    karma::renderer::DirectionalLightData light{};
+    light.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+    light.shadow.enabled = true;
+    light.shadow.strength = 0.75f;
+    light.shadow.bias = 0.0005f;
+    light.shadow.extent = 8.0f;
+    light.shadow.map_size = 128;
+    light.shadow.pcf_radius = 1;
+
+    const ResolvedDirectionalShadowSemantics semantics = ResolveDirectionalShadowSemantics(light);
+    if (!ValidateResolvedDirectionalShadowSemantics(semantics)) {
+        std::cerr << "shadow semantics unexpectedly invalid for map build\n";
+        return false;
+    }
+
+    std::vector<glm::vec3> quad_positions{
+        {-0.5f, 0.0f, -0.5f},
+        {0.5f, 0.0f, -0.5f},
+        {0.5f, 0.0f, 0.5f},
+        {-0.5f, 0.0f, 0.5f},
+    };
+    std::vector<uint32_t> quad_indices{0, 1, 2, 0, 2, 3};
+
+    DirectionalShadowCaster caster{};
+    caster.transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 0.0f));
+    caster.positions = &quad_positions;
+    caster.indices = &quad_indices;
+    caster.sample_center = glm::vec3(0.0f, 0.0f, 0.0f);
+    caster.casts_shadow = true;
+
+    const std::vector<DirectionalShadowCaster> casters{caster};
+    const DirectionalShadowMap shadow_map = BuildDirectionalShadowMap(semantics, light.direction, casters);
+    if (!shadow_map.ready || shadow_map.depth.empty()) {
+        std::cerr << "shadow map build failed for a valid occluder\n";
+        return false;
+    }
+
+    bool has_shadow_depth = false;
+    for (const float depth : shadow_map.depth) {
+        if (std::isfinite(depth)) {
+            has_shadow_depth = true;
+            break;
+        }
+    }
+    if (!has_shadow_depth) {
+        std::cerr << "expected shadow map rasterization to produce finite depth values\n";
+        return false;
+    }
+
+    const float sampled_visibility =
+        SampleDirectionalShadowVisibility(shadow_map, glm::vec3(0.0f, 0.0f, 0.0f));
+    if (!std::isfinite(sampled_visibility) || sampled_visibility < 0.0f || sampled_visibility > 1.0f) {
+        std::cerr << "sampled visibility is out of range: " << sampled_visibility << "\n";
+        return false;
+    }
+
+    const float shadow_factor = ComputeDirectionalShadowFactor(shadow_map, sampled_visibility);
+    if (!std::isfinite(shadow_factor) || shadow_factor < 0.0f || shadow_factor > 1.0f) {
+        std::cerr << "shadow factor out of expected range, got " << shadow_factor << "\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool RunEnvironmentSemanticsChecks() {
+    karma::renderer::EnvironmentLightingData environment{};
+    environment.enabled = true;
+    environment.sky_color = glm::vec4(std::numeric_limits<float>::quiet_NaN(), 20.0f, 0.4f, 1.0f);
+    environment.ground_color = glm::vec4(0.1f, -2.0f, 20.0f, 1.0f);
+    environment.diffuse_strength = std::numeric_limits<float>::quiet_NaN();
+    environment.specular_strength = 5.0f;
+    environment.skybox_exposure = -1.0f;
+
+    const ResolvedEnvironmentLightingSemantics semantics = ResolveEnvironmentLightingSemantics(environment);
+    if (!ValidateResolvedEnvironmentLightingSemantics(semantics)) {
+        std::cerr << "resolved environment semantics failed validation\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.sky_color.x, 0.56f)) {
+        std::cerr << "expected non-finite sky color component to fall back\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.sky_color.y, 8.0f)) {
+        std::cerr << "expected large sky color component to clamp\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.ground_color.y, 0.0f)) {
+        std::cerr << "expected negative ground color component to clamp\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.diffuse_strength, 0.75f)) {
+        std::cerr << "expected non-finite diffuse strength to fall back\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.specular_strength, 2.0f)) {
+        std::cerr << "expected specular strength to clamp to max\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.skybox_exposure, 0.0f)) {
+        std::cerr << "expected negative skybox exposure to clamp to zero\n";
+        return false;
+    }
+
+    const glm::vec3 ambient = ComputeEnvironmentAmbientColor(semantics, glm::vec3(0.0f, -1.0f, 0.0f));
+    if (!std::isfinite(ambient.x) || !std::isfinite(ambient.y) || !std::isfinite(ambient.z)) {
+        std::cerr << "environment ambient contains non-finite values\n";
+        return false;
+    }
+
+    const float specular_boost = ComputeEnvironmentSpecularBoost(semantics, 0.2f);
+    if (!std::isfinite(specular_boost) || specular_boost < 1.0f || specular_boost > 2.0f) {
+        std::cerr << "environment specular boost out of range: " << specular_boost << "\n";
+        return false;
+    }
+
+    const glm::vec4 clear_color = ComputeEnvironmentClearColor(semantics);
+    if (!std::isfinite(clear_color.r) || !std::isfinite(clear_color.g) || !std::isfinite(clear_color.b)) {
+        std::cerr << "environment clear color contains non-finite values\n";
+        return false;
+    }
+    if (!NearlyEqual(clear_color.r, 0.0f) || !NearlyEqual(clear_color.g, 0.0f) || !NearlyEqual(clear_color.b, 0.0f)) {
+        std::cerr << "expected zero exposure to produce black clear color\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool RunMaterialTextureSemanticsChecks() {
+    karma::renderer::MaterialDesc material{};
+    material.base_color = glm::vec4(1.0f);
+    material.metallic_factor = 0.8f;
+    material.roughness_factor = 0.9f;
+    material.normal_scale = 1.5f;
+    material.occlusion_strength = 0.75f;
+    material.emissive_color = glm::vec3(2.0f, 1.0f, 0.5f);
+    material.alpha_mode = karma::renderer::MaterialAlphaMode::Mask;
+    material.alpha_cutoff = 0.5f;
+
+    karma::renderer::MeshData::TextureData metallic_roughness{};
+    metallic_roughness.width = 4;
+    metallic_roughness.height = 4;
+    metallic_roughness.channels = 4;
+    metallic_roughness.pixels.assign(4u * 4u * 4u, 0u);
+    {
+        const std::size_t center = ((2u * 4u) + 2u) * 4u;
+        metallic_roughness.pixels[center + 1u] = 255u;
+        metallic_roughness.pixels[center + 2u] = 255u;
+    }
+    material.metallic_roughness = metallic_roughness;
+
+    karma::renderer::MeshData::TextureData emissive{};
+    emissive.width = 4;
+    emissive.height = 4;
+    emissive.channels = 4;
+    emissive.pixels.assign(4u * 4u * 4u, 0u);
+    {
+        const std::size_t center = ((2u * 4u) + 2u) * 4u;
+        emissive.pixels[center + 0u] = 255u;
+        emissive.pixels[center + 1u] = 255u;
+        emissive.pixels[center + 2u] = 255u;
+    }
+    material.emissive = emissive;
+
+    karma::renderer::MeshData::TextureData normal{};
+    normal.width = 4;
+    normal.height = 4;
+    normal.channels = 3;
+    normal.pixels.assign(4u * 4u * 3u, 0u);
+    for (std::size_t i = 0; i < 16u; ++i) {
+        const std::size_t base = i * 3u;
+        normal.pixels[base + 0u] = 128u;
+        normal.pixels[base + 1u] = 128u;
+        normal.pixels[base + 2u] = 255u;
+    }
+    {
+        const std::size_t center = ((2u * 4u) + 2u) * 3u;
+        normal.pixels[center + 0u] = 255u;
+        normal.pixels[center + 1u] = 0u;
+    }
+    material.normal = normal;
+
+    karma::renderer::MeshData::TextureData occlusion{};
+    occlusion.width = 4;
+    occlusion.height = 4;
+    occlusion.channels = 1;
+    occlusion.pixels.assign(4u * 4u, 255u);
+    occlusion.pixels[(2u * 4u) + 2u] = 0u;
+    material.occlusion = occlusion;
+
+    karma::renderer::MeshData::TextureData albedo{};
+    albedo.width = 1;
+    albedo.height = 1;
+    albedo.channels = 2;
+    albedo.pixels = {255u, 0u};
+    material.albedo = albedo;
+
+    const ResolvedMaterialSemantics semantics = ResolveMaterialSemantics(material);
+    if (!ValidateResolvedMaterialSemantics(semantics)) {
+        std::cerr << "resolved material semantics failed validation\n";
+        return false;
+    }
+    if (!semantics.used_metallic_roughness_texture || !semantics.used_emissive_texture ||
+        !semantics.used_normal_texture || !semantics.used_occlusion_texture) {
+        std::cerr << "expected material texture usage flags to be set\n";
+        return false;
+    }
+    if (semantics.draw) {
+        std::cerr << "expected LA albedo alpha to suppress mask draw\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.metallic, 0.16f, 1e-3f)) {
+        std::cerr << "metallic representative sample mismatch, got " << semantics.metallic << "\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.roughness, 0.18f, 1e-3f)) {
+        std::cerr << "roughness representative sample mismatch, got " << semantics.roughness << "\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.emissive.r, 0.4f, 1e-3f) ||
+        !NearlyEqual(semantics.emissive.g, 0.2f, 1e-3f) ||
+        !NearlyEqual(semantics.emissive.b, 0.1f, 1e-3f)) {
+        std::cerr << "emissive representative sample mismatch\n";
+        return false;
+    }
+    if (!(semantics.normal_variation > 0.05f && semantics.normal_variation < 0.6f)) {
+        std::cerr << "normal variation out of expected bounded range, got " << semantics.normal_variation << "\n";
+        return false;
+    }
+    if (!(semantics.occlusion > 0.90f && semantics.occlusion <= 1.0f)) {
+        std::cerr << "occlusion value out of expected bounded range, got " << semantics.occlusion << "\n";
+        return false;
+    }
+
+    const std::vector<uint8_t> expanded = ExpandTextureToRgba8(albedo);
+    if (expanded.size() != 4u) {
+        std::cerr << "expanded albedo texture should contain one RGBA texel\n";
+        return false;
+    }
+    if (expanded[0] != 255u || expanded[1] != 255u || expanded[2] != 255u || expanded[3] != 0u) {
+        std::cerr << "LA texture expansion mismatch\n";
+        return false;
+    }
+    const std::vector<uint8_t> expanded_occlusion = ExpandTextureToRgba8(occlusion);
+    if (expanded_occlusion.size() != (4u * 4u * 4u)) {
+        std::cerr << "expanded occlusion texture should contain 4x4 RGBA texels\n";
+        return false;
+    }
+    if (expanded_occlusion[0] != 255u || expanded_occlusion[1] != 255u ||
+        expanded_occlusion[2] != 255u || expanded_occlusion[3] != 255u) {
+        std::cerr << "single-channel texture expansion mismatch\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunMaterialTextureStabilityChecks() {
+    auto make_checker = [](int width,
+                           int height,
+                           int channels,
+                           uint8_t low,
+                           uint8_t high,
+                           bool phase_shift) {
+        karma::renderer::MeshData::TextureData texture{};
+        texture.width = width;
+        texture.height = height;
+        texture.channels = channels;
+        texture.pixels.assign(static_cast<std::size_t>(width * height * channels), 0u);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const bool high_cell = (((x + y + (phase_shift ? 1 : 0)) & 1) == 0);
+                const std::size_t base = static_cast<std::size_t>((y * width + x) * channels);
+                if (channels == 1) {
+                    const uint8_t value = high_cell ? high : low;
+                    texture.pixels[base] = value;
+                } else if (channels == 3) {
+                    if (high_cell) {
+                        texture.pixels[base + 0u] = 255u;
+                        texture.pixels[base + 1u] = 0u;
+                        texture.pixels[base + 2u] = 255u;
+                    } else {
+                        texture.pixels[base + 0u] = 128u;
+                        texture.pixels[base + 1u] = 128u;
+                        texture.pixels[base + 2u] = 255u;
+                    }
+                }
+            }
+        }
+        return texture;
+    };
+
+    karma::renderer::MaterialDesc a{};
+    a.normal_scale = 1.0f;
+    a.occlusion_strength = 1.0f;
+    a.normal = make_checker(16, 16, 3, 0u, 255u, false);
+    a.occlusion = make_checker(16, 16, 1, 0u, 255u, false);
+
+    karma::renderer::MaterialDesc b = a;
+    b.normal = make_checker(16, 16, 3, 0u, 255u, true);
+    b.occlusion = make_checker(16, 16, 1, 0u, 255u, true);
+
+    const ResolvedMaterialSemantics sem_a = ResolveMaterialSemantics(a);
+    const ResolvedMaterialSemantics sem_b = ResolveMaterialSemantics(b);
+    if (!ValidateResolvedMaterialSemantics(sem_a) || !ValidateResolvedMaterialSemantics(sem_b)) {
+        std::cerr << "high-frequency semantics validation failed\n";
+        return false;
+    }
+
+    if (std::fabs(sem_a.normal_variation - sem_b.normal_variation) > 0.12f) {
+        std::cerr << "high-frequency normal semantics unstable across phase shift: "
+                  << sem_a.normal_variation << " vs " << sem_b.normal_variation << "\n";
+        return false;
+    }
+    if (std::fabs(sem_a.occlusion - sem_b.occlusion) > 0.12f) {
+        std::cerr << "high-frequency occlusion semantics unstable across phase shift: "
+                  << sem_a.occlusion << " vs " << sem_b.occlusion << "\n";
+        return false;
+    }
+
+    if (!(sem_a.normal_variation > 0.25f && sem_a.normal_variation < 0.65f)) {
+        std::cerr << "expected checker normal variation to stay near balanced mean, got "
+                  << sem_a.normal_variation << "\n";
+        return false;
+    }
+    if (!(sem_a.occlusion > 0.35f && sem_a.occlusion < 0.65f)) {
+        std::cerr << "expected checker occlusion to stay near balanced mean, got "
+                  << sem_a.occlusion << "\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunMaterialTextureClampPolicyChecks() {
+    karma::renderer::MaterialDesc clamped{};
+    clamped.normal_scale = 100.0f;
+    clamped.occlusion_strength = 5.0f;
+    karma::renderer::MeshData::TextureData clamped_normal{};
+    clamped_normal.width = 1;
+    clamped_normal.height = 1;
+    clamped_normal.channels = 3;
+    clamped_normal.pixels = {255u, 0u, 255u};
+    clamped.normal = clamped_normal;
+    karma::renderer::MeshData::TextureData clamped_occlusion{};
+    clamped_occlusion.width = 1;
+    clamped_occlusion.height = 1;
+    clamped_occlusion.channels = 1;
+    clamped_occlusion.pixels = {0u};
+    clamped.occlusion = clamped_occlusion;
+    const ResolvedMaterialSemantics clamped_sem = ResolveMaterialSemantics(clamped);
+    if (!ValidateResolvedMaterialSemantics(clamped_sem)) {
+        std::cerr << "clamped semantics unexpectedly invalid\n";
+        return false;
+    }
+    if (!NearlyEqual(clamped_sem.normal_variation, 1.0f, 1e-4f)) {
+        std::cerr << "expected normal_scale clamp to cap variation at 1.0, got " << clamped_sem.normal_variation << "\n";
+        return false;
+    }
+    if (!NearlyEqual(clamped_sem.occlusion, 0.0f, 1e-4f)) {
+        std::cerr << "expected occlusion_strength clamp to allow full attenuation, got " << clamped_sem.occlusion << "\n";
+        return false;
+    }
+
+    karma::renderer::MaterialDesc fallback{};
+    fallback.normal_scale = -2.0f;
+    fallback.occlusion_strength = -5.0f;
+    fallback.normal = clamped.normal;
+    fallback.occlusion = clamped.occlusion;
+    const ResolvedMaterialSemantics fallback_sem = ResolveMaterialSemantics(fallback);
+    if (!ValidateResolvedMaterialSemantics(fallback_sem)) {
+        std::cerr << "fallback semantics unexpectedly invalid\n";
+        return false;
+    }
+    if (!NearlyEqual(fallback_sem.normal_variation, 0.0f, 1e-4f)) {
+        std::cerr << "expected negative normal_scale to clamp to 0.0, got " << fallback_sem.normal_variation << "\n";
+        return false;
+    }
+    if (!NearlyEqual(fallback_sem.occlusion, 1.0f, 1e-4f)) {
+        std::cerr << "expected negative occlusion_strength to clamp to 0.0 influence, got " << fallback_sem.occlusion << "\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunOcclusionEdgeCaseParityChecks() {
+    auto resolve_occlusion = [](uint8_t value, int channels, float strength) -> ResolvedMaterialSemantics {
+        karma::renderer::MaterialDesc material{};
+        material.occlusion_strength = strength;
+        karma::renderer::MeshData::TextureData texture{};
+        texture.width = 1;
+        texture.height = 1;
+        texture.channels = channels;
+        texture.pixels.assign(static_cast<std::size_t>(channels), 0u);
+        texture.pixels[0] = value;
+        if (channels > 1) {
+            texture.pixels[channels - 1] = 255u;
+        }
+        material.occlusion = texture;
+        return ResolveMaterialSemantics(material);
+    };
+
+    const ResolvedMaterialSemantics black_1c = resolve_occlusion(1u, 1, 1.0f);
+    const ResolvedMaterialSemantics black_4c = resolve_occlusion(1u, 4, 1.0f);
+    if (!ValidateResolvedMaterialSemantics(black_1c) || !ValidateResolvedMaterialSemantics(black_4c)) {
+        std::cerr << "black-edge occlusion semantics invalid\n";
+        return false;
+    }
+    if (!NearlyEqual(black_1c.occlusion, 0.0f, 1e-4f) || !NearlyEqual(black_4c.occlusion, 0.0f, 1e-4f)) {
+        std::cerr << "expected near-black occlusion edge case to clamp to full attenuation\n";
+        return false;
+    }
+
+    const ResolvedMaterialSemantics white_1c = resolve_occlusion(254u, 1, 1.0f);
+    const ResolvedMaterialSemantics white_4c = resolve_occlusion(254u, 4, 1.0f);
+    if (!ValidateResolvedMaterialSemantics(white_1c) || !ValidateResolvedMaterialSemantics(white_4c)) {
+        std::cerr << "white-edge occlusion semantics invalid\n";
+        return false;
+    }
+    if (!NearlyEqual(white_1c.occlusion, 1.0f, 1e-4f) || !NearlyEqual(white_4c.occlusion, 1.0f, 1e-4f)) {
+        std::cerr << "expected near-white occlusion edge case to clamp to no attenuation\n";
+        return false;
+    }
+
+    const ResolvedMaterialSemantics zero_strength = resolve_occlusion(0u, 1, 0.0f);
+    if (!ValidateResolvedMaterialSemantics(zero_strength) || !NearlyEqual(zero_strength.occlusion, 1.0f, 1e-4f)) {
+        std::cerr << "expected zero occlusion strength to preserve full ambient\n";
+        return false;
+    }
+
+    karma::renderer::MaterialDesc no_occlusion{};
+    const ResolvedMaterialSemantics no_occlusion_sem = ResolveMaterialSemantics(no_occlusion);
+    if (!ValidateResolvedMaterialSemantics(no_occlusion_sem)) {
+        std::cerr << "no-occlusion semantics invalid\n";
+        return false;
+    }
+    if (no_occlusion_sem.used_occlusion_texture || !NearlyEqual(no_occlusion_sem.occlusion, 1.0f, 1e-4f)) {
+        std::cerr << "expected no-occlusion path to keep default occlusion=1.0\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunNormalDetailPolicyRefinementChecks() {
+    karma::renderer::MeshData::TextureData strong_normal{};
+    strong_normal.width = 1;
+    strong_normal.height = 1;
+    strong_normal.channels = 3;
+    strong_normal.pixels = {255u, 0u, 255u};
+
+    karma::renderer::MeshData::TextureData flat_normal{};
+    flat_normal.width = 1;
+    flat_normal.height = 1;
+    flat_normal.channels = 3;
+    flat_normal.pixels = {128u, 128u, 255u};
+
+    karma::renderer::MaterialDesc flat_material{};
+    flat_material.normal_scale = 1.0f;
+    flat_material.normal = flat_normal;
+    const ResolvedMaterialSemantics flat_semantics = ResolveMaterialSemantics(flat_material);
+    if (!ValidateResolvedMaterialSemantics(flat_semantics)) {
+        std::cerr << "flat-normal semantics invalid\n";
+        return false;
+    }
+    if (!(flat_semantics.normal_variation < 0.02f)) {
+        std::cerr << "expected flat normal map to stay near zero detail variation, got "
+                  << flat_semantics.normal_variation << "\n";
+        return false;
+    }
+
+    karma::renderer::MaterialDesc smooth_base{};
+    smooth_base.base_color = glm::vec4(0.7f, 0.7f, 0.7f, 1.0f);
+    smooth_base.metallic_factor = 0.2f;
+    smooth_base.roughness_factor = 0.1f;
+    karma::renderer::MaterialDesc smooth_detail = smooth_base;
+    smooth_detail.normal_scale = 1.0f;
+    smooth_detail.normal = strong_normal;
+
+    karma::renderer::MaterialDesc rough_base = smooth_base;
+    rough_base.roughness_factor = 0.9f;
+    karma::renderer::MaterialDesc rough_detail = rough_base;
+    rough_detail.normal_scale = 1.0f;
+    rough_detail.normal = strong_normal;
+
+    const ResolvedMaterialSemantics smooth_base_sem = ResolveMaterialSemantics(smooth_base);
+    const ResolvedMaterialSemantics smooth_detail_sem = ResolveMaterialSemantics(smooth_detail);
+    const ResolvedMaterialSemantics rough_base_sem = ResolveMaterialSemantics(rough_base);
+    const ResolvedMaterialSemantics rough_detail_sem = ResolveMaterialSemantics(rough_detail);
+    if (!ValidateResolvedMaterialSemantics(smooth_base_sem) ||
+        !ValidateResolvedMaterialSemantics(smooth_detail_sem) ||
+        !ValidateResolvedMaterialSemantics(rough_base_sem) ||
+        !ValidateResolvedMaterialSemantics(rough_detail_sem)) {
+        std::cerr << "normal-detail refinement semantics invalid\n";
+        return false;
+    }
+
+    karma::renderer::DirectionalLightData light{};
+    light.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+    light.color = glm::vec4(1.0f);
+    light.ambient = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f);
+
+    karma::renderer::EnvironmentLightingData environment{};
+    const ResolvedEnvironmentLightingSemantics env_sem =
+        ResolveEnvironmentLightingSemantics(environment);
+
+    const ResolvedMaterialLighting smooth_base_light =
+        ResolveMaterialLighting(smooth_base_sem, light, env_sem, 1.0f);
+    const ResolvedMaterialLighting smooth_detail_light =
+        ResolveMaterialLighting(smooth_detail_sem, light, env_sem, 1.0f);
+    const ResolvedMaterialLighting rough_base_light =
+        ResolveMaterialLighting(rough_base_sem, light, env_sem, 1.0f);
+    const ResolvedMaterialLighting rough_detail_light =
+        ResolveMaterialLighting(rough_detail_sem, light, env_sem, 1.0f);
+
+    if (!ValidateResolvedMaterialLighting(smooth_base_light) ||
+        !ValidateResolvedMaterialLighting(smooth_detail_light) ||
+        !ValidateResolvedMaterialLighting(rough_base_light) ||
+        !ValidateResolvedMaterialLighting(rough_detail_light)) {
+        std::cerr << "normal-detail refinement lighting invalid\n";
+        return false;
+    }
+
+    const float smooth_boost = smooth_detail_light.light_color.r - smooth_base_light.light_color.r;
+    const float rough_boost = rough_detail_light.light_color.r - rough_base_light.light_color.r;
+    if (!(smooth_boost > rough_boost)) {
+        std::cerr << "expected normal/detail boost to favor smoother surfaces (smooth="
+                  << smooth_boost << ", rough=" << rough_boost << ")\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunMaterialLightingChecks() {
+    karma::renderer::MaterialDesc smooth_material{};
+    smooth_material.base_color = glm::vec4(0.8f, 0.7f, 0.6f, 1.0f);
+    smooth_material.metallic_factor = 0.3f;
+    smooth_material.roughness_factor = 0.1f;
+    smooth_material.emissive_color = glm::vec3(0.1f, 0.0f, 0.0f);
+
+    karma::renderer::MaterialDesc rough_material = smooth_material;
+    rough_material.roughness_factor = 0.9f;
+
+    const ResolvedMaterialSemantics smooth_semantics = ResolveMaterialSemantics(smooth_material);
+    const ResolvedMaterialSemantics rough_semantics = ResolveMaterialSemantics(rough_material);
+    if (!ValidateResolvedMaterialSemantics(smooth_semantics) ||
+        !ValidateResolvedMaterialSemantics(rough_semantics)) {
+        std::cerr << "material semantics invalid in lighting checks\n";
+        return false;
+    }
+
+    karma::renderer::DirectionalLightData light{};
+    light.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+    light.color = glm::vec4(1.0f);
+    light.ambient = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f);
+    light.unlit = 0.0f;
+
+    karma::renderer::EnvironmentLightingData environment{};
+    environment.enabled = true;
+    const ResolvedEnvironmentLightingSemantics environment_semantics =
+        ResolveEnvironmentLightingSemantics(environment);
+
+    const ResolvedMaterialLighting smooth_lighting =
+        ResolveMaterialLighting(smooth_semantics, light, environment_semantics, 1.0f);
+    const ResolvedMaterialLighting rough_lighting =
+        ResolveMaterialLighting(rough_semantics, light, environment_semantics, 1.0f);
+    if (!ValidateResolvedMaterialLighting(smooth_lighting) ||
+        !ValidateResolvedMaterialLighting(rough_lighting)) {
+        std::cerr << "material lighting validation failed\n";
+        return false;
+    }
+    if (!(smooth_lighting.light_color.r > rough_lighting.light_color.r)) {
+        std::cerr << "expected smoother material to receive stronger direct light\n";
+        return false;
+    }
+
+    karma::renderer::MaterialDesc occluded_material = smooth_material;
+    occluded_material.occlusion_strength = 1.0f;
+    karma::renderer::MeshData::TextureData occlusion{};
+    occlusion.width = 1;
+    occlusion.height = 1;
+    occlusion.channels = 1;
+    occlusion.pixels = {0u};
+    occluded_material.occlusion = occlusion;
+
+    karma::renderer::MaterialDesc normal_material = smooth_material;
+    normal_material.normal_scale = 1.0f;
+    karma::renderer::MeshData::TextureData normal{};
+    normal.width = 1;
+    normal.height = 1;
+    normal.channels = 3;
+    normal.pixels = {255u, 0u, 255u};
+    normal_material.normal = normal;
+
+    const ResolvedMaterialSemantics occluded_semantics = ResolveMaterialSemantics(occluded_material);
+    const ResolvedMaterialSemantics normal_semantics = ResolveMaterialSemantics(normal_material);
+    if (!ValidateResolvedMaterialSemantics(occluded_semantics) ||
+        !ValidateResolvedMaterialSemantics(normal_semantics)) {
+        std::cerr << "material semantics invalid for normal/occlusion lighting checks\n";
+        return false;
+    }
+
+    const ResolvedMaterialLighting occluded_lighting =
+        ResolveMaterialLighting(occluded_semantics, light, environment_semantics, 1.0f);
+    const ResolvedMaterialLighting normal_lighting =
+        ResolveMaterialLighting(normal_semantics, light, environment_semantics, 1.0f);
+    if (!ValidateResolvedMaterialLighting(occluded_lighting) ||
+        !ValidateResolvedMaterialLighting(normal_lighting)) {
+        std::cerr << "material lighting invalid for normal/occlusion lighting checks\n";
+        return false;
+    }
+    if (!(occluded_lighting.ambient_color.r < smooth_lighting.ambient_color.r)) {
+        std::cerr << "expected occlusion texture semantics to reduce ambient contribution\n";
+        return false;
+    }
+    if (!(normal_lighting.light_color.r > smooth_lighting.light_color.r)) {
+        std::cerr << "expected normal texture semantics to increase direct-light detail gain\n";
+        return false;
+    }
+
+    const ResolvedMaterialLighting fully_shadowed =
+        ResolveMaterialLighting(smooth_semantics, light, environment_semantics, 0.0f);
+    if (!NearlyEqual(fully_shadowed.light_color.r, 0.0f, 1e-5f) ||
+        !NearlyEqual(fully_shadowed.light_color.g, 0.0f, 1e-5f) ||
+        !NearlyEqual(fully_shadowed.light_color.b, 0.0f, 1e-5f)) {
+        std::cerr << "expected zero shadow factor to suppress direct light contribution\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunDebugLineSemanticsChecks() {
+    karma::renderer::DebugLineItem valid{};
+    valid.start = glm::vec3(1.0f, 2.0f, 3.0f);
+    valid.end = glm::vec3(4.0f, 2.0f, 3.0f);
+    valid.color = glm::vec4(2.0f, -1.0f, 0.5f, std::numeric_limits<float>::quiet_NaN());
+    valid.layer = 17u;
+
+    const ResolvedDebugLineSemantics resolved = ResolveDebugLineSemantics(valid);
+    if (!resolved.draw || !ValidateResolvedDebugLineSemantics(resolved)) {
+        std::cerr << "resolved debug line should be drawable and valid\n";
+        return false;
+    }
+    if (resolved.layer != 17u) {
+        std::cerr << "debug line layer was not preserved\n";
+        return false;
+    }
+    if (!NearlyEqual(resolved.color.r, 1.0f) ||
+        !NearlyEqual(resolved.color.g, 0.0f) ||
+        !NearlyEqual(resolved.color.b, 0.5f) ||
+        !NearlyEqual(resolved.color.a, 1.0f)) {
+        std::cerr << "debug line color clamp/fallback mismatch\n";
+        return false;
+    }
+
+    karma::renderer::DebugLineItem degenerate{};
+    degenerate.start = glm::vec3(1.0f, 1.0f, 1.0f);
+    degenerate.end = degenerate.start;
+    const ResolvedDebugLineSemantics degenerate_resolved = ResolveDebugLineSemantics(degenerate);
+    if (degenerate_resolved.draw) {
+        std::cerr << "degenerate debug line should be suppressed\n";
+        return false;
+    }
+
+    return true;
+}
+
+} // namespace
+
+int main() {
+    if (!RunShadowSemanticsClampChecks()) {
+        return 1;
+    }
+    if (!RunShadowMapBuildAndSampleChecks()) {
+        return 1;
+    }
+    if (!RunEnvironmentSemanticsChecks()) {
+        return 1;
+    }
+    if (!RunMaterialTextureSemanticsChecks()) {
+        return 1;
+    }
+    if (!RunMaterialTextureStabilityChecks()) {
+        return 1;
+    }
+    if (!RunMaterialTextureClampPolicyChecks()) {
+        return 1;
+    }
+    if (!RunOcclusionEdgeCaseParityChecks()) {
+        return 1;
+    }
+    if (!RunNormalDetailPolicyRefinementChecks()) {
+        return 1;
+    }
+    if (!RunMaterialLightingChecks()) {
+        return 1;
+    }
+    if (!RunDebugLineSemanticsChecks()) {
+        return 1;
+    }
+    return 0;
+}

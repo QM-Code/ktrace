@@ -44,12 +44,16 @@ struct MaterialDesc {
     std::optional<MeshData::TextureData> albedo;
     float metallic_factor = 0.0f;
     float roughness_factor = 1.0f;
+    float normal_scale = 1.0f;
+    float occlusion_strength = 1.0f;
     glm::vec3 emissive_color{0.0f, 0.0f, 0.0f};
     MaterialAlphaMode alpha_mode = MaterialAlphaMode::Opaque;
     float alpha_cutoff = 0.5f;
     bool double_sided = false;
     std::optional<MeshData::TextureData> metallic_roughness;
     std::optional<MeshData::TextureData> emissive;
+    std::optional<MeshData::TextureData> normal;
+    std::optional<MeshData::TextureData> occlusion;
 };
 
 struct CameraData {
@@ -61,16 +65,42 @@ struct CameraData {
 };
 
 struct DirectionalLightData {
+    struct ShadowDesc {
+        bool enabled = true;
+        float strength = 0.65f;
+        float bias = 0.0015f;
+        float extent = 24.0f;
+        int map_size = 256;
+        int pcf_radius = 1;
+    };
+
     glm::vec3 direction{0.3f, 0.7f, -0.5f};
     glm::vec4 color{0.8f, 0.8f, 0.8f, 1.0f};
     glm::vec4 ambient{0.25f, 0.25f, 0.25f, 1.0f};
     float unlit = 1.0f;
+    ShadowDesc shadow{};
+};
+
+struct EnvironmentLightingData {
+    bool enabled = true;
+    glm::vec4 sky_color{0.56f, 0.66f, 0.88f, 1.0f};
+    glm::vec4 ground_color{0.14f, 0.14f, 0.16f, 1.0f};
+    float diffuse_strength = 0.75f;
+    float specular_strength = 0.20f;
+    float skybox_exposure = 1.0f;
 };
 
 struct DrawItem {
     MeshId mesh = kInvalidMesh;
     MaterialId material = kInvalidMaterial;
     glm::mat4 transform{1.0f};
+    LayerId layer = 0;
+};
+
+struct DebugLineItem {
+    glm::vec3 start{0.0f, 0.0f, 0.0f};
+    glm::vec3 end{0.0f, 0.0f, 0.0f};
+    glm::vec4 color{1.0f, 0.0f, 0.0f, 1.0f};
     LayerId layer = 0;
 };
 

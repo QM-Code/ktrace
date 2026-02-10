@@ -1,0 +1,383 @@
+#pragma once
+
+#include "karma/renderer/types.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <vector>
+
+namespace karma::renderer_backend::detail {
+
+struct ResolvedDirectionalShadowSemantics {
+    bool enabled = false;
+    float strength = 0.65f;
+    float bias = 0.0015f;
+    float extent = 24.0f;
+    int map_size = 256;
+    int pcf_radius = 1;
+    int triangle_budget = 4096;
+};
+
+struct DirectionalShadowCaster {
+    glm::mat4 transform{1.0f};
+    const std::vector<glm::vec3>* positions = nullptr;
+    const std::vector<uint32_t>* indices = nullptr;
+    glm::vec3 sample_center{0.0f, 0.0f, 0.0f};
+    bool casts_shadow = true;
+};
+
+struct DirectionalShadowMap {
+    bool ready = false;
+    int size = 0;
+    int pcf_radius = 0;
+    float bias = 0.0f;
+    float strength = 0.0f;
+    float extent = 1.0f;
+    float center_x = 0.0f;
+    float center_y = 0.0f;
+    float min_depth = 0.0f;
+    float depth_range = 1.0f;
+    glm::vec3 axis_right{1.0f, 0.0f, 0.0f};
+    glm::vec3 axis_up{0.0f, 1.0f, 0.0f};
+    glm::vec3 axis_forward{0.0f, 0.0f, -1.0f};
+    std::vector<float> depth{};
+};
+
+inline bool IsFiniteVec3(const glm::vec3& value) {
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+inline float ClampFinite(float value, float fallback, float min_value, float max_value) {
+    if (!std::isfinite(value)) {
+        return fallback;
+    }
+    return std::clamp(value, min_value, max_value);
+}
+
+inline int ClampRange(int value, int fallback, int min_value, int max_value) {
+    if (value < min_value || value > max_value) {
+        return fallback;
+    }
+    return value;
+}
+
+inline glm::vec3 TransformPoint(const glm::mat4& transform, const glm::vec3& point) {
+    const glm::vec4 world = transform * glm::vec4(point, 1.0f);
+    return glm::vec3(world.x, world.y, world.z);
+}
+
+inline bool BuildLightBasis(const glm::vec3& light_direction,
+                            glm::vec3& out_right,
+                            glm::vec3& out_up,
+                            glm::vec3& out_forward) {
+    out_forward = light_direction;
+    if (!IsFiniteVec3(out_forward) || glm::length(out_forward) <= 1e-6f) {
+        out_forward = glm::vec3(0.3f, -1.0f, -0.2f);
+    }
+    out_forward = glm::normalize(out_forward);
+
+    glm::vec3 world_up{0.0f, 1.0f, 0.0f};
+    if (std::fabs(glm::dot(out_forward, world_up)) >= 0.95f) {
+        world_up = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+    out_right = glm::cross(world_up, out_forward);
+    const float right_len = glm::length(out_right);
+    if (right_len <= 1e-6f) {
+        return false;
+    }
+    out_right /= right_len;
+    out_up = glm::normalize(glm::cross(out_forward, out_right));
+    return IsFiniteVec3(out_right) && IsFiniteVec3(out_up) && IsFiniteVec3(out_forward);
+}
+
+inline ResolvedDirectionalShadowSemantics ResolveDirectionalShadowSemantics(const renderer::DirectionalLightData& light) {
+    ResolvedDirectionalShadowSemantics semantics{};
+    semantics.enabled = light.shadow.enabled;
+    semantics.strength = ClampFinite(light.shadow.strength, 0.65f, 0.0f, 1.0f);
+    semantics.bias = ClampFinite(light.shadow.bias, 0.0015f, 0.0f, 0.02f);
+    semantics.extent = ClampFinite(light.shadow.extent, 24.0f, 2.0f, 512.0f);
+    semantics.map_size = ClampRange(light.shadow.map_size, 256, 64, 512);
+    semantics.pcf_radius = ClampRange(light.shadow.pcf_radius, 1, 0, 2);
+    semantics.triangle_budget = 4096;
+    return semantics;
+}
+
+inline bool ValidateResolvedDirectionalShadowSemantics(const ResolvedDirectionalShadowSemantics& semantics) {
+    if (!std::isfinite(semantics.strength) || !std::isfinite(semantics.bias) || !std::isfinite(semantics.extent)) {
+        return false;
+    }
+    if (semantics.strength < 0.0f || semantics.strength > 1.0f) {
+        return false;
+    }
+    if (semantics.bias < 0.0f || semantics.bias > 0.02f) {
+        return false;
+    }
+    if (semantics.extent < 2.0f || semantics.extent > 512.0f) {
+        return false;
+    }
+    if (semantics.map_size < 64 || semantics.map_size > 512) {
+        return false;
+    }
+    if (semantics.pcf_radius < 0 || semantics.pcf_radius > 2) {
+        return false;
+    }
+    if (semantics.triangle_budget < 1 || semantics.triangle_budget > 65536) {
+        return false;
+    }
+    return true;
+}
+
+inline void ProjectShadowPoint(const DirectionalShadowMap& map,
+                               const glm::vec3& world_point,
+                               float& out_u,
+                               float& out_v,
+                               float& out_depth) {
+    const float lx = glm::dot(world_point, map.axis_right);
+    const float ly = glm::dot(world_point, map.axis_up);
+    const float lz = glm::dot(world_point, map.axis_forward);
+
+    out_u = 0.5f + ((lx - map.center_x) / (2.0f * map.extent));
+    out_v = 0.5f + ((ly - map.center_y) / (2.0f * map.extent));
+    out_depth = (lz - map.min_depth) / map.depth_range;
+}
+
+inline float EdgeFunction(float ax, float ay, float bx, float by, float px, float py) {
+    return ((px - ax) * (by - ay)) - ((py - ay) * (bx - ax));
+}
+
+inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalShadowSemantics& semantics,
+                                                      const glm::vec3& light_direction,
+                                                      const std::vector<DirectionalShadowCaster>& casters) {
+    DirectionalShadowMap map{};
+    if (!semantics.enabled || !ValidateResolvedDirectionalShadowSemantics(semantics) || casters.empty()) {
+        return map;
+    }
+
+    glm::vec3 axis_right{};
+    glm::vec3 axis_up{};
+    glm::vec3 axis_forward{};
+    if (!BuildLightBasis(light_direction, axis_right, axis_up, axis_forward)) {
+        return map;
+    }
+
+    float min_x = std::numeric_limits<float>::max();
+    float min_y = std::numeric_limits<float>::max();
+    float min_z = std::numeric_limits<float>::max();
+    float max_x = std::numeric_limits<float>::lowest();
+    float max_y = std::numeric_limits<float>::lowest();
+    float max_z = std::numeric_limits<float>::lowest();
+    std::size_t bounds_points = 0;
+
+    for (const DirectionalShadowCaster& caster : casters) {
+        if (!caster.positions || caster.positions->empty()) {
+            continue;
+        }
+        const glm::vec3 center_world = TransformPoint(caster.transform, caster.sample_center);
+        if (!IsFiniteVec3(center_world)) {
+            continue;
+        }
+        const float lx = glm::dot(center_world, axis_right);
+        const float ly = glm::dot(center_world, axis_up);
+        const float lz = glm::dot(center_world, axis_forward);
+        if (!std::isfinite(lx) || !std::isfinite(ly) || !std::isfinite(lz)) {
+            continue;
+        }
+        min_x = std::min(min_x, lx);
+        min_y = std::min(min_y, ly);
+        min_z = std::min(min_z, lz);
+        max_x = std::max(max_x, lx);
+        max_y = std::max(max_y, ly);
+        max_z = std::max(max_z, lz);
+        ++bounds_points;
+    }
+
+    if (bounds_points == 0) {
+        return map;
+    }
+
+    const float half_span_x = std::max(0.5f * (max_x - min_x), 1.0f);
+    const float half_span_y = std::max(0.5f * (max_y - min_y), 1.0f);
+    const float resolved_extent = std::max(semantics.extent, std::max(half_span_x, half_span_y) + 1.0f);
+    const float depth_padding = std::max(1.0f, resolved_extent * 0.1f);
+    const float resolved_min_depth = min_z - depth_padding;
+    const float resolved_max_depth = max_z + depth_padding;
+    const float resolved_depth_range = std::max(resolved_max_depth - resolved_min_depth, 0.01f);
+
+    map.ready = true;
+    map.size = semantics.map_size;
+    map.pcf_radius = semantics.pcf_radius;
+    map.bias = semantics.bias;
+    map.strength = semantics.strength;
+    map.extent = resolved_extent;
+    map.center_x = 0.5f * (min_x + max_x);
+    map.center_y = 0.5f * (min_y + max_y);
+    map.min_depth = resolved_min_depth;
+    map.depth_range = resolved_depth_range;
+    map.axis_right = axis_right;
+    map.axis_up = axis_up;
+    map.axis_forward = axis_forward;
+    map.depth.assign(static_cast<std::size_t>(map.size) * static_cast<std::size_t>(map.size),
+                     std::numeric_limits<float>::infinity());
+
+    const float raster_scale = static_cast<float>(map.size - 1);
+    int triangles_rasterized = 0;
+
+    for (const DirectionalShadowCaster& caster : casters) {
+        if (!caster.casts_shadow || !caster.positions || !caster.indices) {
+            continue;
+        }
+        const auto& positions = *caster.positions;
+        const auto& indices = *caster.indices;
+        if (positions.empty() || indices.size() < 3) {
+            continue;
+        }
+
+        for (std::size_t i = 0; (i + 2) < indices.size(); i += 3) {
+            if (triangles_rasterized >= semantics.triangle_budget) {
+                break;
+            }
+
+            const uint32_t i0 = indices[i + 0];
+            const uint32_t i1 = indices[i + 1];
+            const uint32_t i2 = indices[i + 2];
+            if (i0 >= positions.size() || i1 >= positions.size() || i2 >= positions.size()) {
+                continue;
+            }
+
+            const glm::vec3 p0 = TransformPoint(caster.transform, positions[i0]);
+            const glm::vec3 p1 = TransformPoint(caster.transform, positions[i1]);
+            const glm::vec3 p2 = TransformPoint(caster.transform, positions[i2]);
+            if (!IsFiniteVec3(p0) || !IsFiniteVec3(p1) || !IsFiniteVec3(p2)) {
+                continue;
+            }
+
+            float u0 = 0.0f;
+            float v0 = 0.0f;
+            float d0 = 0.0f;
+            float u1 = 0.0f;
+            float v1 = 0.0f;
+            float d1 = 0.0f;
+            float u2 = 0.0f;
+            float v2 = 0.0f;
+            float d2 = 0.0f;
+            ProjectShadowPoint(map, p0, u0, v0, d0);
+            ProjectShadowPoint(map, p1, u1, v1, d1);
+            ProjectShadowPoint(map, p2, u2, v2, d2);
+
+            const float tx0 = u0 * raster_scale;
+            const float ty0 = v0 * raster_scale;
+            const float tx1 = u1 * raster_scale;
+            const float ty1 = v1 * raster_scale;
+            const float tx2 = u2 * raster_scale;
+            const float ty2 = v2 * raster_scale;
+            if (!std::isfinite(tx0) || !std::isfinite(ty0) || !std::isfinite(tx1) || !std::isfinite(ty1) ||
+                !std::isfinite(tx2) || !std::isfinite(ty2)) {
+                continue;
+            }
+
+            const float tri_min_x = std::min(tx0, std::min(tx1, tx2));
+            const float tri_max_x = std::max(tx0, std::max(tx1, tx2));
+            const float tri_min_y = std::min(ty0, std::min(ty1, ty2));
+            const float tri_max_y = std::max(ty0, std::max(ty1, ty2));
+            if (tri_max_x < 0.0f || tri_max_y < 0.0f ||
+                tri_min_x > raster_scale || tri_min_y > raster_scale) {
+                continue;
+            }
+
+            const int min_tx = std::max(0, static_cast<int>(std::floor(tri_min_x)));
+            const int max_tx = std::min(map.size - 1, static_cast<int>(std::ceil(tri_max_x)));
+            const int min_ty = std::max(0, static_cast<int>(std::floor(tri_min_y)));
+            const int max_ty = std::min(map.size - 1, static_cast<int>(std::ceil(tri_max_y)));
+            if (min_tx > max_tx || min_ty > max_ty) {
+                continue;
+            }
+
+            const float area = EdgeFunction(tx0, ty0, tx1, ty1, tx2, ty2);
+            if (std::fabs(area) <= 1e-6f) {
+                continue;
+            }
+
+            for (int y = min_ty; y <= max_ty; ++y) {
+                for (int x = min_tx; x <= max_tx; ++x) {
+                    const float px = static_cast<float>(x) + 0.5f;
+                    const float py = static_cast<float>(y) + 0.5f;
+                    const float w0 = EdgeFunction(tx1, ty1, tx2, ty2, px, py) / area;
+                    const float w1 = EdgeFunction(tx2, ty2, tx0, ty0, px, py) / area;
+                    const float w2 = EdgeFunction(tx0, ty0, tx1, ty1, px, py) / area;
+                    if (w0 < 0.0f || w1 < 0.0f || w2 < 0.0f) {
+                        continue;
+                    }
+
+                    const float depth = (w0 * d0) + (w1 * d1) + (w2 * d2);
+                    if (!std::isfinite(depth)) {
+                        continue;
+                    }
+                    const std::size_t idx =
+                        static_cast<std::size_t>(y) * static_cast<std::size_t>(map.size) + static_cast<std::size_t>(x);
+                    map.depth[idx] = std::min(map.depth[idx], depth);
+                }
+            }
+
+            ++triangles_rasterized;
+        }
+        if (triangles_rasterized >= semantics.triangle_budget) {
+            break;
+        }
+    }
+
+    return map;
+}
+
+inline float SampleDirectionalShadowVisibility(const DirectionalShadowMap& map, const glm::vec3& world_point) {
+    if (!map.ready || map.size <= 1 || map.depth.empty()) {
+        return 1.0f;
+    }
+
+    float u = 0.0f;
+    float v = 0.0f;
+    float depth = 0.0f;
+    ProjectShadowPoint(map, world_point, u, v, depth);
+
+    if (!std::isfinite(u) || !std::isfinite(v) || !std::isfinite(depth)) {
+        return 1.0f;
+    }
+    if (u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f || depth < 0.0f || depth > 1.0f) {
+        return 1.0f;
+    }
+
+    const float texel = static_cast<float>(map.size - 1);
+    const int center_x = static_cast<int>(std::round(u * texel));
+    const int center_y = static_cast<int>(std::round(v * texel));
+    const int radius = std::max(0, map.pcf_radius);
+    float lit_sum = 0.0f;
+    int sample_count = 0;
+
+    for (int oy = -radius; oy <= radius; ++oy) {
+        const int y = std::clamp(center_y + oy, 0, map.size - 1);
+        for (int ox = -radius; ox <= radius; ++ox) {
+            const int x = std::clamp(center_x + ox, 0, map.size - 1);
+            const std::size_t idx =
+                static_cast<std::size_t>(y) * static_cast<std::size_t>(map.size) + static_cast<std::size_t>(x);
+            const float map_depth = map.depth[idx];
+            const bool lit = !std::isfinite(map_depth) || ((depth - map.bias) <= map_depth);
+            lit_sum += lit ? 1.0f : 0.0f;
+            ++sample_count;
+        }
+    }
+
+    if (sample_count <= 0) {
+        return 1.0f;
+    }
+    return lit_sum / static_cast<float>(sample_count);
+}
+
+inline float ComputeDirectionalShadowFactor(const DirectionalShadowMap& map, float visibility) {
+    const float safe_visibility = std::clamp(visibility, 0.0f, 1.0f);
+    const float safe_strength = std::clamp(map.strength, 0.0f, 1.0f);
+    return std::clamp(1.0f - (safe_strength * (1.0f - safe_visibility)), 0.0f, 1.0f);
+}
+
+} // namespace karma::renderer_backend::detail

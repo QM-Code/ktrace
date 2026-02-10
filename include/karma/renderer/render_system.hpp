@@ -14,9 +14,11 @@ class RenderSystem {
 
     void beginFrame(int width, int height, float dt);
     void submit(const DrawItem& item);
+    void submitDebugLine(const DebugLineItem& line);
     void setCamera(const CameraData& camera);
     const CameraData& camera() const;
     void setDirectionalLight(const DirectionalLightData& light);
+    void setEnvironmentLighting(const EnvironmentLightingData& environment);
     void setWorld(karma::ecs::World* world);
     void renderFrame();
     void endFrame();
@@ -24,8 +26,10 @@ class RenderSystem {
  private:
     GraphicsDevice& graphics_;
     std::map<LayerId, std::vector<DrawItem>> queues_;
+    std::map<LayerId, std::vector<DebugLineItem>> debug_line_queues_;
     CameraData camera_{};
     DirectionalLightData light_{};
+    EnvironmentLightingData environment_{};
     karma::ecs::World* world_ = nullptr;
 };
 

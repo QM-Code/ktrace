@@ -24,10 +24,12 @@ class GraphicsDevice {
     void destroyMaterial(MaterialId material);
 
     void submit(const DrawItem& item);
+    void submitDebugLine(const DebugLineItem& line);
     void renderFrame();
     void renderLayer(LayerId layer);
     void setCamera(const CameraData& camera);
     void setDirectionalLight(const DirectionalLightData& light);
+    void setEnvironmentLighting(const EnvironmentLightingData& environment);
     bool isValid() const;
     renderer_backend::BackendKind backendKind() const { return backend_kind_; }
     const char* backendName() const { return renderer_backend::BackendKindName(backend_kind_); }

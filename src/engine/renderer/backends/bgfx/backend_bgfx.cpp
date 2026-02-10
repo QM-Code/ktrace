@@ -1,6 +1,10 @@
 #include "karma/renderer/backend.hpp"
 
 #include "../backend_factory_internal.hpp"
+#include "../debug_line_internal.hpp"
+#include "../directional_shadow_internal.hpp"
+#include "../environment_lighting_internal.hpp"
+#include "../material_lighting_internal.hpp"
 #include "../material_semantics_internal.hpp"
 
 #include "karma/common/logging.hpp"
@@ -18,6 +22,7 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <fstream>
 #include <unordered_map>
@@ -68,6 +73,9 @@ struct Mesh {
     bgfx::IndexBufferHandle ibh = BGFX_INVALID_HANDLE;
     uint32_t num_indices = 0;
     bgfx::TextureHandle tex = BGFX_INVALID_HANDLE;
+    std::vector<glm::vec3> shadow_positions{};
+    std::vector<uint32_t> shadow_indices{};
+    glm::vec3 shadow_center{0.0f, 0.0f, 0.0f};
 };
 
 struct Material {
@@ -130,7 +138,8 @@ bgfx::TextureHandle createWhiteTexture() {
 }
 
 bgfx::TextureHandle createTextureFromData(const renderer::MeshData::TextureData& tex) {
-    if (tex.pixels.empty() || tex.width <= 0 || tex.height <= 0) {
+    const std::vector<uint8_t> rgba_pixels = detail::ExpandTextureToRgba8(tex);
+    if (rgba_pixels.empty() || tex.width <= 0 || tex.height <= 0) {
         return BGFX_INVALID_HANDLE;
     }
     return bgfx::createTexture2D(
@@ -140,7 +149,18 @@ bgfx::TextureHandle createTextureFromData(const renderer::MeshData::TextureData&
         1,
         bgfx::TextureFormat::RGBA8,
         0,
-        bgfx::copy(tex.pixels.data(), static_cast<uint32_t>(tex.pixels.size())));
+        bgfx::copy(rgba_pixels.data(), static_cast<uint32_t>(rgba_pixels.size())));
+}
+
+uint32_t PackColorRgba8(const glm::vec4& color) {
+    const auto to_u8 = [](float value) -> uint32_t {
+        const float scaled = std::clamp(value, 0.0f, 1.0f) * 255.0f;
+        return static_cast<uint32_t>(scaled + 0.5f);
+    };
+    return (to_u8(color.r) << 24u) |
+           (to_u8(color.g) << 16u) |
+           (to_u8(color.b) << 8u) |
+           to_u8(color.a);
 }
 
 class BgfxBackend final : public Backend {
@@ -238,9 +258,18 @@ class BgfxBackend final : public Backend {
             return;
         }
         draw_items_.clear();
+        debug_lines_.clear();
         width_ = width;
         height_ = height;
         bgfx::reset(static_cast<uint32_t>(width), static_cast<uint32_t>(height), BGFX_RESET_VSYNC | BGFX_RESET_SRGB_BACKBUFFER);
+        const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
+            detail::ResolveEnvironmentLightingSemantics(environment_);
+        const glm::vec4 clear_color = detail::ComputeEnvironmentClearColor(environment_semantics);
+        bgfx::setViewClear(0,
+                           BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH,
+                           PackColorRgba8(clear_color),
+                           1.0f,
+                           0);
         bgfx::setViewRect(0, 0, 0, static_cast<uint16_t>(width), static_cast<uint16_t>(height));
         bgfx::touch(0);
     }
@@ -273,16 +302,19 @@ class BgfxBackend final : public Backend {
         out.vbh = bgfx::createVertexBuffer(vmem, layout_);
         out.ibh = bgfx::createIndexBuffer(imem, BGFX_BUFFER_INDEX32);
         out.num_indices = static_cast<uint32_t>(mesh.indices.size());
+        out.shadow_positions = mesh.positions;
+        out.shadow_indices = mesh.indices;
+        if (!out.shadow_positions.empty()) {
+            glm::vec3 min_pos = out.shadow_positions.front();
+            glm::vec3 max_pos = out.shadow_positions.front();
+            for (const glm::vec3& p : out.shadow_positions) {
+                min_pos = glm::min(min_pos, p);
+                max_pos = glm::max(max_pos, p);
+            }
+            out.shadow_center = 0.5f * (min_pos + max_pos);
+        }
         if (mesh.albedo && !mesh.albedo->pixels.empty()) {
-            out.tex = bgfx::createTexture2D(
-                static_cast<uint16_t>(mesh.albedo->width),
-                static_cast<uint16_t>(mesh.albedo->height),
-                false,
-                1,
-                bgfx::TextureFormat::RGBA8,
-                0,
-                bgfx::copy(mesh.albedo->pixels.data(),
-                           static_cast<uint32_t>(mesh.albedo->pixels.size())));
+            out.tex = createTextureFromData(*mesh.albedo);
             KARMA_TRACE("render.bgfx", "createMesh texture={} {}x{}",
                         bgfx::isValid(out.tex) ? 1 : 0,
                         mesh.albedo->width, mesh.albedo->height);
@@ -321,13 +353,15 @@ class BgfxBackend final : public Backend {
                         material.albedo->height);
         }
         KARMA_TRACE("render.bgfx",
-                    "createMaterial semantics metallic={:.3f} roughness={:.3f} emissive=({:.3f},{:.3f},{:.3f}) alphaMode={} alpha={} cutoff={:.3f} draw={} blend={} doubleSided={} mrTex={} emissiveTex={}",
-                    out.semantics.metallic, out.semantics.roughness,
+                    "createMaterial semantics metallic={:.3f} roughness={:.3f} normalVar={:.3f} occlusion={:.3f} emissive=({:.3f},{:.3f},{:.3f}) alphaMode={} alpha={} cutoff={:.3f} draw={} blend={} doubleSided={} mrTex={} emissiveTex={} normalTex={} occlusionTex={}",
+                    out.semantics.metallic, out.semantics.roughness, out.semantics.normal_variation, out.semantics.occlusion,
                     out.semantics.emissive.r, out.semantics.emissive.g, out.semantics.emissive.b,
                     static_cast<int>(out.semantics.alpha_mode), out.semantics.base_color.a, out.semantics.alpha_cutoff,
                     out.semantics.draw ? 1 : 0, out.semantics.alpha_blend ? 1 : 0, out.semantics.double_sided ? 1 : 0,
                     out.semantics.used_metallic_roughness_texture ? 1 : 0,
-                    out.semantics.used_emissive_texture ? 1 : 0);
+                    out.semantics.used_emissive_texture ? 1 : 0,
+                    out.semantics.used_normal_texture ? 1 : 0,
+                    out.semantics.used_occlusion_texture ? 1 : 0);
         renderer::MaterialId id = next_material_id_++;
         materials_[id] = out;
         return id;
@@ -345,6 +379,17 @@ class BgfxBackend final : public Backend {
             return;
         }
         draw_items_.push_back(item);
+    }
+
+    void submitDebugLine(const renderer::DebugLineItem& line) override {
+        if (!initialized_) {
+            return;
+        }
+        const detail::ResolvedDebugLineSemantics semantics = detail::ResolveDebugLineSemantics(line);
+        if (!semantics.draw || !detail::ValidateResolvedDebugLineSemantics(semantics)) {
+            return;
+        }
+        debug_lines_.push_back(semantics);
     }
 
     void renderFrame() override {
@@ -370,64 +415,98 @@ class BgfxBackend final : public Backend {
                     camera_.near_clip, camera_.far_clip, bgfx::getCaps()->homogeneousDepth);
         bgfx::setViewTransform(0, view_mirror, proj);
 
+        struct RenderableDraw {
+            const renderer::DrawItem* item = nullptr;
+            Mesh* mesh = nullptr;
+            Material* material = nullptr;
+        };
+        std::vector<RenderableDraw> renderables{};
+        renderables.reserve(draw_items_.size());
+        std::vector<detail::DirectionalShadowCaster> shadow_casters{};
+        shadow_casters.reserve(draw_items_.size());
         for (const auto& item : draw_items_) {
             if (item.layer != layer) {
                 continue;
             }
             auto mesh_it = meshes_.find(item.mesh);
-            if (mesh_it == meshes_.end()) continue;
+            if (mesh_it == meshes_.end()) {
+                continue;
+            }
             auto mat_it = materials_.find(item.material);
-            if (mat_it == materials_.end()) continue;
-            const auto& semantics = mat_it->second.semantics;
-            if (!semantics.draw) {
+            if (mat_it == materials_.end()) {
+                continue;
+            }
+            if (!mat_it->second.semantics.draw) {
+                continue;
+            }
+            renderables.push_back({&item, &mesh_it->second, &mat_it->second});
+            if (!mesh_it->second.shadow_positions.empty() &&
+                !mesh_it->second.shadow_indices.empty()) {
+                detail::DirectionalShadowCaster caster{};
+                caster.transform = item.transform;
+                caster.positions = &mesh_it->second.shadow_positions;
+                caster.indices = &mesh_it->second.shadow_indices;
+                caster.sample_center = mesh_it->second.shadow_center;
+                caster.casts_shadow = !mat_it->second.semantics.alpha_blend;
+                shadow_casters.push_back(caster);
+            }
+        }
+
+        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
+            detail::ResolveDirectionalShadowSemantics(light_);
+        const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
+            detail::ResolveEnvironmentLightingSemantics(environment_);
+        const detail::DirectionalShadowMap shadow_map = detail::BuildDirectionalShadowMap(
+            shadow_semantics,
+            light_.direction,
+            shadow_casters);
+
+        for (const RenderableDraw& renderable : renderables) {
+            const auto& item = *renderable.item;
+            const auto& semantics = renderable.material->semantics;
+
+            bgfx::setVertexBuffer(0, renderable.mesh->vbh);
+            bgfx::setIndexBuffer(renderable.mesh->ibh);
+            bgfx::setTransform(&item.transform[0][0]);
+
+            float shadow_factor = 1.0f;
+            if (!semantics.alpha_blend && shadow_map.ready) {
+                const glm::vec3 sample_world = detail::TransformPoint(item.transform, renderable.mesh->shadow_center);
+                const float visibility = detail::SampleDirectionalShadowVisibility(shadow_map, sample_world);
+                shadow_factor = detail::ComputeDirectionalShadowFactor(shadow_map, visibility);
+            }
+            const detail::ResolvedMaterialLighting lighting =
+                detail::ResolveMaterialLighting(semantics, light_, environment_semantics, shadow_factor);
+            if (!detail::ValidateResolvedMaterialLighting(lighting)) {
                 continue;
             }
 
-            bgfx::setVertexBuffer(0, mesh_it->second.vbh);
-            bgfx::setIndexBuffer(mesh_it->second.ibh);
-            bgfx::setTransform(&item.transform[0][0]);
-
-            const glm::vec3 shaded_rgb = glm::clamp(
-                glm::vec3(semantics.base_color.r, semantics.base_color.g, semantics.base_color.b) + semantics.emissive,
-                glm::vec3(0.0f),
-                glm::vec3(4.0f));
-            const float material_color[4] = {
-                shaded_rgb.r,
-                shaded_rgb.g,
-                shaded_rgb.b,
-                semantics.base_color.a};
-            bgfx::setUniform(u_color_, material_color);
-
-            const float roughness_light_factor = 1.0f - semantics.roughness;
-            const float direct_scale = std::clamp(
-                (0.25f + (0.75f * roughness_light_factor)) * (1.0f - (0.35f * semantics.metallic)),
-                0.05f,
-                1.5f);
-            const float ambient_scale = std::clamp(
-                1.0f + (0.30f * semantics.metallic) + (0.20f * semantics.roughness),
-                0.5f,
-                2.0f);
-
             const float light_dir[4] = {light_.direction.x, light_.direction.y, light_.direction.z, 0.0f};
+            const float material_color[4] = {
+                lighting.color.r,
+                lighting.color.g,
+                lighting.color.b,
+                lighting.color.a};
             const float light_color[4] = {
-                light_.color.r * direct_scale,
-                light_.color.g * direct_scale,
-                light_.color.b * direct_scale,
-                light_.color.a};
+                lighting.light_color.r,
+                lighting.light_color.g,
+                lighting.light_color.b,
+                lighting.light_color.a};
             const float ambient_color[4] = {
-                light_.ambient.r * ambient_scale,
-                light_.ambient.g * ambient_scale,
-                light_.ambient.b * ambient_scale,
-                light_.ambient.a};
+                lighting.ambient_color.r,
+                lighting.ambient_color.g,
+                lighting.ambient_color.b,
+                lighting.ambient_color.a};
             const float unlit[4] = {light_.unlit, 0.0f, 0.0f, 0.0f};
+            bgfx::setUniform(u_color_, material_color);
             bgfx::setUniform(u_light_dir_, light_dir);
             bgfx::setUniform(u_light_color_, light_color);
             bgfx::setUniform(u_ambient_color_, ambient_color);
             bgfx::setUniform(u_unlit_, unlit);
-            if (bgfx::isValid(mat_it->second.tex)) {
-                bgfx::setTexture(0, s_tex_, mat_it->second.tex);
-            } else if (bgfx::isValid(mesh_it->second.tex)) {
-                bgfx::setTexture(0, s_tex_, mesh_it->second.tex);
+            if (bgfx::isValid(renderable.material->tex)) {
+                bgfx::setTexture(0, s_tex_, renderable.material->tex);
+            } else if (bgfx::isValid(renderable.mesh->tex)) {
+                bgfx::setTexture(0, s_tex_, renderable.mesh->tex);
             } else if (bgfx::isValid(white_tex_)) {
                 bgfx::setTexture(0, s_tex_, white_tex_);
             }
@@ -442,6 +521,49 @@ class BgfxBackend final : public Backend {
             bgfx::submit(0, program_);
         }
 
+        for (const auto& line : debug_lines_) {
+            if (line.layer != layer) {
+                continue;
+            }
+
+            if (bgfx::getAvailTransientVertexBuffer(2, layout_) < 2) {
+                continue;
+            }
+            bgfx::TransientVertexBuffer tvb{};
+            bgfx::allocTransientVertexBuffer(&tvb, 2, layout_);
+
+            PosNormalVertex vertices[2]{
+                {line.start.x, line.start.y, line.start.z, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},
+                {line.end.x, line.end.y, line.end.z, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},
+            };
+            std::memcpy(tvb.data, vertices, sizeof(vertices));
+            bgfx::setVertexBuffer(0, &tvb, 0, 2);
+
+            const float line_color[4] = {line.color.r, line.color.g, line.color.b, line.color.a};
+            const float zeros[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            const float unlit[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+            bgfx::setUniform(u_color_, line_color);
+            bgfx::setUniform(u_light_dir_, zeros);
+            bgfx::setUniform(u_light_color_, zeros);
+            bgfx::setUniform(u_ambient_color_, zeros);
+            bgfx::setUniform(u_unlit_, unlit);
+            if (bgfx::isValid(white_tex_)) {
+                bgfx::setTexture(0, s_tex_, white_tex_);
+            }
+
+            float identity[16];
+            bx::mtxIdentity(identity);
+            bgfx::setTransform(identity);
+
+            uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS |
+                             BGFX_STATE_PT_LINES | BGFX_STATE_MSAA;
+            if (line.color.a < 0.999f) {
+                state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+            }
+            bgfx::setState(state);
+            bgfx::submit(0, program_);
+        }
+
     }
 
     void setCamera(const renderer::CameraData& camera) override {
@@ -450,6 +572,10 @@ class BgfxBackend final : public Backend {
 
     void setDirectionalLight(const renderer::DirectionalLightData& light) override {
         light_ = light;
+    }
+
+    void setEnvironmentLighting(const renderer::EnvironmentLightingData& environment) override {
+        environment_ = environment;
     }
 
     bool isValid() const override {
@@ -471,9 +597,11 @@ class BgfxBackend final : public Backend {
     std::unordered_map<renderer::MeshId, Mesh> meshes_;
     std::unordered_map<renderer::MaterialId, Material> materials_;
     std::vector<renderer::DrawItem> draw_items_;
+    std::vector<detail::ResolvedDebugLineSemantics> debug_lines_;
 
     renderer::CameraData camera_{};
     renderer::DirectionalLightData light_{};
+    renderer::EnvironmentLightingData environment_{};
     int width_ = 1280;
     int height_ = 720;
     renderer::MeshId next_mesh_id_ = 1;

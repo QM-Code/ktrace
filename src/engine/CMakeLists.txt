@@ -13,6 +13,8 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/common/world_archive.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/world_content.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_server_app.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/network/client_transport.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/network/server_transport.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/audio/backend_factory.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/audio/audio_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/audio/backends/backend_sdl3audio_stub.cpp
@@ -81,6 +83,11 @@ target_link_libraries(karma_engine_core PUBLIC
     nlohmann_json::nlohmann_json
     CURL::libcurl
 )
+if(TARGET enet_static)
+    target_link_libraries(karma_engine_core PUBLIC enet_static)
+elseif(TARGET enet)
+    target_link_libraries(karma_engine_core PUBLIC enet)
+endif()
 if(TARGET stb::stb)
     get_target_property(_KARMA_STB_INCLUDE_DIRS stb::stb INTERFACE_INCLUDE_DIRECTORIES)
     if(_KARMA_STB_INCLUDE_DIRS)
@@ -232,6 +239,24 @@ if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(client_transport_contract_test
+        ${PROJECT_SOURCE_DIR}/src/engine/network/tests/client_transport_contract_test.cpp
+    )
+    target_link_libraries(client_transport_contract_test PRIVATE karma_engine_core)
+    target_include_directories(client_transport_contract_test PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
+
+    add_executable(server_transport_contract_test
+        ${PROJECT_SOURCE_DIR}/src/engine/network/tests/server_transport_contract_test.cpp
+    )
+    target_link_libraries(server_transport_contract_test PRIVATE karma_engine_core)
+    target_include_directories(server_transport_contract_test PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
+
+    add_executable(directional_shadow_contract_test
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/tests/directional_shadow_contract_test.cpp
+    )
+    target_link_libraries(directional_shadow_contract_test PRIVATE karma_engine_core)
+    target_include_directories(directional_shadow_contract_test PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
+
     add_executable(physics_backend_parity_test
         ${PROJECT_SOURCE_DIR}/src/engine/physics/tests/physics_backend_parity_test.cpp
     )
@@ -267,4 +292,12 @@ if(BUILD_TESTING)
         set_tests_properties(audio_backend_smoke_miniaudio PROPERTIES
                              ENVIRONMENT "KARMA_MINIAUDIO_FORCE_NULL=1;SDL_AUDIODRIVER=dummy")
     endif()
+
+    add_test(NAME client_transport_contract_test
+             COMMAND client_transport_contract_test)
+    add_test(NAME server_transport_contract_test
+             COMMAND server_transport_contract_test)
+
+    add_test(NAME renderer_directional_shadow_contract
+             COMMAND directional_shadow_contract_test)
 endif()

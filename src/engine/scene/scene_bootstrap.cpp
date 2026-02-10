@@ -97,6 +97,12 @@ bool PopulateStartupWorld(renderer::GraphicsDevice& graphics,
             if (!it->second.emissive && entry.material.emissive) {
                 it->second.emissive = entry.material.emissive;
             }
+            if (!it->second.normal && entry.material.normal) {
+                it->second.normal = entry.material.normal;
+            }
+            if (!it->second.occlusion && entry.material.occlusion) {
+                it->second.occlusion = entry.material.occlusion;
+            }
         }
     }
 

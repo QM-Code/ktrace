@@ -1,5 +1,6 @@
 #include "client/net/client_connection.hpp"
 
+#include "karma/network/client_transport.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
 #include "karma/common/data_path_resolver.hpp"
@@ -8,7 +9,6 @@
 #include "net/protocol_codec.hpp"
 #include "net/protocol.hpp"
 
-#include <enet.h>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -19,7 +19,6 @@
 #include <exception>
 #include <fstream>
 #include <iomanip>
-#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -30,52 +29,6 @@
 namespace bz3::client::net {
 
 namespace {
-
-class EnetGlobal {
- public:
-    EnetGlobal() {
-        std::lock_guard<std::mutex> lock(mutex());
-        if (refCount()++ == 0) {
-            if (enet_initialize() != 0) {
-                spdlog::error("ENet client: enet_initialize() failed");
-                initialized_ = false;
-                return;
-            }
-        }
-        initialized_ = true;
-    }
-
-    ~EnetGlobal() {
-        std::lock_guard<std::mutex> lock(mutex());
-        auto& count = refCount();
-        if (count == 0) {
-            return;
-        }
-        if (--count == 0) {
-            enet_deinitialize();
-        }
-    }
-
-    bool initialized() const { return initialized_; }
-
- private:
-    static std::mutex& mutex() {
-        static std::mutex m;
-        return m;
-    }
-
-    static uint32_t& refCount() {
-        static uint32_t count = 0;
-        return count;
-    }
-
-    bool initialized_ = false;
-};
-
-EnetGlobal& GlobalEnet() {
-    static EnetGlobal instance;
-    return instance;
-}
 
 constexpr const char* kRuntimeLayerLabel = "world package config";
 constexpr const char* kPackageMountId = "world.package";
@@ -1490,28 +1443,26 @@ bool ClientConnection::start() {
         return false;
     }
 
-    if (!GlobalEnet().initialized()) {
-        spdlog::error("ClientConnection: ENet global init failed");
-        return false;
+    karma::network::ClientTransportConfig transport_config{};
+    const std::string backend_name =
+        karma::config::ReadStringConfig({"network.ClientTransportBackend"}, std::string("auto"));
+    transport_config.backend_name = backend_name;
+    const auto parsed_backend = karma::network::ParseClientTransportBackend(backend_name);
+    if (parsed_backend.has_value()) {
+        transport_config.backend = *parsed_backend;
+    } else {
+        KARMA_TRACE("net.client",
+                    "ClientConnection: using custom client transport backend='{}'",
+                    backend_name);
     }
 
-    host_handle_ = enet_host_create(nullptr, 1, 2, 0, 0);
-    if (!host_handle_) {
-        spdlog::error("ClientConnection: failed to create ENet client host");
-        return false;
-    }
-
-    ENetAddress address{};
-    if (enet_address_set_host(&address, host_.c_str()) != 0) {
-        spdlog::error("ClientConnection: failed to resolve host '{}'", host_);
-        closeTransport();
-        return false;
-    }
-    address.port = port_;
-
-    peer_ = enet_host_connect(host_handle_, &address, 2, 0);
-    if (!peer_) {
-        spdlog::error("ClientConnection: failed to initiate connection to {}:{}", host_, port_);
+    transport_ = karma::network::CreateClientTransport(transport_config);
+    if (!transport_ || !transport_->isReady()) {
+        const std::string configured_backend = transport_config.backend_name.empty()
+            ? std::string(karma::network::ClientTransportBackendName(transport_config.backend))
+            : transport_config.backend_name;
+        spdlog::error("ClientConnection: failed to create client transport backend={}",
+                      configured_backend);
         closeTransport();
         return false;
     }
@@ -1521,17 +1472,33 @@ bool ClientConnection::start() {
                 host_,
                 port_);
 
-    const uint16_t timeout_ms =
-        karma::config::ReadUInt16Config({"network.ConnectTimeoutMs"}, static_cast<uint16_t>(2000));
+    const uint32_t timeout_ms = static_cast<uint32_t>(
+        karma::config::ReadUInt16Config({"network.ConnectTimeoutMs"}, static_cast<uint16_t>(2000)));
+    const uint32_t reconnect_max_attempts = static_cast<uint32_t>(karma::config::ReadUInt16Config(
+        {"network.ClientReconnectMaxAttempts", "network.ReconnectMaxAttempts"},
+        static_cast<uint16_t>(0)));
+    const uint32_t reconnect_backoff_initial_ms = static_cast<uint32_t>(
+        karma::config::ReadUInt16Config({"network.ClientReconnectBackoffInitialMs",
+                                         "network.ReconnectBackoffInitialMs"},
+                                        static_cast<uint16_t>(250)));
+    const uint32_t reconnect_backoff_max_ms = static_cast<uint32_t>(
+        karma::config::ReadUInt16Config({"network.ClientReconnectBackoffMaxMs",
+                                         "network.ReconnectBackoffMaxMs"},
+                                        static_cast<uint16_t>(2000)));
+    const uint32_t reconnect_timeout_ms = static_cast<uint32_t>(
+        karma::config::ReadUInt16Config({"network.ClientReconnectTimeoutMs",
+                                         "network.ReconnectTimeoutMs"},
+                                        static_cast<uint16_t>(1000)));
 
-    ENetEvent event{};
-    if (enet_host_service(host_handle_, &event, timeout_ms) <= 0 ||
-        event.type != ENET_EVENT_TYPE_CONNECT) {
+    if (!transport_->connect(karma::network::ClientTransportConnectOptions{
+            .host = host_,
+            .port = port_,
+            .timeout_ms = timeout_ms,
+            .reconnect_max_attempts = reconnect_max_attempts,
+            .reconnect_backoff_initial_ms = reconnect_backoff_initial_ms,
+            .reconnect_backoff_max_ms = reconnect_backoff_max_ms,
+            .reconnect_timeout_ms = reconnect_timeout_ms})) {
         spdlog::error("ClientConnection: connection timed out to {}:{}", host_, port_);
-        if (peer_) {
-            enet_peer_reset(peer_);
-            peer_ = nullptr;
-        }
         closeTransport();
         return false;
     }
@@ -1559,17 +1526,24 @@ bool ClientConnection::start() {
 }
 
 void ClientConnection::poll() {
-    if (!connected_ || !host_handle_) {
+    if (!connected_ || !transport_) {
         return;
     }
 
-    ENetEvent event{};
-    while (enet_host_service(host_handle_, &event, 0) > 0) {
-        switch (event.type) {
-            case ENET_EVENT_TYPE_RECEIVE: {
-                if (event.packet && event.packet->data && event.packet->dataLength > 0) {
+    std::vector<karma::network::ClientTransportEvent> transport_events{};
+    transport_->poll(karma::network::ClientTransportPollOptions{}, &transport_events);
+    auto request_disconnect = [this]() {
+        if (transport_) {
+            transport_->disconnect(0);
+        }
+    };
+    for (const auto& transport_event : transport_events) {
+        switch (transport_event.type) {
+            case karma::network::ClientTransportEventType::Received: {
+                if (!transport_event.payload.empty()) {
                     const auto message =
-                        bz3::net::DecodeServerMessage(event.packet->data, event.packet->dataLength);
+                        bz3::net::DecodeServerMessage(transport_event.payload.data(),
+                                                      transport_event.payload.size());
                     if (message.has_value()) {
                         switch (message->type) {
                             case bz3::net::ServerMessageType::JoinResponse:
@@ -1589,7 +1563,7 @@ void ClientConnection::poll() {
                                                 port_,
                                                 reason);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                 }
                                 break;
                             case bz3::net::ServerMessageType::Init: {
@@ -1667,7 +1641,7 @@ void ClientConnection::poll() {
                                     spdlog::error("ClientConnection: failed to apply world package for '{}'",
                                                   message->world_name);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                 }
                                 break;
                             }
@@ -1676,13 +1650,13 @@ void ClientConnection::poll() {
                                     spdlog::error("ClientConnection: unexpected world transfer begin transfer_id='{}' (no pending world init)",
                                                   message->transfer_id);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (message->transfer_id.empty()) {
                                     spdlog::error("ClientConnection: world transfer begin missing transfer_id");
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (message->transfer_world_id != pending_world_package_.world_id ||
@@ -1694,7 +1668,7 @@ void ClientConnection::poll() {
                                                   pending_world_package_.world_id,
                                                   pending_world_package_.world_revision);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (message->transfer_is_delta &&
@@ -1705,7 +1679,7 @@ void ClientConnection::poll() {
                                                   message->transfer_delta_base_world_id,
                                                   message->transfer_delta_base_world_revision);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (message->transfer_total_bytes > 0 && message->transfer_chunk_size == 0) {
@@ -1714,7 +1688,7 @@ void ClientConnection::poll() {
                                                   message->transfer_total_bytes,
                                                   message->transfer_chunk_size);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
 
@@ -1803,7 +1777,7 @@ void ClientConnection::poll() {
                                     spdlog::error("ClientConnection: unexpected world transfer chunk transfer_id='{}' (no active transfer)",
                                                   message->transfer_id);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (message->transfer_id != active_world_transfer_.transfer_id) {
@@ -1811,7 +1785,7 @@ void ClientConnection::poll() {
                                                   active_world_transfer_.transfer_id,
                                                   message->transfer_id);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (!IsChunkInTransferBounds(active_world_transfer_.total_bytes_expected,
@@ -1825,7 +1799,7 @@ void ClientConnection::poll() {
                                                   active_world_transfer_.total_bytes_expected,
                                                   active_world_transfer_.chunk_size);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 const uint64_t chunk_offset_u64 =
@@ -1842,7 +1816,7 @@ void ClientConnection::poll() {
                                                       active_world_transfer_.payload.size(),
                                                       message->transfer_chunk_data.size());
                                         should_exit_ = true;
-                                        enet_peer_disconnect(peer_, 0);
+                                        request_disconnect();
                                         break;
                                     }
                                     KARMA_TRACE("net.client",
@@ -1859,7 +1833,7 @@ void ClientConnection::poll() {
                                                   active_world_transfer_.next_chunk_index,
                                                   message->transfer_chunk_index);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (chunk_offset != active_world_transfer_.payload.size()) {
@@ -1869,7 +1843,7 @@ void ClientConnection::poll() {
                                                   chunk_offset,
                                                   active_world_transfer_.payload.size());
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 active_world_transfer_.payload.insert(active_world_transfer_.payload.end(),
@@ -1885,7 +1859,7 @@ void ClientConnection::poll() {
                                                   pending_world_package_.active ? 1 : 0,
                                                   active_world_transfer_.active ? 1 : 0);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (message->transfer_id != active_world_transfer_.transfer_id) {
@@ -1893,7 +1867,7 @@ void ClientConnection::poll() {
                                                   active_world_transfer_.transfer_id,
                                                   message->transfer_id);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (message->transfer_chunk_count != active_world_transfer_.next_chunk_index) {
@@ -1902,7 +1876,7 @@ void ClientConnection::poll() {
                                                   active_world_transfer_.next_chunk_index,
                                                   message->transfer_chunk_count);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 if (message->transfer_total_bytes != active_world_transfer_.payload.size()) {
@@ -1911,7 +1885,7 @@ void ClientConnection::poll() {
                                                   message->transfer_total_bytes,
                                                   active_world_transfer_.payload.size());
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 KARMA_TRACE("net.client",
@@ -1940,7 +1914,7 @@ void ClientConnection::poll() {
                                     spdlog::error("ClientConnection: failed to apply chunked world package for '{}'",
                                                   pending_world_package_.world_name);
                                     should_exit_ = true;
-                                    enet_peer_disconnect(peer_, 0);
+                                    request_disconnect();
                                     break;
                                 }
                                 pending_world_package_ = {};
@@ -2010,34 +1984,50 @@ void ClientConnection::poll() {
                                 KARMA_TRACE("net.client",
                                             "ClientConnection: server message payload={} bytes={}",
                                             message->other_payload,
-                                            event.packet->dataLength);
+                                            transport_event.payload.size());
                                 break;
                         }
                     } else {
                         KARMA_TRACE("net.client",
                                     "ClientConnection: invalid server payload bytes={}",
-                                    event.packet ? event.packet->dataLength : 0);
+                                    transport_event.payload.size());
                     }
                 } else {
                     KARMA_TRACE("net.client",
                                 "ClientConnection: invalid server payload bytes={}",
-                                event.packet ? event.packet->dataLength : 0);
-                }
-                if (event.packet) {
-                    enet_packet_destroy(event.packet);
+                                transport_event.payload.size());
                 }
                 break;
             }
-            case ENET_EVENT_TYPE_DISCONNECT:
-            case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
+            case karma::network::ClientTransportEventType::Disconnected:
                 KARMA_TRACE("net.client",
                             "ClientConnection: disconnected from {}:{}",
                             host_,
                             port_);
                 connected_ = false;
-                peer_ = nullptr;
                 pending_world_package_ = {};
                 active_world_transfer_ = {};
+                break;
+            case karma::network::ClientTransportEventType::Connected:
+                KARMA_TRACE("net.client",
+                            "ClientConnection: transport reconnected to {}:{}; replaying join bootstrap",
+                            host_,
+                            port_);
+                connected_ = true;
+                join_sent_ = false;
+                leave_sent_ = false;
+                assigned_client_id_ = 0;
+                init_received_ = false;
+                join_bootstrap_complete_logged_ = false;
+                init_world_name_.clear();
+                init_server_name_.clear();
+                pending_world_package_ = {};
+                active_world_transfer_ = {};
+                if (!sendJoinRequest()) {
+                    spdlog::error("ClientConnection: failed to resend join request after reconnect");
+                    should_exit_ = true;
+                    request_disconnect();
+                }
                 break;
             default:
                 break;
@@ -2055,26 +2045,12 @@ void ClientConnection::shutdown() {
         static_cast<void>(sendLeave());
     }
 
-    if (peer_) {
-        enet_peer_disconnect(peer_, 0);
-
-        ENetEvent event{};
-        bool disconnected = false;
-        while (enet_host_service(host_handle_, &event, 50) > 0) {
-            if (event.type == ENET_EVENT_TYPE_RECEIVE && event.packet) {
-                enet_packet_destroy(event.packet);
-            }
-            if (event.type == ENET_EVENT_TYPE_DISCONNECT ||
-                event.type == ENET_EVENT_TYPE_DISCONNECT_TIMEOUT) {
-                disconnected = true;
-                break;
-            }
-        }
-
+    if (transport_ && transport_->isConnected()) {
+        transport_->disconnect(0);
+        const bool disconnected = transport_->waitForDisconnect(50);
         if (!disconnected) {
-            enet_peer_reset(peer_);
+            transport_->resetConnection();
         }
-        peer_ = nullptr;
     }
 
     connected_ = false;
@@ -2092,7 +2068,7 @@ bool ClientConnection::shouldExit() const {
 }
 
 bool ClientConnection::sendRequestPlayerSpawn() {
-    if (!connected_ || !peer_ || !host_handle_ || assigned_client_id_ == 0) {
+    if (!connected_ || !transport_ || !transport_->isConnected() || assigned_client_id_ == 0) {
         return false;
     }
 
@@ -2101,15 +2077,9 @@ bool ClientConnection::sendRequestPlayerSpawn() {
         return false;
     }
 
-    ENetPacket* packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-    if (!packet) {
+    if (!sendPayloadReliable(payload)) {
         return false;
     }
-    if (enet_peer_send(peer_, 0, packet) != 0) {
-        enet_packet_destroy(packet);
-        return false;
-    }
-    enet_host_flush(host_handle_);
     KARMA_TRACE("net.client",
                 "ClientConnection: sent request_player_spawn client_id={}",
                 assigned_client_id_);
@@ -2117,7 +2087,7 @@ bool ClientConnection::sendRequestPlayerSpawn() {
 }
 
 bool ClientConnection::sendCreateShot() {
-    if (!connected_ || !peer_ || !host_handle_ || assigned_client_id_ == 0) {
+    if (!connected_ || !transport_ || !transport_->isConnected() || assigned_client_id_ == 0) {
         return false;
     }
 
@@ -2131,15 +2101,9 @@ bool ClientConnection::sendCreateShot() {
         return false;
     }
 
-    ENetPacket* packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-    if (!packet) {
+    if (!sendPayloadReliable(payload)) {
         return false;
     }
-    if (enet_peer_send(peer_, 0, packet) != 0) {
-        enet_packet_destroy(packet);
-        return false;
-    }
-    enet_host_flush(host_handle_);
     KARMA_TRACE("net.client",
                 "ClientConnection: sent create_shot client_id={} local_shot_id={}",
                 assigned_client_id_,
@@ -2148,7 +2112,7 @@ bool ClientConnection::sendCreateShot() {
 }
 
 bool ClientConnection::sendJoinRequest() {
-    if (!connected_ || !peer_ || !host_handle_ || join_sent_) {
+    if (!connected_ || !transport_ || !transport_->isConnected() || join_sent_) {
         return connected_ && join_sent_;
     }
 
@@ -2185,15 +2149,9 @@ bool ClientConnection::sendJoinRequest() {
         return false;
     }
 
-    ENetPacket* packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-    if (!packet) {
+    if (!sendPayloadReliable(payload)) {
         return false;
     }
-    if (enet_peer_send(peer_, 0, packet) != 0) {
-        enet_packet_destroy(packet);
-        return false;
-    }
-    enet_host_flush(host_handle_);
     join_sent_ = true;
 
     KARMA_TRACE("net.client",
@@ -2213,7 +2171,7 @@ bool ClientConnection::sendJoinRequest() {
 }
 
 bool ClientConnection::sendLeave() {
-    if (!connected_ || !peer_ || !host_handle_ || leave_sent_) {
+    if (!connected_ || !transport_ || !transport_->isConnected() || leave_sent_) {
         return connected_ && leave_sent_;
     }
 
@@ -2222,25 +2180,26 @@ bool ClientConnection::sendLeave() {
         return false;
     }
 
-    ENetPacket* packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-    if (!packet) {
+    if (!sendPayloadReliable(payload)) {
         return false;
     }
-    if (enet_peer_send(peer_, 0, packet) != 0) {
-        enet_packet_destroy(packet);
-        return false;
-    }
-    enet_host_flush(host_handle_);
     leave_sent_ = true;
     KARMA_TRACE("net.client",
                 "ClientConnection: sent leave");
     return true;
 }
 
+bool ClientConnection::sendPayloadReliable(const std::vector<std::byte>& payload) {
+    if (payload.empty() || !transport_ || !transport_->isConnected()) {
+        return false;
+    }
+    return transport_->sendReliable(payload);
+}
+
 void ClientConnection::closeTransport() {
-    if (host_handle_) {
-        enet_host_destroy(host_handle_);
-        host_handle_ = nullptr;
+    if (transport_) {
+        transport_->close();
+        transport_.reset();
     }
 }
 

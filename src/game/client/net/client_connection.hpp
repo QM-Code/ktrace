@@ -5,11 +5,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
-struct _ENetHost;
-struct _ENetPeer;
+namespace karma::network {
+class ClientTransport;
+}
 
 namespace bz3::client::net {
 
@@ -45,10 +47,10 @@ class ClientConnection {
  private:
     bool sendJoinRequest();
     bool sendLeave();
+    bool sendPayloadReliable(const std::vector<std::byte>& payload);
     void closeTransport();
 
-    _ENetHost* host_handle_ = nullptr;
-    _ENetPeer* peer_ = nullptr;
+    std::unique_ptr<karma::network::ClientTransport> transport_{};
 
     std::string host_;
     uint16_t port_ = 0;

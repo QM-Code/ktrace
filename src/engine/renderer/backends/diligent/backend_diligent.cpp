@@ -1,6 +1,10 @@
 #include "karma/renderer/backend.hpp"
 
 #include "../backend_factory_internal.hpp"
+#include "../debug_line_internal.hpp"
+#include "../directional_shadow_internal.hpp"
+#include "../environment_lighting_internal.hpp"
+#include "../material_lighting_internal.hpp"
 #include "../material_semantics_internal.hpp"
 
 #include "karma/common/logging.hpp"
@@ -42,6 +46,9 @@ struct Mesh {
     Diligent::RefCntAutoPtr<Diligent::IBuffer> ib;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> srv;
     uint32_t num_indices = 0;
+    std::vector<glm::vec3> shadow_positions{};
+    std::vector<uint32_t> shadow_indices{};
+    glm::vec3 shadow_center{0.0f, 0.0f, 0.0f};
 };
 
 struct Material {
@@ -56,6 +63,17 @@ struct Constants {
     glm::vec4 u_lightColor;
     glm::vec4 u_ambientColor;
     glm::vec4 u_unlit;
+};
+
+struct LineVertex {
+    float x;
+    float y;
+    float z;
+    float nx;
+    float ny;
+    float nz;
+    float u;
+    float v;
 };
 
 void DILIGENT_CALL_TYPE DiligentMessageCallback(Diligent::DEBUG_MESSAGE_SEVERITY severity,
@@ -159,8 +177,9 @@ class DiligentBackend final : public Backend {
         }
 
         createPipelineVariants();
+        createLinePipeline();
         white_srv_ = createWhiteTexture();
-        if (!hasReadyPipelines() || !swapchain_) {
+        if (!hasReadyPipelines() || !hasReadyLinePipeline() || !swapchain_) {
             return;
         }
         initialized_ = true;
@@ -174,6 +193,7 @@ class DiligentBackend final : public Backend {
             return;
         }
         draw_items_.clear();
+        debug_lines_.clear();
         frame_cleared_ = false;
         if (width == width_ && height == height_) {
             return;
@@ -239,6 +259,17 @@ class DiligentBackend final : public Backend {
         device_->CreateBuffer(ib_desc, &ib_data, &out.ib);
 
         out.num_indices = static_cast<uint32_t>(mesh.indices.size());
+        out.shadow_positions = mesh.positions;
+        out.shadow_indices = mesh.indices;
+        if (!out.shadow_positions.empty()) {
+            glm::vec3 min_pos = out.shadow_positions.front();
+            glm::vec3 max_pos = out.shadow_positions.front();
+            for (const glm::vec3& p : out.shadow_positions) {
+                min_pos = glm::min(min_pos, p);
+                max_pos = glm::max(max_pos, p);
+            }
+            out.shadow_center = 0.5f * (min_pos + max_pos);
+        }
         if (mesh.albedo && !mesh.albedo->pixels.empty()) {
             out.srv = createTextureView(*mesh.albedo);
             KARMA_TRACE("render.diligent", "createMesh texture={} {}x{}",
@@ -276,13 +307,15 @@ class DiligentBackend final : public Backend {
                         out.srv ? 1 : 0, material.albedo->width, material.albedo->height);
         }
         KARMA_TRACE("render.diligent",
-                    "createMaterial semantics metallic={:.3f} roughness={:.3f} emissive=({:.3f},{:.3f},{:.3f}) alphaMode={} alpha={} cutoff={:.3f} draw={} blend={} doubleSided={} mrTex={} emissiveTex={}",
-                    out.semantics.metallic, out.semantics.roughness,
+                    "createMaterial semantics metallic={:.3f} roughness={:.3f} normalVar={:.3f} occlusion={:.3f} emissive=({:.3f},{:.3f},{:.3f}) alphaMode={} alpha={} cutoff={:.3f} draw={} blend={} doubleSided={} mrTex={} emissiveTex={} normalTex={} occlusionTex={}",
+                    out.semantics.metallic, out.semantics.roughness, out.semantics.normal_variation, out.semantics.occlusion,
                     out.semantics.emissive.r, out.semantics.emissive.g, out.semantics.emissive.b,
                     static_cast<int>(out.semantics.alpha_mode), out.semantics.base_color.a, out.semantics.alpha_cutoff,
                     out.semantics.draw ? 1 : 0, out.semantics.alpha_blend ? 1 : 0, out.semantics.double_sided ? 1 : 0,
                     out.semantics.used_metallic_roughness_texture ? 1 : 0,
-                    out.semantics.used_emissive_texture ? 1 : 0);
+                    out.semantics.used_emissive_texture ? 1 : 0,
+                    out.semantics.used_normal_texture ? 1 : 0,
+                    out.semantics.used_occlusion_texture ? 1 : 0);
         renderer::MaterialId id = next_material_id_++;
         materials_[id] = out;
         return id;
@@ -299,12 +332,23 @@ class DiligentBackend final : public Backend {
         draw_items_.push_back(item);
     }
 
+    void submitDebugLine(const renderer::DebugLineItem& line) override {
+        if (!initialized_) {
+            return;
+        }
+        const detail::ResolvedDebugLineSemantics semantics = detail::ResolveDebugLineSemantics(line);
+        if (!semantics.draw || !detail::ValidateResolvedDebugLineSemantics(semantics)) {
+            return;
+        }
+        debug_lines_.push_back(semantics);
+    }
+
     void renderFrame() override {
         renderLayer(0);
     }
 
     void renderLayer(renderer::LayerId layer) override {
-        if (!initialized_ || !context_ || !swapchain_ || !hasReadyPipelines()) {
+        if (!initialized_ || !context_ || !swapchain_ || !hasReadyPipelines() || !hasReadyLinePipeline()) {
             return;
         }
 
@@ -312,7 +356,10 @@ class DiligentBackend final : public Backend {
         auto* dsv = swapchain_->GetDepthBufferDSV();
         context_->SetRenderTargets(1, &rtv, dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         if (!frame_cleared_) {
-            const float clear[4] = {0.18f, 0.18f, 0.18f, 1.0f};
+            const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
+                detail::ResolveEnvironmentLightingSemantics(environment_);
+            const glm::vec4 clear_color = detail::ComputeEnvironmentClearColor(environment_semantics);
+            const float clear[4] = {clear_color.r, clear_color.g, clear_color.b, clear_color.a};
             context_->ClearRenderTarget(rtv, clear, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
             if (dsv) {
                 context_->ClearDepthStencil(dsv, Diligent::CLEAR_DEPTH_FLAG, 1.0f, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -320,6 +367,15 @@ class DiligentBackend final : public Backend {
             frame_cleared_ = true;
         }
 
+        struct RenderableDraw {
+            const renderer::DrawItem* item = nullptr;
+            Mesh* mesh = nullptr;
+            Material* material = nullptr;
+        };
+        std::vector<RenderableDraw> renderables{};
+        renderables.reserve(draw_items_.size());
+        std::vector<detail::DirectionalShadowCaster> shadow_casters{};
+        shadow_casters.reserve(draw_items_.size());
         for (const auto& item : draw_items_) {
             if (item.layer != layer) {
                 continue;
@@ -329,13 +385,34 @@ class DiligentBackend final : public Backend {
             if (mesh_it == meshes_.end() || mat_it == materials_.end()) {
                 continue;
             }
-
-            const auto& mesh = mesh_it->second;
-            const auto& mat = mat_it->second;
-            const auto& semantics = mat.semantics;
-            if (!semantics.draw) {
+            if (!mat_it->second.semantics.draw) {
                 continue;
             }
+            renderables.push_back({&item, &mesh_it->second, &mat_it->second});
+            if (!mesh_it->second.shadow_positions.empty() &&
+                !mesh_it->second.shadow_indices.empty()) {
+                detail::DirectionalShadowCaster caster{};
+                caster.transform = item.transform;
+                caster.positions = &mesh_it->second.shadow_positions;
+                caster.indices = &mesh_it->second.shadow_indices;
+                caster.sample_center = mesh_it->second.shadow_center;
+                caster.casts_shadow = !mat_it->second.semantics.alpha_blend;
+                shadow_casters.push_back(caster);
+            }
+        }
+
+        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
+            detail::ResolveDirectionalShadowSemantics(light_);
+        const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
+            detail::ResolveEnvironmentLightingSemantics(environment_);
+        const detail::DirectionalShadowMap shadow_map =
+            detail::BuildDirectionalShadowMap(shadow_semantics, light_.direction, shadow_casters);
+
+        for (const RenderableDraw& renderable : renderables) {
+            const auto& item = *renderable.item;
+            const auto& mesh = *renderable.mesh;
+            const auto& mat = *renderable.material;
+            const auto& semantics = mat.semantics;
 
             auto* pipeline = pipelineForMaterial(semantics);
             if (!pipeline || !pipeline->pso || !pipeline->srb) {
@@ -349,29 +426,21 @@ class DiligentBackend final : public Backend {
             Constants constants{};
             constants.u_modelViewProj = proj * view * item.transform;
 
-            const glm::vec3 shaded_rgb = glm::clamp(
-                glm::vec3(semantics.base_color.r, semantics.base_color.g, semantics.base_color.b) + semantics.emissive,
-                glm::vec3(0.0f),
-                glm::vec3(4.0f));
-            constants.u_color = glm::vec4(shaded_rgb, semantics.base_color.a);
+            float shadow_factor = 1.0f;
+            if (!semantics.alpha_blend && shadow_map.ready) {
+                const glm::vec3 sample_world = detail::TransformPoint(item.transform, mesh.shadow_center);
+                const float visibility = detail::SampleDirectionalShadowVisibility(shadow_map, sample_world);
+                shadow_factor = detail::ComputeDirectionalShadowFactor(shadow_map, visibility);
+            }
+            const detail::ResolvedMaterialLighting lighting =
+                detail::ResolveMaterialLighting(semantics, light_, environment_semantics, shadow_factor);
+            if (!detail::ValidateResolvedMaterialLighting(lighting)) {
+                continue;
+            }
+            constants.u_color = lighting.color;
             constants.u_lightDir = glm::vec4(light_.direction, 0.0f);
-            const float roughness_light_factor = 1.0f - semantics.roughness;
-            const float direct_scale = std::clamp(
-                (0.25f + (0.75f * roughness_light_factor)) * (1.0f - (0.35f * semantics.metallic)),
-                0.05f,
-                1.5f);
-            const float ambient_scale = std::clamp(
-                1.0f + (0.30f * semantics.metallic) + (0.20f * semantics.roughness),
-                0.5f,
-                2.0f);
-            constants.u_lightColor = glm::vec4(light_.color.r * direct_scale,
-                                               light_.color.g * direct_scale,
-                                               light_.color.b * direct_scale,
-                                               light_.color.a);
-            constants.u_ambientColor = glm::vec4(light_.ambient.r * ambient_scale,
-                                                 light_.ambient.g * ambient_scale,
-                                                 light_.ambient.b * ambient_scale,
-                                                 light_.ambient.a);
+            constants.u_lightColor = lighting.light_color;
+            constants.u_ambientColor = lighting.ambient_color;
             constants.u_unlit = glm::vec4(light_.unlit, 0.0f, 0.0f, 0.0f);
 
             Diligent::MapHelper<Constants> cb_data(context_, constant_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
@@ -400,6 +469,52 @@ class DiligentBackend final : public Backend {
             context_->DrawIndexed(draw);
         }
 
+        if (line_pipeline_.pso && line_pipeline_.srb && line_vertex_buffer_) {
+            float aspect = (height_ > 0) ? float(width_) / float(height_) : 1.0f;
+            glm::mat4 view = glm::lookAt(camera_.position, camera_.target, glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::mat4 proj = glm::perspective(glm::radians(camera_.fov_y_degrees), aspect, camera_.near_clip, camera_.far_clip);
+
+            for (const auto& line : debug_lines_) {
+                if (line.layer != layer) {
+                    continue;
+                }
+
+                context_->SetPipelineState(line_pipeline_.pso);
+                {
+                    Diligent::MapHelper<LineVertex> line_data(context_, line_vertex_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
+                    line_data[0] = LineVertex{line.start.x, line.start.y, line.start.z, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+                    line_data[1] = LineVertex{line.end.x, line.end.y, line.end.z, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+                }
+
+                Constants line_constants{};
+                line_constants.u_modelViewProj = proj * view;
+                line_constants.u_color = line.color;
+                line_constants.u_lightDir = glm::vec4(0.0f);
+                line_constants.u_lightColor = glm::vec4(0.0f);
+                line_constants.u_ambientColor = glm::vec4(0.0f);
+                line_constants.u_unlit = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+                Diligent::MapHelper<Constants> cb_data(context_, constant_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
+                *cb_data = line_constants;
+
+                if (auto* tex_var = line_pipeline_.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_tex")) {
+                    tex_var->Set(white_srv_, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+                }
+                context_->CommitShaderResources(line_pipeline_.srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+                const uint64_t offsets[] = {0};
+                Diligent::IBuffer* vbs[] = {line_vertex_buffer_};
+                context_->SetVertexBuffers(0, 1, vbs, offsets,
+                                           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                           Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
+                context_->SetIndexBuffer(nullptr, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+                Diligent::DrawAttribs draw{};
+                draw.NumVertices = 2;
+                draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
+                context_->Draw(draw);
+            }
+        }
+
     }
 
     void setCamera(const renderer::CameraData& camera) override {
@@ -410,12 +525,21 @@ class DiligentBackend final : public Backend {
         light_ = light;
     }
 
+    void setEnvironmentLighting(const renderer::EnvironmentLightingData& environment) override {
+        environment_ = environment;
+    }
+
     bool isValid() const override {
         return initialized_ && device_ && context_ && swapchain_;
     }
 
  private:
     struct PipelineVariant {
+        Diligent::RefCntAutoPtr<Diligent::IPipelineState> pso;
+        Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb;
+    };
+
+    struct LinePipeline {
         Diligent::RefCntAutoPtr<Diligent::IPipelineState> pso;
         Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb;
     };
@@ -437,6 +561,10 @@ class DiligentBackend final : public Backend {
             }
         }
         return true;
+    }
+
+    bool hasReadyLinePipeline() const {
+        return line_pipeline_.pso && line_pipeline_.srb && line_vertex_buffer_;
     }
 
     void createPipelineVariants() {
@@ -534,6 +662,152 @@ float4 main(PSInput input) : SV_TARGET {
                               pipeline_variants_[PipelineVariantIndex(true, false)]);
         createPipelineVariant("simple_pso_blend_double_sided", vs, ps, true, true,
                               pipeline_variants_[PipelineVariantIndex(true, true)]);
+    }
+
+    void createLinePipeline() {
+        if (!device_ || !swapchain_ || !constant_buffer_) {
+            return;
+        }
+
+        Diligent::ShaderCreateInfo shader_ci{};
+        shader_ci.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
+
+        const char* vs_source = R"(
+struct VSInput {
+    float3 Pos : ATTRIB0;
+    float3 Nor : ATTRIB1;
+    float2 UV  : ATTRIB2;
+};
+struct PSInput {
+    float4 Pos : SV_POSITION;
+    float3 Nor : NORMAL;
+    float2 UV  : TEXCOORD0;
+};
+cbuffer Constants {
+    float4x4 u_modelViewProj;
+    float4 u_color;
+    float4 u_lightDir;
+    float4 u_lightColor;
+    float4 u_ambientColor;
+    float4 u_unlit;
+};
+PSInput main(VSInput input) {
+    PSInput outp;
+    outp.Pos = mul(u_modelViewProj, float4(input.Pos, 1.0));
+    outp.Nor = input.Nor;
+    outp.UV = input.UV;
+    return outp;
+}
+)";
+
+        const char* ps_source = R"(
+struct PSInput {
+    float4 Pos : SV_POSITION;
+    float3 Nor : NORMAL;
+    float2 UV  : TEXCOORD0;
+};
+cbuffer Constants {
+    float4x4 u_modelViewProj;
+    float4 u_color;
+    float4 u_lightDir;
+    float4 u_lightColor;
+    float4 u_ambientColor;
+    float4 u_unlit;
+};
+Texture2D s_tex;
+SamplerState s_tex_sampler;
+float4 main(PSInput input) : SV_TARGET {
+    float4 texColor = s_tex.Sample(s_tex_sampler, input.UV);
+    return u_color * texColor;
+}
+)";
+
+        Diligent::RefCntAutoPtr<Diligent::IShader> vs;
+        shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_VERTEX;
+        shader_ci.Desc.Name = "line_vs";
+        shader_ci.EntryPoint = "main";
+        shader_ci.Source = vs_source;
+        device_->CreateShader(shader_ci, &vs);
+
+        Diligent::RefCntAutoPtr<Diligent::IShader> ps;
+        shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_PIXEL;
+        shader_ci.Desc.Name = "line_ps";
+        shader_ci.EntryPoint = "main";
+        shader_ci.Source = ps_source;
+        device_->CreateShader(shader_ci, &ps);
+        if (!vs || !ps) {
+            return;
+        }
+
+        Diligent::GraphicsPipelineStateCreateInfo pso_ci{};
+        pso_ci.PSODesc.Name = "line_pso";
+        pso_ci.PSODesc.PipelineType = Diligent::PIPELINE_TYPE_GRAPHICS;
+        pso_ci.GraphicsPipeline.NumRenderTargets = 1;
+        pso_ci.GraphicsPipeline.RTVFormats[0] = swapchain_->GetDesc().ColorBufferFormat;
+        pso_ci.GraphicsPipeline.DSVFormat = swapchain_->GetDesc().DepthBufferFormat;
+        pso_ci.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_LINE_LIST;
+        pso_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = true;
+        pso_ci.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = false;
+        pso_ci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
+
+        auto& rt0 = pso_ci.GraphicsPipeline.BlendDesc.RenderTargets[0];
+        rt0.BlendEnable = true;
+        rt0.SrcBlend = Diligent::BLEND_FACTOR_SRC_ALPHA;
+        rt0.DestBlend = Diligent::BLEND_FACTOR_INV_SRC_ALPHA;
+        rt0.BlendOp = Diligent::BLEND_OPERATION_ADD;
+        rt0.SrcBlendAlpha = Diligent::BLEND_FACTOR_ONE;
+        rt0.DestBlendAlpha = Diligent::BLEND_FACTOR_INV_SRC_ALPHA;
+        rt0.BlendOpAlpha = Diligent::BLEND_OPERATION_ADD;
+
+        Diligent::LayoutElement layout[] = {
+            {0, 0, 3, Diligent::VT_FLOAT32, false},
+            {1, 0, 3, Diligent::VT_FLOAT32, false},
+            {2, 0, 2, Diligent::VT_FLOAT32, false}
+        };
+        pso_ci.GraphicsPipeline.InputLayout.LayoutElements = layout;
+        pso_ci.GraphicsPipeline.InputLayout.NumElements = 3;
+
+        pso_ci.pVS = vs;
+        pso_ci.pPS = ps;
+
+        Diligent::ShaderResourceVariableDesc vars[] = {
+            {Diligent::SHADER_TYPE_PIXEL, "s_tex", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE}
+        };
+        Diligent::SamplerDesc sampler_desc{};
+        sampler_desc.MinFilter = Diligent::FILTER_TYPE_LINEAR;
+        sampler_desc.MagFilter = Diligent::FILTER_TYPE_LINEAR;
+        sampler_desc.MipFilter = Diligent::FILTER_TYPE_LINEAR;
+        sampler_desc.AddressU = Diligent::TEXTURE_ADDRESS_CLAMP;
+        sampler_desc.AddressV = Diligent::TEXTURE_ADDRESS_CLAMP;
+        sampler_desc.AddressW = Diligent::TEXTURE_ADDRESS_CLAMP;
+        Diligent::ImmutableSamplerDesc samplers[] = {
+            {Diligent::SHADER_TYPE_PIXEL, "s_tex_sampler", sampler_desc}
+        };
+        pso_ci.PSODesc.ResourceLayout.DefaultVariableType = Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC;
+        pso_ci.PSODesc.ResourceLayout.Variables = vars;
+        pso_ci.PSODesc.ResourceLayout.NumVariables = 1;
+        pso_ci.PSODesc.ResourceLayout.ImmutableSamplers = samplers;
+        pso_ci.PSODesc.ResourceLayout.NumImmutableSamplers = 1;
+
+        device_->CreateGraphicsPipelineState(pso_ci, &line_pipeline_.pso);
+        if (!line_pipeline_.pso) {
+            return;
+        }
+        if (auto* vs_var = line_pipeline_.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_VERTEX, "Constants")) {
+            vs_var->Set(constant_buffer_);
+        }
+        if (auto* ps_var = line_pipeline_.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "Constants")) {
+            ps_var->Set(constant_buffer_);
+        }
+        line_pipeline_.pso->CreateShaderResourceBinding(&line_pipeline_.srb, true);
+
+        Diligent::BufferDesc line_vb_desc{};
+        line_vb_desc.Name = "debug_line_vb";
+        line_vb_desc.Size = sizeof(LineVertex) * 2u;
+        line_vb_desc.Usage = Diligent::USAGE_DYNAMIC;
+        line_vb_desc.BindFlags = Diligent::BIND_VERTEX_BUFFER;
+        line_vb_desc.CPUAccessFlags = Diligent::CPU_ACCESS_WRITE;
+        device_->CreateBuffer(line_vb_desc, nullptr, &line_vertex_buffer_);
     }
 
     void createPipelineVariant(const char* name,
@@ -647,7 +921,11 @@ float4 main(PSInput input) : SV_TARGET {
 
     Diligent::RefCntAutoPtr<Diligent::ITextureView> createTextureView(const renderer::MeshData::TextureData& tex) {
         Diligent::RefCntAutoPtr<Diligent::ITextureView> view;
-        if (tex.pixels.empty() || tex.width <= 0 || tex.height <= 0) {
+        if (tex.width <= 0 || tex.height <= 0) {
+            return view;
+        }
+        const std::vector<uint8_t> rgba_pixels = detail::ExpandTextureToRgba8(tex);
+        if (rgba_pixels.empty()) {
             return view;
         }
         Diligent::TextureDesc desc{};
@@ -661,7 +939,7 @@ float4 main(PSInput input) : SV_TARGET {
         desc.Usage = Diligent::USAGE_IMMUTABLE;
         Diligent::TextureData texData{};
         Diligent::TextureSubResData subres{};
-        subres.pData = tex.pixels.data();
+        subres.pData = rgba_pixels.data();
         subres.Stride = static_cast<uint32_t>(tex.width * 4);
         texData.pSubResources = &subres;
         texData.NumSubresources = 1;
@@ -677,15 +955,19 @@ float4 main(PSInput input) : SV_TARGET {
     Diligent::RefCntAutoPtr<Diligent::IDeviceContext> context_;
     Diligent::RefCntAutoPtr<Diligent::ISwapChain> swapchain_;
     std::array<PipelineVariant, kPipelineVariantCount> pipeline_variants_{};
+    LinePipeline line_pipeline_{};
     Diligent::RefCntAutoPtr<Diligent::IBuffer> constant_buffer_;
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> line_vertex_buffer_;
 
     std::unordered_map<renderer::MeshId, Mesh> meshes_;
     std::unordered_map<renderer::MaterialId, Material> materials_;
     std::vector<renderer::DrawItem> draw_items_;
+    std::vector<detail::ResolvedDebugLineSemantics> debug_lines_;
     bool frame_cleared_ = false;
 
     renderer::CameraData camera_{};
     renderer::DirectionalLightData light_{};
+    renderer::EnvironmentLightingData environment_{};
     int width_ = 1280;
     int height_ = 720;
     renderer::MeshId next_mesh_id_ = 1;

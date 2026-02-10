@@ -1,8 +1,10 @@
 #include "net/protocol.hpp"
 #include "net/protocol_codec.hpp"
 #include "server/cli_options.hpp"
+#include "server/net/enet_event_source.hpp"
 #include "server/net/event_source.hpp"
 
+#include "karma/network/server_transport.hpp"
 #include "karma/common/config_store.hpp"
 #include "karma/common/json.hpp"
 
@@ -12,7 +14,9 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -56,6 +60,47 @@ std::vector<bz3::server::net::ServerInputEvent> CollectScheduledEvents(
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
     return out;
+}
+
+class FakeServerTransport final : public karma::network::ServerTransport {
+ public:
+    explicit FakeServerTransport(std::string backend_name)
+        : backend_name_(std::move(backend_name)) {}
+
+    bool isReady() const override { return true; }
+
+    const char* backendName() const override { return backend_name_.c_str(); }
+
+    size_t poll(const karma::network::ServerTransportPollOptions&,
+                std::vector<karma::network::ServerTransportEvent>* out_events) override {
+        if (out_events) {
+            out_events->clear();
+        }
+        return 0;
+    }
+
+    bool sendReliable(karma::network::PeerToken, const std::vector<std::byte>&) override {
+        return true;
+    }
+
+    void disconnect(karma::network::PeerToken, uint32_t) override {}
+
+ private:
+    std::string backend_name_{};
+};
+
+struct CapturedTransportConfig {
+    karma::network::ServerTransportBackend backend = karma::network::ServerTransportBackend::Auto;
+    std::string backend_name{};
+    uint16_t listen_port = 0;
+    size_t max_clients = 0;
+    size_t channel_count = 0;
+};
+
+bool InitializeConfigForServerTransportBackend(std::string_view backend_value, const char* suffix) {
+    karma::config::ConfigStore::Initialize({}, MakeTestConfigPath(suffix));
+    return karma::config::ConfigStore::Set("network.ServerTransportBackend",
+                                           std::string(backend_value));
 }
 
 bool TestJoinRequestRoundTrip() {
@@ -347,6 +392,106 @@ bool TestScriptedSourceSkipsInvalidShotData() {
                   "invalid-shot scripted source expected ClientJoin as sole valid event");
 }
 
+bool TestServerTransportBackendBuiltinsAutoAndEnet() {
+    // Trigger default transport registration once before overriding "enet" for this test.
+    {
+        karma::network::ServerTransportConfig bootstrap_config{};
+        bootstrap_config.backend_name = "bootstrap-nonexistent-server-backend";
+        auto bootstrap_transport = karma::network::CreateServerTransport(bootstrap_config);
+        (void)bootstrap_transport;
+    }
+
+    std::vector<CapturedTransportConfig> captures{};
+    const std::string factory_backend_name = "contract-fake-enet";
+    if (!karma::network::RegisterServerTransportFactory(
+            "enet",
+            [&captures, &factory_backend_name](const karma::network::ServerTransportConfig& config) {
+                captures.push_back(CapturedTransportConfig{
+                    .backend = config.backend,
+                    .backend_name = config.backend_name,
+                    .listen_port = config.listen_port,
+                    .max_clients = config.max_clients,
+                    .channel_count = config.channel_count,
+                });
+                return std::make_unique<FakeServerTransport>(factory_backend_name);
+            })) {
+        return Fail("failed to register fake enet transport factory for builtin backend test");
+    }
+
+    if (!InitializeConfigForServerTransportBackend("auto", "backend-builtin-auto")) {
+        return Fail("failed to initialize config for builtin auto backend test");
+    }
+    auto auto_source = bz3::server::net::CreateEnetServerEventSource(0);
+    if (!auto_source) {
+        return Fail("CreateEnetServerEventSource returned null for backend=auto");
+    }
+
+    if (!InitializeConfigForServerTransportBackend("enet", "backend-builtin-enet")) {
+        return Fail("failed to initialize config for builtin enet backend test");
+    }
+    auto enet_source = bz3::server::net::CreateEnetServerEventSource(0);
+    if (!enet_source) {
+        return Fail("CreateEnetServerEventSource returned null for backend=enet");
+    }
+
+    return Expect(captures.size() == 2, "builtin backend test expected two factory captures") &&
+           Expect(captures[0].backend_name == "auto",
+                  "backend=auto should pass backend_name='auto' into server transport config") &&
+           Expect(captures[0].backend == karma::network::ServerTransportBackend::Auto,
+                  "backend=auto should parse to ServerTransportBackend::Auto") &&
+           Expect(captures[1].backend_name == "enet",
+                  "backend=enet should pass backend_name='enet' into server transport config") &&
+           Expect(captures[1].backend == karma::network::ServerTransportBackend::Enet,
+                  "backend=enet should parse to ServerTransportBackend::Enet");
+}
+
+bool TestServerTransportBackendCustomIdPassThrough() {
+    std::vector<CapturedTransportConfig> captures{};
+    const std::string factory_backend_name = "contract-fake-custom";
+    const std::string configured_backend_name = "CustomServerBackendContract";
+
+    if (!karma::network::RegisterServerTransportFactory(
+            configured_backend_name,
+            [&captures, &factory_backend_name](const karma::network::ServerTransportConfig& config) {
+                captures.push_back(CapturedTransportConfig{
+                    .backend = config.backend,
+                    .backend_name = config.backend_name,
+                    .listen_port = config.listen_port,
+                    .max_clients = config.max_clients,
+                    .channel_count = config.channel_count,
+                });
+                return std::make_unique<FakeServerTransport>(factory_backend_name);
+            })) {
+        return Fail("failed to register fake custom transport factory");
+    }
+
+    if (!InitializeConfigForServerTransportBackend(configured_backend_name,
+                                                   "backend-custom-pass-through")) {
+        return Fail("failed to initialize config for custom backend pass-through test");
+    }
+
+    auto source = bz3::server::net::CreateEnetServerEventSource(0);
+    if (!source) {
+        return Fail("CreateEnetServerEventSource returned null for custom backend");
+    }
+
+    return Expect(captures.size() == 1, "custom backend test expected one factory capture") &&
+           Expect(captures[0].backend_name == configured_backend_name,
+                  "custom backend should pass configured backend_name through unchanged") &&
+           Expect(captures[0].backend == karma::network::ServerTransportBackend::Auto,
+                  "custom backend should keep enum value at default auto");
+}
+
+bool TestServerTransportBackendUnregisteredFailsCreation() {
+    if (!InitializeConfigForServerTransportBackend("unregistered-server-backend-contract",
+                                                   "backend-unregistered")) {
+        return Fail("failed to initialize config for unregistered backend test");
+    }
+
+    auto source = bz3::server::net::CreateEnetServerEventSource(0);
+    return Expect(!source, "unregistered backend should fail CreateEnetServerEventSource");
+}
+
 } // namespace
 
 int main() {
@@ -369,6 +514,15 @@ int main() {
         return 1;
     }
     if (!TestScriptedSourceSkipsInvalidShotData()) {
+        return 1;
+    }
+    if (!TestServerTransportBackendBuiltinsAutoAndEnet()) {
+        return 1;
+    }
+    if (!TestServerTransportBackendCustomIdPassThrough()) {
+        return 1;
+    }
+    if (!TestServerTransportBackendUnregisteredFailsCreation()) {
         return 1;
     }
     return 0;

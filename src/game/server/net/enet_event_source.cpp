@@ -1,15 +1,14 @@
 #include "server/net/enet_event_source.hpp"
 
+#include "karma/network/server_transport.hpp"
 #include "karma/common/world_archive.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/logging.hpp"
 #include "net/protocol_codec.hpp"
 #include "net/protocol.hpp"
 
-#include <enet.h>
 #include <spdlog/spdlog.h>
 
-#include <array>
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -17,7 +16,6 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -29,6 +27,9 @@ namespace bz3::server::net {
 namespace {
 
 struct ClientConnectionState {
+    karma::network::PeerToken peer = 0;
+    std::string peer_ip{};
+    uint16_t peer_port = 0;
     uint32_t client_id = 0;
     bool joined = false;
     std::string player_name{};
@@ -40,55 +41,6 @@ struct ClientConnectionState {
     uint32_t cached_world_manifest_file_count = 0;
     std::vector<WorldManifestEntry> cached_world_manifest{};
 };
-
-class EnetGlobal {
- public:
-    EnetGlobal() {
-        std::lock_guard<std::mutex> lock(mutex());
-        if (refCount()++ == 0) {
-            if (enet_initialize() != 0) {
-                spdlog::error("ENet: enet_initialize() failed");
-                initialized_ = false;
-                return;
-            }
-        }
-        initialized_ = true;
-    }
-
-    ~EnetGlobal() {
-        std::lock_guard<std::mutex> lock(mutex());
-        auto& count = refCount();
-        if (count == 0) {
-            return;
-        }
-        if (--count == 0) {
-            enet_deinitialize();
-        }
-    }
-
-    bool initialized() const { return initialized_; }
-
- private:
-    static std::mutex& mutex() {
-        static std::mutex m;
-        return m;
-    }
-
-    static uint32_t& refCount() {
-        static uint32_t count = 0;
-        return count;
-    }
-
-    bool initialized_ = false;
-};
-
-std::string PeerIpString(const ENetAddress& address) {
-    std::array<char, 128> ip_buffer{};
-    if (enet_address_get_host_ip(&address, ip_buffer.data(), ip_buffer.size()) == 0) {
-        return std::string(ip_buffer.data());
-    }
-    return "unknown";
-}
 
 std::string DefaultPlayerName(uint32_t client_id) {
     return "player-" + std::to_string(client_id);
@@ -336,64 +288,79 @@ std::optional<std::vector<std::byte>> BuildWorldDeltaArchive(
 class EnetServerEventSource final : public ServerEventSource {
  public:
     explicit EnetServerEventSource(uint16_t port) : port_(port) {
-        if (!global_.initialized()) {
-            spdlog::error("ENet event source: ENet global initialization failed");
+        karma::network::ServerTransportConfig transport_config{};
+        transport_config.listen_port = port_;
+        transport_config.max_clients = kMaxClients;
+        transport_config.channel_count = kNumChannels;
+
+        const std::string backend_name =
+            karma::config::ReadStringConfig({"network.ServerTransportBackend"}, std::string("auto"));
+        transport_config.backend_name = backend_name;
+        const auto parsed_backend = karma::network::ParseServerTransportBackend(backend_name);
+        if (parsed_backend.has_value()) {
+            transport_config.backend = *parsed_backend;
+        } else {
+            KARMA_TRACE("net.server",
+                        "ServerEventSource: using custom server transport backend='{}'",
+                        backend_name);
+        }
+
+        transport_ = karma::network::CreateServerTransport(transport_config);
+        if (!transport_ || !transport_->isReady()) {
+            const std::string configured_backend = transport_config.backend_name.empty()
+                ? std::string(karma::network::ServerTransportBackendName(transport_config.backend))
+                : transport_config.backend_name;
+            spdlog::error("ServerEventSource: failed to create server transport backend={} port={}",
+                          configured_backend,
+                          port_);
             return;
         }
 
-        ENetAddress address{};
-        address.host = ENET_HOST_ANY;
-        address.port = port_;
-        host_ = enet_host_create(&address, kMaxClients, kNumChannels, 0, 0);
-        if (!host_) {
-            spdlog::error("ENet event source: failed to create host on port {}", port_);
-            return;
-        }
         initialized_ = true;
         KARMA_TRACE("engine.server",
-                    "ENet event source: listening on port {} (max_clients={} channels={})",
+                    "ServerEventSource: listening on port {} (transport={} max_clients={} channels={})",
                     port_,
+                    transport_->backendName(),
                     kMaxClients,
                     kNumChannels);
     }
 
-    ~EnetServerEventSource() override {
-        if (host_) {
-            enet_host_destroy(host_);
-            host_ = nullptr;
-        }
-    }
+    ~EnetServerEventSource() override = default;
 
     bool initialized() const { return initialized_; }
 
     std::vector<ServerInputEvent> poll() override {
         std::vector<ServerInputEvent> out;
-        if (!host_) {
+        if (!transport_) {
             return out;
         }
 
-        ENetEvent event{};
-        while (enet_host_service(host_, &event, 0) > 0) {
-            switch (event.type) {
-                case ENET_EVENT_TYPE_CONNECT: {
+        std::vector<karma::network::ServerTransportEvent> transport_events{};
+        transport_->poll(karma::network::ServerTransportPollOptions{}, &transport_events);
+        for (const auto& transport_event : transport_events) {
+            switch (transport_event.type) {
+                case karma::network::ServerTransportEventType::Connected: {
                     const uint32_t client_id = allocateClientId();
-                    client_by_peer_[event.peer] = ClientConnectionState{
-                        client_id, false, {}, {}, {}, {}, {}, {}, 0};
+                    ClientConnectionState state{};
+                    state.peer = transport_event.peer;
+                    state.peer_ip = transport_event.peer_ip;
+                    state.peer_port = transport_event.peer_port;
+                    state.client_id = client_id;
+                    client_by_peer_[transport_event.peer] = std::move(state);
                     KARMA_TRACE("engine.server",
                                 "ServerEventSource: ENet connect client_id={} ip={} port={} (awaiting join packet)",
                                 client_id,
-                                PeerIpString(event.peer->address),
-                                event.peer->address.port);
+                                transport_event.peer_ip,
+                                transport_event.peer_port);
                     KARMA_TRACE("net.server",
                                 "ENet connect client_id={} ip={} port={}",
                                 client_id,
-                                PeerIpString(event.peer->address),
-                                event.peer->address.port);
+                                transport_event.peer_ip,
+                                transport_event.peer_port);
                     break;
                 }
-                case ENET_EVENT_TYPE_DISCONNECT:
-                case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT: {
-                    const auto it = client_by_peer_.find(event.peer);
+                case karma::network::ServerTransportEventType::Disconnected: {
+                    const auto it = client_by_peer_.find(transport_event.peer);
                     if (it == client_by_peer_.end()) {
                         break;
                     }
@@ -402,14 +369,14 @@ class EnetServerEventSource final : public ServerEventSource {
                     KARMA_TRACE("engine.server",
                                 "ServerEventSource: ENet disconnect client_id={} ip={} port={} joined={}",
                                 state.client_id,
-                                PeerIpString(event.peer->address),
-                                event.peer->address.port,
+                                state.peer_ip,
+                                state.peer_port,
                                 state.joined ? 1 : 0);
                     KARMA_TRACE("net.server",
                                 "ENet disconnect client_id={} ip={} port={} joined={}",
                                 state.client_id,
-                                PeerIpString(event.peer->address),
-                                event.peer->address.port,
+                                state.peer_ip,
+                                state.peer_port,
                                 state.joined ? 1 : 0);
                     if (state.joined) {
                         ServerInputEvent input{};
@@ -419,9 +386,8 @@ class EnetServerEventSource final : public ServerEventSource {
                     }
                     break;
                 }
-                case ENET_EVENT_TYPE_RECEIVE: {
-                    handleReceiveEvent(event, out);
-                    enet_packet_destroy(event.packet);
+                case karma::network::ServerTransportEventType::Received: {
+                    handleReceiveEvent(transport_event, out);
                     break;
                 }
                 default:
@@ -447,8 +413,8 @@ class EnetServerEventSource final : public ServerEventSource {
                       const std::vector<SessionSnapshotEntry>& sessions,
                       const std::vector<WorldManifestEntry>& world_manifest,
                       const std::vector<std::byte>& world_package) override {
-        ENetPeer* peer = findPeerByClientId(client_id);
-        if (!peer) {
+        const auto peer = findPeerByClientId(client_id);
+        if (peer == 0) {
             KARMA_TRACE("engine.server",
                         "ServerEventSource: join result dropped client_id={} accepted={} (peer missing)",
                         client_id,
@@ -540,8 +506,8 @@ class EnetServerEventSource final : public ServerEventSource {
                 }
             }
 
-            static_cast<void>(sendJoinResponse(*peer, true, ""));
-            static_cast<void>(sendInit(*peer,
+            static_cast<void>(sendJoinResponse(peer, true, ""));
+            static_cast<void>(sendInit(peer,
                                        client_id,
                                        world_name,
                                        world_id,
@@ -554,7 +520,7 @@ class EnetServerEventSource final : public ServerEventSource {
                                        world_manifest_payload,
                                        world_payload));
             if (send_world_package &&
-                !sendWorldPackageChunked(*peer,
+                !sendWorldPackageChunked(peer,
                                          client_id,
                                          world_id,
                                          world_revision,
@@ -569,10 +535,10 @@ class EnetServerEventSource final : public ServerEventSource {
                 spdlog::error("ServerEventSource: failed to stream world package to client_id={} world='{}'",
                               client_id,
                               world_name);
-                enet_peer_disconnect(peer, 0);
+                transport_->disconnect(peer, 0);
                 return;
             }
-            const bool snapshot_sent = sendSessionSnapshot(*peer, sessions);
+            const bool snapshot_sent = sendSessionSnapshot(peer, sessions);
             KARMA_TRACE("net.server",
                         "Session snapshot {} client_id={} world='{}' id='{}' rev='{}' sessions={} world_package_bytes={} world_transfer_mode={} world_transfer_bytes={} world_transfer_delta={} world_hash={} world_content_hash={} manifest_hash={} manifest_files={} manifest_entries_sent={} manifest_entries_total={} cache_identity_match={} cache_hash_match={} cache_content_match={} cache_manifest_match={} cache_hit={} cache_reason={}",
                         snapshot_sent ? "sent" : "send-failed",
@@ -613,12 +579,12 @@ class EnetServerEventSource final : public ServerEventSource {
             return;
         }
 
-        static_cast<void>(sendJoinResponse(*peer, false, reason));
+        static_cast<void>(sendJoinResponse(peer, false, reason));
         auto it = client_by_peer_.find(peer);
         if (it != client_by_peer_.end()) {
             it->second.joined = false;
         }
-        enet_peer_disconnect(peer, 0);
+        transport_->disconnect(peer, 0);
         KARMA_TRACE("engine.server",
                     "ServerEventSource: join rejected client_id={} reason='{}'",
                     client_id,
@@ -626,7 +592,7 @@ class EnetServerEventSource final : public ServerEventSource {
     }
 
     void onPlayerSpawn(uint32_t client_id) override {
-        const size_t sent = broadcastToJoined([client_id, this](ENetPeer& peer) {
+        const size_t sent = broadcastToJoined([client_id, this](karma::network::PeerToken peer) {
             return sendPlayerSpawn(peer, client_id);
         });
         KARMA_TRACE("net.server",
@@ -636,7 +602,7 @@ class EnetServerEventSource final : public ServerEventSource {
     }
 
     void onPlayerDeath(uint32_t client_id) override {
-        const size_t sent = broadcastToJoined([client_id, this](ENetPeer& peer) {
+        const size_t sent = broadcastToJoined([client_id, this](karma::network::PeerToken peer) {
             return sendPlayerDeath(peer, client_id);
         });
         KARMA_TRACE("net.server",
@@ -653,7 +619,7 @@ class EnetServerEventSource final : public ServerEventSource {
                       float vel_x,
                       float vel_y,
                       float vel_z) override {
-        const size_t sent = broadcastToJoined([=, this](ENetPeer& peer) {
+        const size_t sent = broadcastToJoined([=, this](karma::network::PeerToken peer) {
             return sendCreateShot(peer,
                                   source_client_id,
                                   global_shot_id,
@@ -716,31 +682,39 @@ class EnetServerEventSource final : public ServerEventSource {
         out.push_back(std::move(input));
     }
 
-    void handleReceiveEvent(const ENetEvent& event, std::vector<ServerInputEvent>& out) {
+    void handleReceiveEvent(const karma::network::ServerTransportEvent& event,
+                            std::vector<ServerInputEvent>& out) {
         const auto peer_it = client_by_peer_.find(event.peer);
         if (peer_it == client_by_peer_.end()) {
             KARMA_TRACE("engine.server",
                         "ServerEventSource: ENet receive from unknown peer ip={} port={} bytes={}",
-                        PeerIpString(event.peer->address),
-                        event.peer->address.port,
-                        event.packet ? event.packet->dataLength : 0);
+                        event.peer_ip,
+                        event.peer_port,
+                        event.payload.size());
             return;
         }
 
         ClientConnectionState& state = peer_it->second;
-        if (!event.packet || !event.packet->data || event.packet->dataLength == 0) {
+        if (!event.peer_ip.empty()) {
+            state.peer_ip = event.peer_ip;
+        }
+        if (event.peer_port != 0) {
+            state.peer_port = event.peer_port;
+        }
+
+        if (event.payload.empty()) {
             KARMA_TRACE("engine.server",
                         "ServerEventSource: ENet receive empty payload client_id={}",
                         state.client_id);
             return;
         }
 
-        const auto decoded = bz3::net::DecodeClientMessage(event.packet->data, event.packet->dataLength);
+        const auto decoded = bz3::net::DecodeClientMessage(event.payload.data(), event.payload.size());
         if (!decoded.has_value()) {
             KARMA_TRACE("engine.server",
                         "ServerEventSource: ENet receive invalid protobuf client_id={} bytes={}",
                         state.client_id,
-                        event.packet->dataLength);
+                        event.payload.size());
             return;
         }
 
@@ -774,18 +748,18 @@ class EnetServerEventSource final : public ServerEventSource {
                             state.cached_world_manifest_hash.empty() ? "-" : state.cached_world_manifest_hash,
                             state.cached_world_manifest_file_count,
                             state.cached_world_manifest.size(),
-                            PeerIpString(event.peer->address),
-                            event.peer->address.port);
+                            state.peer_ip,
+                            state.peer_port);
                 if (protocol_version != bz3::net::kProtocolVersion) {
                     static_cast<void>(
-                        sendJoinResponse(*event.peer, false, "Protocol version mismatch."));
+                        sendJoinResponse(state.peer, false, "Protocol version mismatch."));
                     KARMA_TRACE("engine.server",
                                 "ServerEventSource: ENet join rejected client_id={} name='{}' protocol={} expected={}",
                                 state.client_id,
                                 player_name,
                                 protocol_version,
                                 bz3::net::kProtocolVersion);
-                    enet_peer_disconnect(event.peer, 0);
+                    transport_->disconnect(state.peer, 0);
                     return;
                 }
                 if (state.joined) {
@@ -804,8 +778,8 @@ class EnetServerEventSource final : public ServerEventSource {
                             state.client_id,
                             state.player_name,
                             protocol_version,
-                            PeerIpString(event.peer->address),
-                            event.peer->address.port);
+                            state.peer_ip,
+                            state.peer_port);
                 return;
             }
             case bz3::net::ClientMessageType::PlayerLeave: {
@@ -822,8 +796,8 @@ class EnetServerEventSource final : public ServerEventSource {
                             "ServerEventSource: ENet leave client_id={} name='{}' ip={} port={}",
                             state.client_id,
                             state.player_name,
-                            PeerIpString(event.peer->address),
-                            event.peer->address.port);
+                            state.peer_ip,
+                            state.peer_port);
                 return;
             }
             case bz3::net::ClientMessageType::RequestPlayerSpawn: {
@@ -839,8 +813,8 @@ class EnetServerEventSource final : public ServerEventSource {
                             "ServerEventSource: ENet request_spawn client_id={} name='{}' ip={} port={}",
                             state.client_id,
                             state.player_name,
-                            PeerIpString(event.peer->address),
-                            event.peer->address.port);
+                            state.peer_ip,
+                            state.peer_port);
                 return;
             }
             case bz3::net::ClientMessageType::CreateShot: {
@@ -864,15 +838,15 @@ class EnetServerEventSource final : public ServerEventSource {
                             "ServerEventSource: ENet create_shot client_id={} local_shot_id={} ip={} port={}",
                             state.client_id,
                             decoded->local_shot_id,
-                            PeerIpString(event.peer->address),
-                            event.peer->address.port);
+                            state.peer_ip,
+                            state.peer_port);
                 return;
             }
             default:
                 KARMA_TRACE("engine.server",
                             "ServerEventSource: ENet payload ignored client_id={} bytes={}",
                             state.client_id,
-                            event.packet->dataLength);
+                            event.payload.size());
                 return;
         }
     }
@@ -884,46 +858,34 @@ class EnetServerEventSource final : public ServerEventSource {
             if (!peer || !state.joined) {
                 continue;
             }
-            if (sender(*peer)) {
+            if (sender(peer)) {
                 ++sent;
             }
         }
         return sent;
     }
 
-    ENetPeer* findPeerByClientId(uint32_t client_id) {
+    karma::network::PeerToken findPeerByClientId(uint32_t client_id) {
         for (auto& [peer, state] : client_by_peer_) {
             if (state.client_id == client_id) {
                 return peer;
             }
         }
-        return nullptr;
+        return 0;
     }
 
-    bool sendServerPayload(ENetPeer& peer, const std::vector<std::byte>& payload) {
+    bool sendServerPayload(karma::network::PeerToken peer, const std::vector<std::byte>& payload) {
         if (payload.empty()) {
             return false;
         }
-
-        ENetPacket* packet =
-            enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-        if (!packet) {
-            return false;
-        }
-
-        if (enet_peer_send(&peer, 0, packet) != 0) {
-            enet_packet_destroy(packet);
-            return false;
-        }
-        enet_host_flush(host_);
-        return true;
+        return transport_ && transport_->sendReliable(peer, payload);
     }
 
-    bool sendJoinResponse(ENetPeer& peer, bool accepted, std::string_view reason) {
+    bool sendJoinResponse(karma::network::PeerToken peer, bool accepted, std::string_view reason) {
         return sendServerPayload(peer, bz3::net::EncodeServerJoinResponse(accepted, reason));
     }
 
-    bool sendInit(ENetPeer& peer,
+    bool sendInit(karma::network::PeerToken peer,
                   uint32_t client_id,
                   std::string_view world_name,
                   std::string_view world_id,
@@ -961,7 +923,8 @@ class EnetServerEventSource final : public ServerEventSource {
                 world_package));
     }
 
-    bool sendSessionSnapshot(ENetPeer& peer, const std::vector<SessionSnapshotEntry>& sessions) {
+    bool sendSessionSnapshot(karma::network::PeerToken peer,
+                             const std::vector<SessionSnapshotEntry>& sessions) {
         std::vector<bz3::net::SessionSnapshotEntry> wire_sessions{};
         wire_sessions.reserve(sessions.size());
         for (const auto& session : sessions) {
@@ -972,15 +935,15 @@ class EnetServerEventSource final : public ServerEventSource {
         return sendServerPayload(peer, bz3::net::EncodeServerSessionSnapshot(wire_sessions));
     }
 
-    bool sendPlayerSpawn(ENetPeer& peer, uint32_t client_id) {
+    bool sendPlayerSpawn(karma::network::PeerToken peer, uint32_t client_id) {
         return sendServerPayload(peer, bz3::net::EncodeServerPlayerSpawn(client_id));
     }
 
-    bool sendPlayerDeath(ENetPeer& peer, uint32_t client_id) {
+    bool sendPlayerDeath(karma::network::PeerToken peer, uint32_t client_id) {
         return sendServerPayload(peer, bz3::net::EncodeServerPlayerDeath(client_id));
     }
 
-    bool sendCreateShot(ENetPeer& peer,
+    bool sendCreateShot(karma::network::PeerToken peer,
                         uint32_t source_client_id,
                         uint32_t global_shot_id,
                         float pos_x,
@@ -997,7 +960,7 @@ class EnetServerEventSource final : public ServerEventSource {
                                  bz3::net::Vec3{vel_x, vel_y, vel_z}));
     }
 
-    bool sendWorldTransferBegin(ENetPeer& peer,
+    bool sendWorldTransferBegin(karma::network::PeerToken peer,
                                 std::string_view transfer_id,
                                 std::string_view world_id,
                                 std::string_view world_revision,
@@ -1025,7 +988,7 @@ class EnetServerEventSource final : public ServerEventSource {
                                                                           delta_base_world_content_hash));
     }
 
-    bool sendWorldTransferChunk(ENetPeer& peer,
+    bool sendWorldTransferChunk(karma::network::PeerToken peer,
                                 std::string_view transfer_id,
                                 uint32_t chunk_index,
                                 const std::vector<std::byte>& chunk_data) {
@@ -1035,7 +998,7 @@ class EnetServerEventSource final : public ServerEventSource {
                                                                           chunk_data));
     }
 
-    bool sendWorldTransferEnd(ENetPeer& peer,
+    bool sendWorldTransferEnd(karma::network::PeerToken peer,
                               std::string_view transfer_id,
                               uint32_t chunk_count,
                               uint64_t total_bytes,
@@ -1049,7 +1012,7 @@ class EnetServerEventSource final : public ServerEventSource {
                                                                         world_content_hash));
     }
 
-    bool sendWorldPackageChunked(ENetPeer& peer,
+    bool sendWorldPackageChunked(karma::network::PeerToken peer,
                                  uint32_t client_id,
                                  std::string_view world_id,
                                  std::string_view world_revision,
@@ -1203,13 +1166,12 @@ class EnetServerEventSource final : public ServerEventSource {
     static constexpr size_t kNumChannels = 2;
     static constexpr uint32_t kFirstClientId = 2;
 
-    EnetGlobal global_{};
-    ENetHost* host_ = nullptr;
+    std::unique_ptr<karma::network::ServerTransport> transport_{};
     uint16_t port_ = 0;
     bool initialized_ = false;
     uint32_t next_client_id_ = kFirstClientId;
     uint64_t next_transfer_id_ = 1;
-    std::unordered_map<ENetPeer*, ClientConnectionState> client_by_peer_{};
+    std::unordered_map<karma::network::PeerToken, ClientConnectionState> client_by_peer_{};
 };
 
 } // namespace
