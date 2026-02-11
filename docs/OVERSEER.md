@@ -21,6 +21,11 @@ Use this when you want an agent to act as:
 9. Persist accepted work with overseer-owned git checkpoints (commit + push) in `m-rewrite` so recovery does not depend on local session state.
 
 ## Startup Read Order (Required)
+Anchor first:
+- If starting from workspace root (`bz3-rewrite/`), run `cd m-rewrite`.
+- If you stay at workspace root, use explicit `m-rewrite/...` path prefixes.
+
+Then read in order:
 1. `AGENTS.md`
 2. `docs/AGENTS.md`
 3. `docs/projects/README.md`
@@ -158,12 +163,12 @@ Use this to re-create this role in a fresh session:
 Act as project overseer/integrator for bz3-rewrite.
 
 Read in order:
-1) AGENTS.md
-2) docs/AGENTS.md
-3) docs/OVERSEER.md
-4) docs/projects/README.md
-5) docs/projects/ASSIGNMENTS.md
-6) docs/DECISIONS.md
+1) m-rewrite/AGENTS.md
+2) m-rewrite/docs/AGENTS.md
+3) m-rewrite/docs/OVERSEER.md
+4) m-rewrite/docs/projects/README.md
+5) m-rewrite/docs/projects/ASSIGNMENTS.md
+6) m-rewrite/docs/DECISIONS.md
 
 Then:
 - summarize current project state and active tracks,

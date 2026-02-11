@@ -3,6 +3,10 @@
 Use this template when assigning work to a specialist agent.
 
 ```text
+Execution root:
+- If you start at workspace root (`bz3-rewrite/`), run `cd m-rewrite` first.
+- If you stay at workspace root, prefix every path below with `m-rewrite/`.
+
 Read in order:
 1) AGENTS.md
 2) docs/AGENTS.md

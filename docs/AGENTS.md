@@ -17,6 +17,17 @@ Project-specific scope lives in `docs/projects/<project>.md`.
 3. `docs/OVERSEER.md`: rotation protocol and overseer coordination model.
 4. `docs/projects/<project>.md`: project mission, owned paths, interfaces, validation, and handoff notes.
 
+## Execution Root (Required)
+- Delegated sessions may begin at workspace root (`bz3-rewrite/`) where `AGENTS.md` shorthand is ambiguous.
+- Before reading docs or running project commands, anchor to repo root:
+
+```bash
+cd m-rewrite
+```
+
+- After anchoring, unprefixed paths in packets/checklists are repo-relative (`AGENTS.md`, `docs/...`).
+- If staying at workspace root, all packet/checklist paths must be prefixed with `m-rewrite/`.
+
 ## Big Picture
 - `m-rewrite/src/engine/*`: engine-owned lifecycle/subsystems/contracts.
 - `m-rewrite/src/game/*`: BZ3-specific game/client/server behavior.

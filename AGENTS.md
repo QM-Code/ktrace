@@ -36,6 +36,17 @@ Repository roles:
 - Workspace root (`bz3-rewrite/`) is bootstrap-only and should contain only `README.md` plus sibling repos (`m-rewrite/`, `m-dev/`, `KARMA-REPO/`).
 - All active control docs are tracked inside `m-rewrite/`.
 
+## Execution Root (Required)
+- Delegated sessions may start at workspace root (`bz3-rewrite/`), not repo root.
+- Before following any read-order checklist that uses `AGENTS.md` / `docs/...` shorthand, anchor to repo root:
+
+```bash
+cd m-rewrite
+```
+
+- After that, treat all unprefixed doc paths as repo-relative (for example `AGENTS.md`, `docs/AGENTS.md`).
+- If you cannot change directory, use explicit prefixed paths (for example `m-rewrite/AGENTS.md`).
+
 ## Core Architecture Contract
 - `src/engine/` is game-agnostic and owns loop/lifecycle/timing.
 - `src/game/` contains BZ3-specific game logic and host usage.
