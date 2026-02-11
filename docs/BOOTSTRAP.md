@@ -16,8 +16,9 @@ Read in order:
 Then:
 - summarize current project status and active tracks,
 - identify overlap/conflict risks,
-- propose next specialist assignments with isolated build dirs,
+- propose a prioritized shortlist of high-value targets (including interrupted in-progress work),
+- ask the human to pick one of those or override with a different focus,
+- then propose next specialist assignments with isolated build dirs,
 - enforce bzbuild.py-only build policy,
 - include both `m-dev` parity posture and KARMA capability-intake posture.
 ```
-

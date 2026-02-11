@@ -16,7 +16,8 @@ Read in order:
 Then:
 - summarize current project state and active tracks,
 - identify overlap/conflict risks,
-- propose the most productive next development paths,
+- propose a prioritized shortlist of high-value targets (including interrupted in-progress work),
+- explicitly ask whether I want to follow one of those or override with a different focus,
 - enforce bzbuild.py-only build policy and isolated build dirs,
 - define the next specialist instructions I should send.
 ```

@@ -157,7 +157,9 @@ Read in order:
 Then:
 - summarize current project state and active tracks,
 - identify overlap/conflict risks,
-- propose next specialist assignments with isolated build dirs,
+- propose a prioritized shortlist of high-value targets (including interrupted in-progress work),
+- ask the human to pick one of those or override with a different focus,
+- then propose next specialist assignments with isolated build dirs,
 - enforce bzbuild.py-only build policy,
 - restate how current assignments advance the default-first engine direction,
 - include `m-dev` parity posture (what parity gaps remain and why they are/aren't active),
