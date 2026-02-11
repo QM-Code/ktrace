@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-renderer-parity`
-- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 next; VQ4 queued)`
-- Immediate next task: execute VQ3 visible directional shadowing slice against the accepted VQ1 rubric while keeping VQ4 untouched/queued.
+- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 in progress with acceptance pending manual SV scoring; VQ4 queued)`
+- Immediate next task: capture manual VQ3 SV worksheet scoring at `t=6s` and `t=16s` for BGFX + Diligent, apply VQ3 decision rules, and keep VQ4 untouched/queued.
 - Validation gate: both assigned renderer build dirs via `./bzbuild.py` plus both client runs listed in this file; run docs lint whenever this project doc or assignment board is updated.
 
 ## Mission
@@ -85,6 +85,7 @@ timeout 20s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --backend-render dil
 - `2026-02-11`: VQ2 closeout evidence attempt reran required build/run gates successfully, but TA scoring checkpoints (`t=6s`, `t=12s`) were not observable in this non-interactive environment (no visual capture/inspection path for far-field aliasing assessment); TA values and per-checkpoint parity guardrails remain unscored, so VQ2 stays in progress.
 - `2026-02-11`: VQ2 evidence-unblock slice added deterministic operator runner `./scripts/run-renderer-vq2-evidence.sh` (strict config + canonical VQ1 flags + timestamped logs + backend exit-code reporting + lingering-process verification) so acceptance is pending scored TA checkpoints only.
 - `2026-02-11`: VQ2 closeout accepted from manual TA worksheet inputs: BGFX `t=6s=0`, BGFX `t=12s=0`, Diligent `t=6s=0`, Diligent `t=12s=0`; parity deltas are `0` at both checkpoints and all VQ2 pass rules are satisfied.
+- `2026-02-11`: VQ3 implementation slice is in progress with shared projected directional-shadow sampling improvements wired for BGFX + Diligent and directional shadow contract tests passing in both assigned build dirs; VQ3 acceptance is blocked on manual SV worksheet scoring at checkpoints `t=6s` and `t=16s` because this environment cannot perform reliable visual scoring.
 - Cross-backend startup/rendering path is working.
 - R1 is implemented: both BGFX and Diligent now consume shared material semantics for metallic/roughness/emissive/alpha/double-sided fields plus metallic-roughness and emissive texture influence when present.
 - R2 is now landed: engine-owned `DirectionalLightData::shadow` contract fields are consumed by both BGFX and Diligent through one shared bounded shadow-map build/sample path (`directional_shadow_internal.hpp`) with deterministic per-draw light attenuation.
@@ -216,6 +217,25 @@ VQ2 closeout decision (`2026-02-11`, manual visual worksheet inputs):
 - Rule check: fail-if-any-`TA >= 2` -> `Pass` (no checkpoint >= 2).
 - Decision: `VQ2 Accepted`.
 
+## VQ3 Operator Worksheet (Manual SV Scoring)
+Use the accepted VQ1 deterministic repro recipe and scoring checkpoints (`t=6s`, `t=16s`) for both backends.
+
+SV worksheet (fill from manual visual run):
+
+| Checkpoint | SV_bgfx | SV_diligent | Parity delta \|SV_bgfx-SV_diligent\| | Backend SV rule (`>= 2`) | No-dropout rule (`SV != 0`) | Parity rule (`<= 1`) | Checkpoint result |
+|---|---:|---:|---:|---|---|---|---|
+| `t=6s` | pending | pending | pending | Pending | Pending | Pending | Pending |
+| `t=16s` | pending | pending | pending | Pending | Pending | Pending | Pending |
+
+VQ3 decision rules:
+- pass only if `SV >= 2` at both checkpoints on both backends.
+- fail if any checkpoint on either backend has full dropout (`SV = 0`).
+- parity guardrail must hold at each checkpoint: `|SV_bgfx - SV_diligent| <= 1`.
+
+VQ3 closeout decision (`2026-02-11`, current state):
+- Rule checks: `Pending manual visual scoring inputs`.
+- Decision: `Not accepted yet (in progress)` due to missing SV worksheet values for BGFX + Diligent at `t=6s` and `t=16s`.
+
 ## Capability Gap Checklist (2026-02-10 Baseline)
 | Capability | KARMA-REPO Reference | `m-rewrite` Current State | Gap |
 |---|---|---|---|
@@ -254,7 +274,7 @@ VQ2 closeout decision (`2026-02-11`, manual visual worksheet inputs):
 24. R25 BGFX source-absent integrity signature-model hardening slice: codify canonical asymmetric-signature verification contract inputs/validation boundaries for signed-envelope metadata (without introducing external trust-store rotation tooling yet), preserving deterministic disable reasons and accepted R1/R2/R3/R4/R5/R6/R7/R8/R9/R10/R11/R12/R13/R14/R15/R16/R17/R18/R19/R20/R21/R22/R23/R24 behavior. `Accepted 2026-02-11` (canonical verification-input boundary checks + deterministic `...verification_inputs_invalid` propagation).
 25. VQ1 visual-quality diagnostics baseline slice: capture deterministic repro settings and concrete acceptance thresholds for distant texture aliasing/grain and obvious shadow caster/receiver visibility in roaming scenes. `Accepted 2026-02-11` (deterministic repro recipe + phased camera-path scoring rubric + explicit VQ2/VQ3 thresholds).
 26. VQ2 texture minification quality slice: add mip-chain generation/upload plus trilinear/anisotropic sampler policy across BGFX + Diligent material texture paths (including fallback/composite paths) with parity guardrails. `Accepted 2026-02-11` (manual worksheet TA scores: BGFX `0/0`, Diligent `0/0`, parity deltas `0/0`, all VQ2 rules passed).
-27. VQ3 visible directional shadowing slice: evolve bounded directional shadow path toward backend-parity projected shadow-map pass with per-pixel depth sampling (bias + bounded PCF), preserving deterministic fallback policy and contract boundaries. `Next 2026-02-11`
+27. VQ3 visible directional shadowing slice: evolve bounded directional shadow path toward backend-parity projected shadow-map pass with per-pixel depth sampling (bias + bounded PCF), preserving deterministic fallback policy and contract boundaries. `In progress 2026-02-11` (build/runtime/contracts validations pass; acceptance pending manual SV worksheet scoring at `t=6s` and `t=16s`).
 28. VQ4 visual regression guardrail slice: add deterministic visual-quality assertions/metrics and align wrapper/testing docs with new renderer quality expectations. `Queued 2026-02-11`
 
 ## Active Specialist Packet (R2)
@@ -383,6 +403,6 @@ Handoff must include:
 - [x] VQ2 kickoff landed: shared mip-chain generation/upload + sampler-policy parity wiring for BGFX/Diligent is in place (acceptance closeout still pending).
 - [x] VQ2 evidence runner/worksheet is in place (`scripts/run-renderer-vq2-evidence.sh`) for deterministic closeout capture.
 - [x] VQ2 texture minification quality improvements completed with BGFX/Diligent parity. (`Accepted 2026-02-11`: TA scores BGFX `0/0`, Diligent `0/0`, parity deltas `0/0`.)
-- [ ] VQ3 visible directional shadowing improvements completed with BGFX/Diligent parity.
+- [ ] VQ3 visible directional shadowing improvements completed with BGFX/Diligent parity. (In progress: implementation + validation done; acceptance pending manual SV worksheet scoring.)
 - [ ] VQ4 deterministic visual regression guardrails + wrapper/docs updates completed.
 - [x] Post-R3 deferrals are explicitly documented.

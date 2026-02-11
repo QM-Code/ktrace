@@ -202,8 +202,11 @@ inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalS
     const float half_span_y = std::max(0.5f * (max_y - min_y), 1.0f);
     const float resolved_extent = std::max(semantics.extent, std::max(half_span_x, half_span_y) + 1.0f);
     const float depth_padding = std::max(1.0f, resolved_extent * 0.1f);
+    // Expand depth coverage beyond caster-only bounds so receiver points can still project
+    // into the same shadow volume in roaming scenes.
+    const float receiver_depth_extension = std::max(2.0f, resolved_extent * 2.0f);
     const float resolved_min_depth = min_z - depth_padding;
-    const float resolved_max_depth = max_z + depth_padding;
+    const float resolved_max_depth = max_z + depth_padding + receiver_depth_extension;
     const float resolved_depth_range = std::max(resolved_max_depth - resolved_min_depth, 0.01f);
 
     map.ready = true;
@@ -349,29 +352,142 @@ inline float SampleDirectionalShadowVisibility(const DirectionalShadowMap& map, 
     }
 
     const float texel = static_cast<float>(map.size - 1);
-    const int center_x = static_cast<int>(std::round(u * texel));
-    const int center_y = static_cast<int>(std::round(v * texel));
+    const float inv_texel = 1.0f / texel;
     const int radius = std::max(0, map.pcf_radius);
+    const float effective_bias =
+        std::clamp(map.bias + (static_cast<float>(radius) * (0.25f * inv_texel)), 0.0f, 0.03f);
     float lit_sum = 0.0f;
-    int sample_count = 0;
+    float weight_sum = 0.0f;
+
+    const auto lookup_lit = [&map, effective_bias, depth](int x, int y) -> float {
+        const std::size_t idx =
+            static_cast<std::size_t>(y) * static_cast<std::size_t>(map.size) + static_cast<std::size_t>(x);
+        const float map_depth = map.depth[idx];
+        const bool lit = !std::isfinite(map_depth) || ((depth - effective_bias) <= map_depth);
+        return lit ? 1.0f : 0.0f;
+    };
+
+    const auto sample_lit_bilinear = [&](float sample_u, float sample_v) -> float {
+        sample_u = std::clamp(sample_u, 0.0f, 1.0f);
+        sample_v = std::clamp(sample_v, 0.0f, 1.0f);
+        const float fx = sample_u * texel;
+        const float fy = sample_v * texel;
+        const int x0 = std::clamp(static_cast<int>(std::floor(fx)), 0, map.size - 1);
+        const int y0 = std::clamp(static_cast<int>(std::floor(fy)), 0, map.size - 1);
+        const int x1 = std::min(x0 + 1, map.size - 1);
+        const int y1 = std::min(y0 + 1, map.size - 1);
+        const float tx = std::clamp(fx - static_cast<float>(x0), 0.0f, 1.0f);
+        const float ty = std::clamp(fy - static_cast<float>(y0), 0.0f, 1.0f);
+
+        const float l00 = lookup_lit(x0, y0);
+        const float l10 = lookup_lit(x1, y0);
+        const float l01 = lookup_lit(x0, y1);
+        const float l11 = lookup_lit(x1, y1);
+        const float lx0 = (l00 * (1.0f - tx)) + (l10 * tx);
+        const float lx1 = (l01 * (1.0f - tx)) + (l11 * tx);
+        return (lx0 * (1.0f - ty)) + (lx1 * ty);
+    };
 
     for (int oy = -radius; oy <= radius; ++oy) {
-        const int y = std::clamp(center_y + oy, 0, map.size - 1);
         for (int ox = -radius; ox <= radius; ++ox) {
-            const int x = std::clamp(center_x + ox, 0, map.size - 1);
-            const std::size_t idx =
-                static_cast<std::size_t>(y) * static_cast<std::size_t>(map.size) + static_cast<std::size_t>(x);
-            const float map_depth = map.depth[idx];
-            const bool lit = !std::isfinite(map_depth) || ((depth - map.bias) <= map_depth);
-            lit_sum += lit ? 1.0f : 0.0f;
-            ++sample_count;
+            const float sample_u = u + (static_cast<float>(ox) * inv_texel);
+            const float sample_v = v + (static_cast<float>(oy) * inv_texel);
+            const float weight = 1.0f / (1.0f + static_cast<float>((ox * ox) + (oy * oy)));
+            lit_sum += sample_lit_bilinear(sample_u, sample_v) * weight;
+            weight_sum += weight;
         }
+    }
+
+    if (weight_sum <= 0.0f) {
+        return 1.0f;
+    }
+    return lit_sum / weight_sum;
+}
+
+inline float ComputeDirectionalShadowVisibilityForReceiver(const DirectionalShadowMap& map,
+                                                           const glm::mat4& transform,
+                                                           const std::vector<glm::vec3>* positions,
+                                                           const std::vector<uint32_t>* indices,
+                                                           const glm::vec3& sample_center) {
+    if (!map.ready) {
+        return 1.0f;
+    }
+
+    std::vector<glm::vec3> local_samples{};
+    local_samples.reserve(9u);
+    local_samples.push_back(sample_center);
+
+    if (positions && !positions->empty()) {
+        glm::vec3 min_pos = positions->front();
+        glm::vec3 max_pos = positions->front();
+        bool valid_bounds = IsFiniteVec3(min_pos);
+        for (const glm::vec3& pos : *positions) {
+            if (!IsFiniteVec3(pos)) {
+                continue;
+            }
+            if (!valid_bounds) {
+                min_pos = pos;
+                max_pos = pos;
+                valid_bounds = true;
+            } else {
+                min_pos = glm::min(min_pos, pos);
+                max_pos = glm::max(max_pos, pos);
+            }
+        }
+
+        if (valid_bounds) {
+            const float center_y = 0.5f * (min_pos.y + max_pos.y);
+            local_samples.push_back(glm::vec3(min_pos.x, center_y, min_pos.z));
+            local_samples.push_back(glm::vec3(min_pos.x, center_y, max_pos.z));
+            local_samples.push_back(glm::vec3(max_pos.x, center_y, min_pos.z));
+            local_samples.push_back(glm::vec3(max_pos.x, center_y, max_pos.z));
+        }
+    }
+
+    if (positions && indices && !positions->empty() && indices->size() >= 3u) {
+        const std::size_t tri_count = indices->size() / 3u;
+        const std::size_t tri_budget = 4u;
+        const std::size_t tri_step = std::max<std::size_t>(1u, tri_count / tri_budget);
+        for (std::size_t tri = 0; tri < tri_count && local_samples.size() < 9u; tri += tri_step) {
+            const std::size_t base = tri * 3u;
+            const uint32_t i0 = (*indices)[base + 0u];
+            const uint32_t i1 = (*indices)[base + 1u];
+            const uint32_t i2 = (*indices)[base + 2u];
+            if (i0 >= positions->size() || i1 >= positions->size() || i2 >= positions->size()) {
+                continue;
+            }
+            const glm::vec3 p0 = (*positions)[i0];
+            const glm::vec3 p1 = (*positions)[i1];
+            const glm::vec3 p2 = (*positions)[i2];
+            if (!IsFiniteVec3(p0) || !IsFiniteVec3(p1) || !IsFiniteVec3(p2)) {
+                continue;
+            }
+            local_samples.push_back((p0 + p1 + p2) / 3.0f);
+        }
+    }
+
+    float min_visibility = 1.0f;
+    float visibility_sum = 0.0f;
+    int sample_count = 0;
+    for (const glm::vec3& local : local_samples) {
+        const glm::vec3 world = TransformPoint(transform, local);
+        if (!IsFiniteVec3(world)) {
+            continue;
+        }
+        const float visibility = SampleDirectionalShadowVisibility(map, world);
+        if (!std::isfinite(visibility)) {
+            continue;
+        }
+        min_visibility = std::min(min_visibility, visibility);
+        visibility_sum += visibility;
+        ++sample_count;
     }
 
     if (sample_count <= 0) {
         return 1.0f;
     }
-    return lit_sum / static_cast<float>(sample_count);
+    const float avg_visibility = visibility_sum / static_cast<float>(sample_count);
+    return std::clamp((0.6f * min_visibility) + (0.4f * avg_visibility), 0.0f, 1.0f);
 }
 
 inline float ComputeDirectionalShadowFactor(const DirectionalShadowMap& map, float visibility) {

@@ -1247,8 +1247,12 @@ class BgfxBackend final : public Backend {
 
             float shadow_factor = 1.0f;
             if (!semantics.alpha_blend && shadow_map.ready) {
-                const glm::vec3 sample_world = detail::TransformPoint(item.transform, renderable.mesh->shadow_center);
-                const float visibility = detail::SampleDirectionalShadowVisibility(shadow_map, sample_world);
+                const float visibility = detail::ComputeDirectionalShadowVisibilityForReceiver(
+                    shadow_map,
+                    item.transform,
+                    &renderable.mesh->shadow_positions,
+                    &renderable.mesh->shadow_indices,
+                    renderable.mesh->shadow_center);
                 shadow_factor = detail::ComputeDirectionalShadowFactor(shadow_map, visibility);
             }
             const detail::ResolvedMaterialLighting lighting =

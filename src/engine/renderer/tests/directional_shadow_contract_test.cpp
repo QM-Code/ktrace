@@ -54,6 +54,7 @@ using karma::renderer_backend::detail::ResolvedMaterialSemantics;
 using karma::renderer_backend::detail::ResolvedDirectionalShadowSemantics;
 using karma::renderer_backend::detail::SamplerVariableAvailability;
 using karma::renderer_backend::detail::SampleDirectionalShadowVisibility;
+using karma::renderer_backend::detail::ComputeDirectionalShadowVisibilityForReceiver;
 using karma::renderer_backend::detail::ValidateResolvedDebugLineSemantics;
 using karma::renderer_backend::detail::ValidateResolvedEnvironmentLightingSemantics;
 using karma::renderer_backend::detail::ValidateResolvedMaterialLighting;
@@ -214,6 +215,102 @@ bool RunShadowMapBuildAndSampleChecks() {
     const float shadow_factor = ComputeDirectionalShadowFactor(shadow_map, sampled_visibility);
     if (!std::isfinite(shadow_factor) || shadow_factor < 0.0f || shadow_factor > 1.0f) {
         std::cerr << "shadow factor out of expected range, got " << shadow_factor << "\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool RunShadowReceiverVisibilityChecks() {
+    karma::renderer::DirectionalLightData light{};
+    light.direction = glm::vec3(0.35f, -1.0f, -0.25f);
+    light.shadow.enabled = true;
+    light.shadow.strength = 0.85f;
+    light.shadow.bias = 0.0005f;
+    light.shadow.extent = 10.0f;
+    light.shadow.map_size = 256;
+    light.shadow.pcf_radius = 1;
+
+    const ResolvedDirectionalShadowSemantics semantics = ResolveDirectionalShadowSemantics(light);
+    if (!ValidateResolvedDirectionalShadowSemantics(semantics)) {
+        std::cerr << "shadow semantics unexpectedly invalid for receiver visibility checks\n";
+        return false;
+    }
+
+    std::vector<glm::vec3> quad_positions{
+        {-1.0f, 0.0f, -1.0f},
+        {1.0f, 0.0f, -1.0f},
+        {1.0f, 0.0f, 1.0f},
+        {-1.0f, 0.0f, 1.0f},
+    };
+    std::vector<uint32_t> quad_indices{0, 1, 2, 0, 2, 3};
+
+    DirectionalShadowCaster occluder{};
+    occluder.transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 2.0f, 0.0f));
+    occluder.positions = &quad_positions;
+    occluder.indices = &quad_indices;
+    occluder.sample_center = glm::vec3(0.0f, 0.0f, 0.0f);
+    occluder.casts_shadow = true;
+    const std::vector<DirectionalShadowCaster> occluders{occluder};
+
+    const DirectionalShadowMap shadow_map = BuildDirectionalShadowMap(semantics, light.direction, occluders);
+    if (!shadow_map.ready || shadow_map.depth.empty()) {
+        std::cerr << "shadow map build failed for receiver visibility checks\n";
+        return false;
+    }
+
+    const glm::mat4 receiver_transform = glm::mat4(1.0f);
+    const float receiver_visibility = ComputeDirectionalShadowVisibilityForReceiver(
+        shadow_map,
+        receiver_transform,
+        &quad_positions,
+        &quad_indices,
+        glm::vec3(0.0f, 0.0f, 0.0f));
+    const float receiver_repeat = ComputeDirectionalShadowVisibilityForReceiver(
+        shadow_map,
+        receiver_transform,
+        &quad_positions,
+        &quad_indices,
+        glm::vec3(0.0f, 0.0f, 0.0f));
+    if (!std::isfinite(receiver_visibility) || receiver_visibility < 0.0f || receiver_visibility > 1.0f) {
+        std::cerr << "receiver visibility out of range: " << receiver_visibility << "\n";
+        return false;
+    }
+    if (!NearlyEqual(receiver_visibility, receiver_repeat, 1e-6f)) {
+        std::cerr << "receiver visibility should be deterministic for identical input\n";
+        return false;
+    }
+
+    const float outside_visibility =
+        SampleDirectionalShadowVisibility(shadow_map, glm::vec3(6.0f, 0.0f, 6.0f));
+    if (!std::isfinite(outside_visibility) || outside_visibility < 0.0f || outside_visibility > 1.0f) {
+        std::cerr << "outside visibility out of range: " << outside_visibility << "\n";
+        return false;
+    }
+    if (!(receiver_visibility + 0.05f < outside_visibility)) {
+        std::cerr << "expected receiver sampling visibility to show stronger shadowing than outside point (receiver="
+                  << receiver_visibility << ", outside=" << outside_visibility << ")\n";
+        return false;
+    }
+
+    ResolvedDirectionalShadowSemantics high_bias_semantics = semantics;
+    high_bias_semantics.bias = 0.02f;
+    const DirectionalShadowMap high_bias_map =
+        BuildDirectionalShadowMap(high_bias_semantics, light.direction, occluders);
+    if (!high_bias_map.ready) {
+        std::cerr << "high-bias shadow map unexpectedly not ready\n";
+        return false;
+    }
+    const float high_bias_receiver_visibility = ComputeDirectionalShadowVisibilityForReceiver(
+        high_bias_map,
+        receiver_transform,
+        &quad_positions,
+        &quad_indices,
+        glm::vec3(0.0f, 0.0f, 0.0f));
+    if (!std::isfinite(high_bias_receiver_visibility) ||
+        high_bias_receiver_visibility < receiver_visibility) {
+        std::cerr << "expected higher bias to avoid additional shadowing (base=" << receiver_visibility
+                  << ", high-bias=" << high_bias_receiver_visibility << ")\n";
         return false;
     }
 
@@ -2530,6 +2627,9 @@ int main() {
         return 1;
     }
     if (!RunShadowMapBuildAndSampleChecks()) {
+        return 1;
+    }
+    if (!RunShadowReceiverVisibilityChecks()) {
         return 1;
     }
     if (!RunEnvironmentSemanticsChecks()) {
