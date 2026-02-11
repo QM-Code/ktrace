@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -19,6 +20,7 @@ struct ResolvedMaterialSemantics {
     float roughness = 1.0f;
     float normal_variation = 0.0f;
     float occlusion = 1.0f;
+    float occlusion_edge = 0.0f;
     renderer::MaterialAlphaMode alpha_mode = renderer::MaterialAlphaMode::Opaque;
     float alpha_cutoff = 0.5f;
     bool double_sided = false;
@@ -260,6 +262,371 @@ inline float ResolveOcclusionPolicy(const ScalarSampleStats& stats, float occlus
     return resolved;
 }
 
+inline float ResolveOcclusionEdgePolicy(const ScalarSampleStats& stats) {
+    const float contrast = std::clamp(stats.max - stats.min, 0.0f, 1.0f);
+    const float variance_norm = std::clamp(std::sqrt(std::max(stats.variance, 0.0f)) * 2.0f, 0.0f, 1.0f);
+    const float center_weight = 1.0f - std::clamp(std::abs(stats.mean - 0.5f) * 2.0f, 0.0f, 1.0f);
+    return std::clamp(0.60f * contrast * ((0.50f * variance_norm) + (0.50f * center_weight)), 0.0f, 1.0f);
+}
+
+inline constexpr int kTextureLifecycleMaxDimension = 1024;
+inline constexpr std::size_t kTextureLifecycleMaxTexels = 1024u * 1024u;
+
+enum class MaterialTextureSemantic : uint8_t {
+    Normal = 0,
+    Occlusion = 1,
+};
+
+struct TextureLifecycleIngestion {
+    std::optional<renderer::MeshData::TextureData> texture{};
+    bool bounded = false;
+};
+
+struct MaterialTextureSetLifecycleIngestion {
+    TextureLifecycleIngestion normal{};
+    TextureLifecycleIngestion occlusion{};
+};
+
+struct MaterialShaderPathTextureIngestion {
+    std::optional<renderer::MeshData::TextureData> texture{};
+    bool used_albedo_texture = false;
+    bool used_normal_lifecycle_texture = false;
+    bool used_occlusion_lifecycle_texture = false;
+    bool bounded = false;
+};
+
+enum class MaterialShaderTextureInputPath : uint8_t {
+    Disabled = 0,
+    DirectMultiSampler = 1,
+    CompositeFallback = 2,
+};
+
+struct MaterialShaderInputContract {
+    MaterialShaderTextureInputPath path = MaterialShaderTextureInputPath::Disabled;
+    std::optional<renderer::MeshData::TextureData> direct_albedo_texture{};
+    std::optional<renderer::MeshData::TextureData> direct_normal_texture{};
+    std::optional<renderer::MeshData::TextureData> direct_occlusion_texture{};
+    std::optional<renderer::MeshData::TextureData> fallback_composite_texture{};
+    bool used_albedo_texture = false;
+    bool used_normal_lifecycle_texture = false;
+    bool used_occlusion_lifecycle_texture = false;
+    bool bounded = false;
+};
+
+inline std::pair<int, int> ResolveBoundedLifecycleDimensions(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return {0, 0};
+    }
+    int bounded_width = width;
+    int bounded_height = height;
+
+    if (bounded_width > kTextureLifecycleMaxDimension || bounded_height > kTextureLifecycleMaxDimension) {
+        const float scale_x =
+            static_cast<float>(kTextureLifecycleMaxDimension) / static_cast<float>(bounded_width);
+        const float scale_y =
+            static_cast<float>(kTextureLifecycleMaxDimension) / static_cast<float>(bounded_height);
+        const float scale = std::min(scale_x, scale_y);
+        bounded_width = std::max(1, static_cast<int>(std::floor(static_cast<float>(bounded_width) * scale)));
+        bounded_height = std::max(1, static_cast<int>(std::floor(static_cast<float>(bounded_height) * scale)));
+    }
+
+    std::size_t bounded_texels =
+        static_cast<std::size_t>(bounded_width) * static_cast<std::size_t>(bounded_height);
+    if (bounded_texels > kTextureLifecycleMaxTexels) {
+        const float scale = std::sqrt(
+            static_cast<float>(kTextureLifecycleMaxTexels) / static_cast<float>(bounded_texels));
+        bounded_width = std::max(1, static_cast<int>(std::floor(static_cast<float>(bounded_width) * scale)));
+        bounded_height = std::max(1, static_cast<int>(std::floor(static_cast<float>(bounded_height) * scale)));
+        while (static_cast<std::size_t>(bounded_width) * static_cast<std::size_t>(bounded_height) >
+               kTextureLifecycleMaxTexels) {
+            if (bounded_width >= bounded_height && bounded_width > 1) {
+                --bounded_width;
+            } else if (bounded_height > 1) {
+                --bounded_height;
+            } else {
+                break;
+            }
+        }
+    }
+
+    return {bounded_width, bounded_height};
+}
+
+inline TextureLifecycleIngestion IngestMaterialTextureLifecycle(
+    const std::optional<renderer::MeshData::TextureData>& texture,
+    MaterialTextureSemantic semantic) {
+    TextureLifecycleIngestion ingestion{};
+    if (!texture || !IsUsableTexture(*texture)) {
+        return ingestion;
+    }
+
+    const int src_width = texture->width;
+    const int src_height = texture->height;
+    const auto [dst_width, dst_height] = ResolveBoundedLifecycleDimensions(src_width, src_height);
+    if (dst_width <= 0 || dst_height <= 0) {
+        return ingestion;
+    }
+
+    renderer::MeshData::TextureData out{};
+    out.width = dst_width;
+    out.height = dst_height;
+    out.channels = (semantic == MaterialTextureSemantic::Occlusion) ? 1 : 3;
+    out.pixels.assign(
+        static_cast<std::size_t>(dst_width) * static_cast<std::size_t>(dst_height) *
+            static_cast<std::size_t>(out.channels),
+        0u);
+
+    const std::size_t src_width_u = static_cast<std::size_t>(src_width);
+    const std::size_t src_height_u = static_cast<std::size_t>(src_height);
+    for (std::size_t y = 0; y < static_cast<std::size_t>(dst_height); ++y) {
+        const std::size_t src_y = std::min(
+            src_height_u - 1u,
+            (y * src_height_u) / static_cast<std::size_t>(dst_height));
+        for (std::size_t x = 0; x < static_cast<std::size_t>(dst_width); ++x) {
+            const std::size_t src_x = std::min(
+                src_width_u - 1u,
+                (x * src_width_u) / static_cast<std::size_t>(dst_width));
+            const glm::vec4 sample = SampleTextureTexel(*texture, src_x, src_y);
+
+            const std::size_t dst = ((y * static_cast<std::size_t>(dst_width)) + x) *
+                                    static_cast<std::size_t>(out.channels);
+            if (semantic == MaterialTextureSemantic::Occlusion) {
+                out.pixels[dst] = static_cast<uint8_t>(std::clamp(sample.r, 0.0f, 1.0f) * 255.0f + 0.5f);
+            } else {
+                out.pixels[dst + 0u] = static_cast<uint8_t>(std::clamp(sample.r, 0.0f, 1.0f) * 255.0f + 0.5f);
+                out.pixels[dst + 1u] = static_cast<uint8_t>(std::clamp(sample.g, 0.0f, 1.0f) * 255.0f + 0.5f);
+                out.pixels[dst + 2u] = static_cast<uint8_t>(std::clamp(sample.b, 0.0f, 1.0f) * 255.0f + 0.5f);
+            }
+        }
+    }
+
+    ingestion.bounded = (dst_width != src_width) || (dst_height != src_height);
+    ingestion.texture = std::move(out);
+    return ingestion;
+}
+
+inline TextureLifecycleIngestion IngestMaterialTextureLifecycle(
+    const renderer::MeshData::TextureData& texture,
+    MaterialTextureSemantic semantic) {
+    return IngestMaterialTextureLifecycle(
+        std::optional<renderer::MeshData::TextureData>{texture}, semantic);
+}
+
+inline MaterialTextureSetLifecycleIngestion IngestMaterialTextureSetForLifecycle(
+    const renderer::MaterialDesc& material) {
+    MaterialTextureSetLifecycleIngestion ingestion{};
+    ingestion.normal = IngestMaterialTextureLifecycle(material.normal, MaterialTextureSemantic::Normal);
+    ingestion.occlusion = IngestMaterialTextureLifecycle(material.occlusion, MaterialTextureSemantic::Occlusion);
+    return ingestion;
+}
+
+inline glm::vec4 SampleTextureTexelMapped(const renderer::MeshData::TextureData& texture,
+                                          std::size_t x,
+                                          std::size_t y,
+                                          std::size_t target_width,
+                                          std::size_t target_height) {
+    if (!IsUsableTexture(texture) || target_width == 0u || target_height == 0u) {
+        return glm::vec4(1.0f);
+    }
+    const std::size_t src_width = static_cast<std::size_t>(texture.width);
+    const std::size_t src_height = static_cast<std::size_t>(texture.height);
+    const std::size_t src_x =
+        std::min(src_width - 1u, (x * src_width) / target_width);
+    const std::size_t src_y =
+        std::min(src_height - 1u, (y * src_height) / target_height);
+    return SampleTextureTexel(texture, src_x, src_y);
+}
+
+inline float ResolveShaderNormalModulation(const glm::vec4& normal_sample) {
+    const glm::vec2 encoded_xy = glm::vec2(normal_sample.r, normal_sample.g) * 2.0f - glm::vec2(1.0f);
+    const float normal_response = std::clamp(glm::length(encoded_xy), 0.0f, 1.0f);
+    return std::clamp(1.0f + (0.16f * std::max(0.0f, normal_response - 0.18f)), 1.0f, 1.18f);
+}
+
+inline float ResolveShaderOcclusionModulation(const glm::vec4& occlusion_sample) {
+    return std::clamp(0.25f + (0.75f * Clamp01(occlusion_sample.r, 1.0f)), 0.25f, 1.0f);
+}
+
+inline float ResolveShaderCombinedModulation(const std::optional<glm::vec4>& normal_sample,
+                                             const std::optional<glm::vec4>& occlusion_sample) {
+    float modulation = 1.0f;
+    if (normal_sample.has_value()) {
+        modulation *= ResolveShaderNormalModulation(*normal_sample);
+    }
+    if (occlusion_sample.has_value()) {
+        modulation *= ResolveShaderOcclusionModulation(*occlusion_sample);
+    }
+    return std::clamp(modulation, 0.20f, 1.20f);
+}
+
+inline glm::vec4 ResolveShaderPathBaseSample(
+    const glm::vec4& albedo_sample,
+    const std::optional<glm::vec4>& normal_sample,
+    const std::optional<glm::vec4>& occlusion_sample) {
+    const float modulation = ResolveShaderCombinedModulation(normal_sample, occlusion_sample);
+    const glm::vec3 rgb = glm::clamp(
+        glm::vec3(albedo_sample) * modulation,
+        glm::vec3(0.0f),
+        glm::vec3(1.0f));
+    return glm::vec4(rgb, std::clamp(albedo_sample.a, 0.0f, 1.0f));
+}
+
+inline glm::vec4 ResolveShaderPathDirectSample(
+    const renderer::MeshData::TextureData* albedo_texture,
+    const renderer::MeshData::TextureData* normal_texture,
+    const renderer::MeshData::TextureData* occlusion_texture,
+    std::size_t x,
+    std::size_t y,
+    std::size_t target_width,
+    std::size_t target_height) {
+    const glm::vec4 base = (albedo_texture && IsUsableTexture(*albedo_texture))
+        ? SampleTextureTexelMapped(*albedo_texture, x, y, target_width, target_height)
+        : glm::vec4(1.0f);
+    const std::optional<glm::vec4> normal = (normal_texture && IsUsableTexture(*normal_texture))
+        ? std::optional<glm::vec4>(SampleTextureTexelMapped(*normal_texture, x, y, target_width, target_height))
+        : std::nullopt;
+    const std::optional<glm::vec4> occlusion = (occlusion_texture && IsUsableTexture(*occlusion_texture))
+        ? std::optional<glm::vec4>(SampleTextureTexelMapped(*occlusion_texture, x, y, target_width, target_height))
+        : std::nullopt;
+    return ResolveShaderPathBaseSample(base, normal, occlusion);
+}
+
+inline MaterialShaderPathTextureIngestion BuildShaderPathTextureIngestion(
+    const renderer::MaterialDesc& material,
+    const MaterialTextureSetLifecycleIngestion& lifecycle_ingestion) {
+    MaterialShaderPathTextureIngestion ingestion{};
+    const bool has_albedo = material.albedo && IsUsableTexture(*material.albedo);
+    const bool has_normal =
+        lifecycle_ingestion.normal.texture && IsUsableTexture(*lifecycle_ingestion.normal.texture);
+    const bool has_occlusion =
+        lifecycle_ingestion.occlusion.texture &&
+        IsUsableTexture(*lifecycle_ingestion.occlusion.texture);
+    if (!has_albedo && !has_normal && !has_occlusion) {
+        return ingestion;
+    }
+
+    std::size_t width = has_albedo
+        ? static_cast<std::size_t>(material.albedo->width)
+        : 1u;
+    std::size_t height = has_albedo
+        ? static_cast<std::size_t>(material.albedo->height)
+        : 1u;
+    if (!has_albedo) {
+        if (has_normal) {
+            width = std::max(width, static_cast<std::size_t>(lifecycle_ingestion.normal.texture->width));
+            height = std::max(height, static_cast<std::size_t>(lifecycle_ingestion.normal.texture->height));
+        }
+        if (has_occlusion) {
+            width = std::max(width, static_cast<std::size_t>(lifecycle_ingestion.occlusion.texture->width));
+            height = std::max(height, static_cast<std::size_t>(lifecycle_ingestion.occlusion.texture->height));
+        }
+    }
+    if (width == 0u || height == 0u) {
+        return ingestion;
+    }
+
+    renderer::MeshData::TextureData out{};
+    out.width = static_cast<int>(width);
+    out.height = static_cast<int>(height);
+    out.channels = 4;
+    out.pixels.assign(width * height * 4u, 0u);
+
+    const renderer::MeshData::TextureData* albedo_texture = has_albedo ? &(*material.albedo) : nullptr;
+    const renderer::MeshData::TextureData* normal_texture = has_normal ? &(*lifecycle_ingestion.normal.texture) : nullptr;
+    const renderer::MeshData::TextureData* occlusion_texture =
+        has_occlusion ? &(*lifecycle_ingestion.occlusion.texture) : nullptr;
+
+    for (std::size_t y = 0; y < height; ++y) {
+        for (std::size_t x = 0; x < width; ++x) {
+            const glm::vec4 composed = ResolveShaderPathDirectSample(
+                albedo_texture,
+                normal_texture,
+                occlusion_texture,
+                x,
+                y,
+                width,
+                height);
+
+            const std::size_t dst = ((y * width) + x) * 4u;
+            out.pixels[dst + 0u] = static_cast<uint8_t>(composed.r * 255.0f + 0.5f);
+            out.pixels[dst + 1u] = static_cast<uint8_t>(composed.g * 255.0f + 0.5f);
+            out.pixels[dst + 2u] = static_cast<uint8_t>(composed.b * 255.0f + 0.5f);
+            out.pixels[dst + 3u] = static_cast<uint8_t>(composed.a * 255.0f + 0.5f);
+        }
+    }
+
+    ingestion.texture = std::move(out);
+    ingestion.used_albedo_texture = has_albedo;
+    ingestion.used_normal_lifecycle_texture = has_normal;
+    ingestion.used_occlusion_lifecycle_texture = has_occlusion;
+    ingestion.bounded = lifecycle_ingestion.normal.bounded || lifecycle_ingestion.occlusion.bounded;
+    return ingestion;
+}
+
+inline MaterialShaderPathTextureIngestion BuildShaderPathTextureIngestion(
+    const renderer::MaterialDesc& material) {
+    return BuildShaderPathTextureIngestion(
+        material, IngestMaterialTextureSetForLifecycle(material));
+}
+
+inline MaterialShaderInputContract ResolveMaterialShaderInputContract(
+    const renderer::MaterialDesc& material,
+    const MaterialTextureSetLifecycleIngestion& lifecycle_ingestion,
+    bool direct_multi_sampler_available) {
+    MaterialShaderInputContract contract{};
+
+    const bool has_albedo = material.albedo && IsUsableTexture(*material.albedo);
+    const bool has_normal =
+        lifecycle_ingestion.normal.texture && IsUsableTexture(*lifecycle_ingestion.normal.texture);
+    const bool has_occlusion =
+        lifecycle_ingestion.occlusion.texture &&
+        IsUsableTexture(*lifecycle_ingestion.occlusion.texture);
+
+    if (!has_albedo && !has_normal && !has_occlusion) {
+        return contract;
+    }
+
+    contract.used_albedo_texture = has_albedo;
+    contract.used_normal_lifecycle_texture = has_normal;
+    contract.used_occlusion_lifecycle_texture = has_occlusion;
+    contract.bounded = lifecycle_ingestion.normal.bounded || lifecycle_ingestion.occlusion.bounded;
+
+    if (direct_multi_sampler_available && (has_normal || has_occlusion)) {
+        contract.path = MaterialShaderTextureInputPath::DirectMultiSampler;
+        if (has_albedo) {
+            contract.direct_albedo_texture = *material.albedo;
+        }
+        if (has_normal) {
+            contract.direct_normal_texture = *lifecycle_ingestion.normal.texture;
+        }
+        if (has_occlusion) {
+            contract.direct_occlusion_texture = *lifecycle_ingestion.occlusion.texture;
+        }
+        return contract;
+    }
+
+    const MaterialShaderPathTextureIngestion composite_ingestion =
+        BuildShaderPathTextureIngestion(material, lifecycle_ingestion);
+    if (composite_ingestion.texture) {
+        contract.path = MaterialShaderTextureInputPath::CompositeFallback;
+        contract.fallback_composite_texture = composite_ingestion.texture;
+        contract.used_albedo_texture = composite_ingestion.used_albedo_texture;
+        contract.used_normal_lifecycle_texture = composite_ingestion.used_normal_lifecycle_texture;
+        contract.used_occlusion_lifecycle_texture = composite_ingestion.used_occlusion_lifecycle_texture;
+        contract.bounded = composite_ingestion.bounded;
+    }
+    return contract;
+}
+
+inline MaterialShaderInputContract ResolveMaterialShaderInputContract(
+    const renderer::MaterialDesc& material,
+    bool direct_multi_sampler_available) {
+    return ResolveMaterialShaderInputContract(
+        material,
+        IngestMaterialTextureSetForLifecycle(material),
+        direct_multi_sampler_available);
+}
+
 inline std::vector<uint8_t> ExpandTextureToRgba8(const renderer::MeshData::TextureData& texture) {
     if (!IsUsableTexture(texture)) {
         return {};
@@ -285,6 +652,8 @@ inline ResolvedMaterialSemantics ResolveMaterialSemantics(const renderer::Materi
     ResolvedMaterialSemantics semantics{};
     semantics.alpha_mode = material.alpha_mode;
     semantics.double_sided = material.double_sided;
+    const MaterialTextureSetLifecycleIngestion texture_ingestion =
+        IngestMaterialTextureSetForLifecycle(material);
 
     semantics.base_color.r = ClampPositive(material.base_color.r, 1.0f, 4.0f);
     semantics.base_color.g = ClampPositive(material.base_color.g, 1.0f, 4.0f);
@@ -316,15 +685,19 @@ inline ResolvedMaterialSemantics ResolveMaterialSemantics(const renderer::Materi
         semantics.used_emissive_texture = true;
     }
 
-    if (material.normal && IsUsableTexture(*material.normal)) {
-        const ScalarSampleStats normal_stats = SampleNormalVariationStats(*material.normal);
+    if (texture_ingestion.normal.texture && IsUsableTexture(*texture_ingestion.normal.texture)) {
+        const ScalarSampleStats normal_stats =
+            SampleNormalVariationStats(*texture_ingestion.normal.texture);
         semantics.normal_variation = ResolveNormalVariationPolicy(normal_stats, normal_scale);
         semantics.used_normal_texture = true;
     }
 
-    if (material.occlusion && IsUsableTexture(*material.occlusion)) {
-        const ScalarSampleStats occlusion_stats = SampleOcclusionStats(*material.occlusion);
+    if (texture_ingestion.occlusion.texture &&
+        IsUsableTexture(*texture_ingestion.occlusion.texture)) {
+        const ScalarSampleStats occlusion_stats =
+            SampleOcclusionStats(*texture_ingestion.occlusion.texture);
         semantics.occlusion = ResolveOcclusionPolicy(occlusion_stats, occlusion_strength);
+        semantics.occlusion_edge = ResolveOcclusionEdgePolicy(occlusion_stats);
         semantics.used_occlusion_texture = true;
     }
 
@@ -369,7 +742,8 @@ inline bool ValidateResolvedMaterialSemantics(const ResolvedMaterialSemantics& s
     if (!std::isfinite(semantics.metallic) || !std::isfinite(semantics.roughness) || !std::isfinite(semantics.alpha_cutoff)) {
         return false;
     }
-    if (!std::isfinite(semantics.normal_variation) || !std::isfinite(semantics.occlusion)) {
+    if (!std::isfinite(semantics.normal_variation) || !std::isfinite(semantics.occlusion) ||
+        !std::isfinite(semantics.occlusion_edge)) {
         return false;
     }
     if (semantics.metallic < 0.0f || semantics.metallic > 1.0f) {
@@ -388,6 +762,9 @@ inline bool ValidateResolvedMaterialSemantics(const ResolvedMaterialSemantics& s
         return false;
     }
     if (semantics.occlusion < 0.0f || semantics.occlusion > 1.0f) {
+        return false;
+    }
+    if (semantics.occlusion_edge < 0.0f || semantics.occlusion_edge > 1.0f) {
         return false;
     }
     return true;

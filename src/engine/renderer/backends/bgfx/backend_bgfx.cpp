@@ -1,6 +1,7 @@
 #include "karma/renderer/backend.hpp"
 
 #include "../backend_factory_internal.hpp"
+#include "../direct_sampler_observability_internal.hpp"
 #include "../debug_line_internal.hpp"
 #include "../directional_shadow_internal.hpp"
 #include "../environment_lighting_internal.hpp"
@@ -20,13 +21,19 @@
 #include <glm/glm.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <string>
+#include <filesystem>
 #include <fstream>
-#include <unordered_map>
+#include <iomanip>
+#include <optional>
+#include <sstream>
+#include <string>
 #include <array>
+#include <unordered_map>
 #include <vector>
 
 namespace karma::renderer_backend {
@@ -68,6 +75,422 @@ bgfx::ShaderHandle loadShader(const std::string& path) {
     return bgfx::createShader(mem);
 }
 
+std::string TrimAscii(const std::string& input) {
+    std::size_t start = 0u;
+    while (start < input.size() && std::isspace(static_cast<unsigned char>(input[start])) != 0) {
+        ++start;
+    }
+    std::size_t end = input.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(input[end - 1u])) != 0) {
+        --end;
+    }
+    return input.substr(start, end - start);
+}
+
+constexpr int kBgfxIntegrityManifestVersion = 1;
+constexpr const char* kBgfxIntegrityManifestAlgorithm = "fnv1a64";
+constexpr const char* kBgfxIntegritySignedEnvelopeMode = "v1";
+
+bool ParseBgfxIntegrityManifestVersion(const std::string& token, int& out_version) {
+    if (token.empty()) {
+        return false;
+    }
+    int version = 0;
+    for (char ch : token) {
+        if (std::isdigit(static_cast<unsigned char>(ch)) == 0) {
+            return false;
+        }
+        version = (version * 10) + (ch - '0');
+    }
+    out_version = version;
+    return true;
+}
+
+bool ParseBgfxIntegrityManifestHash(const std::string& token, std::string& out_hash) {
+    std::string candidate = TrimAscii(token);
+    if (candidate.rfind("0x", 0u) == 0u || candidate.rfind("0X", 0u) == 0u) {
+        candidate.erase(0u, 2u);
+    }
+    if (candidate.size() != 16u) {
+        return false;
+    }
+    for (char& ch : candidate) {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (std::isxdigit(uch) == 0) {
+            return false;
+        }
+        ch = static_cast<char>(std::tolower(uch));
+    }
+    out_hash = candidate;
+    return true;
+}
+
+bool ParseBgfxIntegrityManifestEnvelopeSignature(
+    const std::string& token, std::string& out_signature) {
+    std::string candidate = TrimAscii(token);
+    if (candidate.rfind("0x", 0u) == 0u || candidate.rfind("0X", 0u) == 0u) {
+        candidate.erase(0u, 2u);
+    }
+    if (candidate.size() < 16u || (candidate.size() % 2u) != 0u) {
+        return false;
+    }
+    for (char& ch : candidate) {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (std::isxdigit(uch) == 0) {
+            return false;
+        }
+        ch = static_cast<char>(std::tolower(uch));
+    }
+    out_signature = candidate;
+    return true;
+}
+
+bool ValidateBgfxIntegrityManifestTrustChainToken(const std::string& token) {
+    const std::string candidate = TrimAscii(token);
+    if (candidate.empty()) {
+        return false;
+    }
+    for (char ch : candidate) {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        const bool allowed = (std::isalnum(uch) != 0) ||
+                             ch == '.' || ch == '_' || ch == '-' || ch == ':' || ch == '/';
+        if (!allowed) {
+            return false;
+        }
+    }
+    return true;
+}
+
+struct ParsedBgfxIntegrityManifest {
+    bool parse_ready = false;
+    std::string parse_reason = "source_missing_and_integrity_manifest_parse_failed";
+    bool version_supported = false;
+    bool algorithm_supported = false;
+    bool hash_present = false;
+    std::string hash{};
+    bool signed_envelope_declared = false;
+};
+
+ParsedBgfxIntegrityManifest ParseBgfxIntegrityManifest(const std::string& manifest_path) {
+    ParsedBgfxIntegrityManifest manifest{};
+    std::ifstream manifest_file(manifest_path);
+    if (!manifest_file) {
+        return manifest;
+    }
+
+    std::unordered_map<std::string, std::string> fields{};
+    const auto is_allowed_key = [](const std::string& key) -> bool {
+        return key == "version" ||
+               key == "algorithm" ||
+               key == "hash" ||
+               key == "signed_envelope" ||
+               key == "signature" ||
+               key == "trust_chain";
+    };
+    std::string line;
+    while (std::getline(manifest_file, line)) {
+        // Canonicalization boundary: accept LF and CRLF (normalize trailing '\r'),
+        // but reject embedded carriage returns or tabs to keep manifest shape strict.
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.find('\r') != std::string::npos) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_noncanonical_line_endings";
+            return manifest;
+        }
+        const std::size_t comment_pos = line.find('#');
+        if (comment_pos != std::string::npos) {
+            line.erase(comment_pos);
+        }
+        if (line.find('\t') != std::string::npos) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_noncanonical_whitespace";
+            return manifest;
+        }
+        const std::string trimmed = TrimAscii(line);
+        if (trimmed.empty()) {
+            continue;
+        }
+        const std::size_t equals_pos = trimmed.find('=');
+        if (equals_pos == std::string::npos) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_invalid_token_form";
+            return manifest;
+        }
+        std::string key = TrimAscii(trimmed.substr(0u, equals_pos));
+        std::string value = TrimAscii(trimmed.substr(equals_pos + 1u));
+        if (key.empty() || value.empty()) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_invalid_token_form";
+            return manifest;
+        }
+        for (char ch : key) {
+            if (std::isspace(static_cast<unsigned char>(ch)) != 0) {
+                manifest.parse_reason = "source_missing_and_integrity_manifest_noncanonical_whitespace";
+                return manifest;
+            }
+        }
+        for (char ch : value) {
+            if (std::isspace(static_cast<unsigned char>(ch)) != 0) {
+                manifest.parse_reason = "source_missing_and_integrity_manifest_noncanonical_whitespace";
+                return manifest;
+            }
+        }
+        for (char& ch : key) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        if (!is_allowed_key(key)) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_unknown_key";
+            return manifest;
+        }
+        if (fields.find(key) != fields.end()) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_duplicate_key";
+            return manifest;
+        }
+        fields.emplace(key, value);
+    }
+
+    if (fields.empty()) {
+        manifest.parse_reason = "source_missing_and_integrity_manifest_invalid_token_form";
+        return manifest;
+    }
+
+    const auto version_it = fields.find("version");
+    if (version_it != fields.end()) {
+        int parsed_version = 0;
+        if (!ParseBgfxIntegrityManifestVersion(version_it->second, parsed_version)) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_invalid_value_form";
+            return manifest;
+        }
+        manifest.version_supported = (parsed_version == kBgfxIntegrityManifestVersion);
+    }
+
+    const auto algorithm_it = fields.find("algorithm");
+    if (algorithm_it != fields.end()) {
+        std::string algorithm = TrimAscii(algorithm_it->second);
+        for (char& ch : algorithm) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        if (algorithm.empty()) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_invalid_value_form";
+            return manifest;
+        }
+        for (char ch : algorithm) {
+            const unsigned char uch = static_cast<unsigned char>(ch);
+            const bool allowed = (std::isalnum(uch) != 0) || ch == '-' || ch == '_';
+            if (!allowed) {
+                manifest.parse_reason = "source_missing_and_integrity_manifest_invalid_value_form";
+                return manifest;
+            }
+        }
+        manifest.algorithm_supported = (algorithm == kBgfxIntegrityManifestAlgorithm);
+    }
+
+    const auto hash_it = fields.find("hash");
+    if (hash_it != fields.end()) {
+        std::string normalized_hash{};
+        if (!ParseBgfxIntegrityManifestHash(hash_it->second, normalized_hash)) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_invalid_value_form";
+            return manifest;
+        }
+        manifest.hash_present = true;
+        manifest.hash = normalized_hash;
+    }
+
+    const auto signed_envelope_it = fields.find("signed_envelope");
+    const auto signature_it = fields.find("signature");
+    const auto trust_chain_it = fields.find("trust_chain");
+    const bool has_signature = (signature_it != fields.end());
+    const bool has_trust_chain = (trust_chain_it != fields.end());
+
+    if (signed_envelope_it == fields.end()) {
+        if (has_signature || has_trust_chain) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_signed_envelope_metadata_without_mode";
+            return manifest;
+        }
+    } else {
+        std::string signed_envelope_mode = TrimAscii(signed_envelope_it->second);
+        for (char& ch : signed_envelope_mode) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        if (signed_envelope_mode.empty()) {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_signed_envelope_invalid_value_form";
+            return manifest;
+        }
+        if (signed_envelope_mode == "none") {
+            if (has_signature || has_trust_chain) {
+                manifest.parse_reason = "source_missing_and_integrity_manifest_signed_envelope_metadata_unexpected";
+                return manifest;
+            }
+        } else if (signed_envelope_mode == kBgfxIntegritySignedEnvelopeMode) {
+            if (!has_signature || !has_trust_chain) {
+                manifest.parse_reason = "source_missing_and_integrity_manifest_signed_envelope_metadata_missing";
+                return manifest;
+            }
+            std::string normalized_signature{};
+            if (!ParseBgfxIntegrityManifestEnvelopeSignature(signature_it->second, normalized_signature)) {
+                manifest.parse_reason = "source_missing_and_integrity_manifest_signed_envelope_invalid_value_form";
+                return manifest;
+            }
+            if (!ValidateBgfxIntegrityManifestTrustChainToken(trust_chain_it->second)) {
+                manifest.parse_reason = "source_missing_and_integrity_manifest_signed_envelope_invalid_value_form";
+                return manifest;
+            }
+            manifest.signed_envelope_declared = true;
+        } else {
+            manifest.parse_reason = "source_missing_and_integrity_manifest_signed_envelope_invalid_value_form";
+            return manifest;
+        }
+    }
+
+    manifest.parse_ready = true;
+    return manifest;
+}
+
+std::optional<std::string> ComputeFnv1a64FileHash(const std::string& path) {
+    std::ifstream binary_file(path, std::ios::binary);
+    if (!binary_file) {
+        return std::nullopt;
+    }
+    std::uint64_t hash = UINT64_C(14695981039346656037);
+    std::array<char, 4096> buffer{};
+    while (binary_file) {
+        binary_file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        const std::streamsize bytes = binary_file.gcount();
+        for (std::streamsize i = 0; i < bytes; ++i) {
+            hash ^= static_cast<unsigned char>(buffer[static_cast<std::size_t>(i)]);
+            hash *= UINT64_C(1099511628211);
+        }
+    }
+    if (!binary_file.eof()) {
+        return std::nullopt;
+    }
+    std::ostringstream encoded;
+    encoded << std::hex << std::nouppercase << std::setfill('0') << std::setw(16) << hash;
+    return encoded.str();
+}
+
+struct BgfxDirectSamplerShaderAlignment {
+    bool source_exists = false;
+    bool source_declares_direct_contract = false;
+    bool binary_exists = false;
+    bool binary_non_empty = false;
+    bool binary_up_to_date = false;
+    bool source_absent_integrity_ready = false;
+    bool source_present_mode = false;
+    bool source_absent_compat_mode = false;
+    bool aligned = false;
+    std::string source_path{};
+    std::string binary_path{};
+    std::string integrity_manifest_path{};
+    std::string source_absent_integrity_reason{"source_missing_and_integrity_contract_unavailable"};
+    std::string reason{"uninitialized"};
+};
+
+BgfxDirectSamplerShaderAlignment EvaluateBgfxDirectSamplerShaderAlignment() {
+    namespace fs = std::filesystem;
+    BgfxDirectSamplerShaderAlignment report{};
+    report.source_path = karma::data::Resolve("bgfx/shaders/mesh/fs_mesh.sc").string();
+    report.binary_path = karma::data::Resolve("bgfx/shaders/bin/vk/mesh/fs_mesh.bin").string();
+    report.integrity_manifest_path = report.binary_path + ".integrity";
+
+    std::error_code ec{};
+    report.source_exists = fs::exists(report.source_path, ec);
+    if (!ec && report.source_exists) {
+        std::ifstream source_file(report.source_path, std::ios::binary);
+        std::string source_text((std::istreambuf_iterator<char>(source_file)), std::istreambuf_iterator<char>());
+        const bool has_mode = source_text.find("uniform vec4 u_textureMode;") != std::string::npos;
+        const bool has_normal = source_text.find("SAMPLER2D(s_normal, 1);") != std::string::npos;
+        const bool has_occlusion = source_text.find("SAMPLER2D(s_occlusion, 2);") != std::string::npos;
+        report.source_declares_direct_contract = has_mode && has_normal && has_occlusion;
+    }
+
+    ec.clear();
+    report.binary_exists = fs::exists(report.binary_path, ec);
+    if (!ec && report.binary_exists) {
+        ec.clear();
+        const std::uintmax_t size = fs::file_size(report.binary_path, ec);
+        report.binary_non_empty = (!ec && size > 0u);
+    }
+
+    if (report.source_exists && report.binary_exists) {
+        ec.clear();
+        const auto source_time = fs::last_write_time(report.source_path, ec);
+        const bool source_time_ok = !ec;
+        ec.clear();
+        const auto binary_time = fs::last_write_time(report.binary_path, ec);
+        const bool binary_time_ok = !ec;
+        report.binary_up_to_date = source_time_ok && binary_time_ok && (binary_time >= source_time);
+    }
+    detail::BgfxSourceAbsentIntegrityReport source_absent_integrity{};
+    if (report.source_exists) {
+        source_absent_integrity.ready = true;
+        source_absent_integrity.reason = "source_present_integrity_not_required";
+    } else {
+        bool manifest_exists = false;
+        bool manifest_parse_ready = false;
+        std::string manifest_parse_reason = "source_missing_and_integrity_manifest_parse_failed";
+        bool manifest_version_supported = false;
+        bool manifest_algorithm_supported = false;
+        bool manifest_hash_present = false;
+        bool binary_hash_available = false;
+        bool hash_matches_manifest = false;
+        bool signed_envelope_declared = false;
+        constexpr bool kSignedEnvelopeVerificationAvailable = false;
+        ParsedBgfxIntegrityManifest parsed_manifest{};
+
+        ec.clear();
+        manifest_exists = fs::exists(report.integrity_manifest_path, ec) && !ec;
+        if (manifest_exists) {
+            parsed_manifest = ParseBgfxIntegrityManifest(report.integrity_manifest_path);
+            manifest_parse_ready = parsed_manifest.parse_ready;
+            manifest_parse_reason = parsed_manifest.parse_reason;
+            manifest_version_supported = parsed_manifest.version_supported;
+            manifest_algorithm_supported = parsed_manifest.algorithm_supported;
+            manifest_hash_present = parsed_manifest.hash_present;
+            signed_envelope_declared = parsed_manifest.signed_envelope_declared;
+        }
+
+        std::optional<std::string> actual_hash{};
+        if (report.binary_exists && report.binary_non_empty) {
+            actual_hash = ComputeFnv1a64FileHash(report.binary_path);
+        }
+        binary_hash_available = actual_hash.has_value();
+        hash_matches_manifest =
+            manifest_hash_present && binary_hash_available && (*actual_hash == parsed_manifest.hash);
+
+        source_absent_integrity = detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            detail::BgfxSourceAbsentIntegrityInput{
+                manifest_exists,
+                manifest_parse_ready,
+                manifest_parse_reason,
+                manifest_version_supported,
+                manifest_algorithm_supported,
+                manifest_hash_present,
+                binary_hash_available,
+                hash_matches_manifest,
+                signed_envelope_declared,
+                kSignedEnvelopeVerificationAvailable,
+            });
+    }
+    report.source_absent_integrity_ready = source_absent_integrity.ready;
+    report.source_absent_integrity_reason = source_absent_integrity.reason;
+
+    const detail::BgfxDirectSamplerAlignmentReport policy =
+        detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            detail::BgfxDirectSamplerAlignmentInput{
+                report.source_exists,
+                report.source_declares_direct_contract,
+                report.binary_exists,
+                report.binary_non_empty,
+                report.binary_up_to_date,
+                report.source_absent_integrity_ready,
+                report.source_absent_integrity_reason,
+            });
+    report.source_present_mode = policy.source_present_mode;
+    report.source_absent_compat_mode = policy.source_absent_compat_mode;
+    report.aligned = policy.ready;
+    report.reason = policy.reason;
+    return report;
+}
+
 struct Mesh {
     bgfx::VertexBufferHandle vbh = BGFX_INVALID_HANDLE;
     bgfx::IndexBufferHandle ibh = BGFX_INVALID_HANDLE;
@@ -81,6 +504,12 @@ struct Mesh {
 struct Material {
     detail::ResolvedMaterialSemantics semantics{};
     bgfx::TextureHandle tex = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle normal_tex = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle occlusion_tex = BGFX_INVALID_HANDLE;
+    detail::MaterialShaderTextureInputPath shader_input_path =
+        detail::MaterialShaderTextureInputPath::Disabled;
+    bool shader_uses_normal_input = false;
+    bool shader_uses_occlusion_input = false;
 };
 
 class BgfxCallback final : public bgfx::CallbackI {
@@ -226,8 +655,49 @@ class BgfxBackend final : public Backend {
         u_light_color_ = bgfx::createUniform("u_lightColor", bgfx::UniformType::Vec4);
         u_ambient_color_ = bgfx::createUniform("u_ambientColor", bgfx::UniformType::Vec4);
         u_unlit_ = bgfx::createUniform("u_unlit", bgfx::UniformType::Vec4);
+        u_texture_mode_ = bgfx::createUniform("u_textureMode", bgfx::UniformType::Vec4);
         s_tex_ = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
+        s_normal_ = bgfx::createUniform("s_normal", bgfx::UniformType::Sampler);
+        s_occlusion_ = bgfx::createUniform("s_occlusion", bgfx::UniformType::Sampler);
         white_tex_ = createWhiteTexture();
+        const bool uniform_contract_ready =
+            bgfx::isValid(program_) &&
+            bgfx::isValid(s_tex_) &&
+            bgfx::isValid(s_normal_) &&
+            bgfx::isValid(s_occlusion_) &&
+            bgfx::isValid(u_texture_mode_);
+        direct_sampler_shader_alignment_ = EvaluateBgfxDirectSamplerShaderAlignment();
+        direct_sampler_contract_report_ = detail::EvaluateBgfxDirectSamplerContract(
+            uniform_contract_ready,
+            detail::BgfxDirectSamplerAlignmentReport{
+                direct_sampler_shader_alignment_.source_present_mode,
+                direct_sampler_shader_alignment_.source_absent_compat_mode,
+                direct_sampler_shader_alignment_.aligned,
+                direct_sampler_shader_alignment_.reason,
+            });
+        supports_direct_multi_sampler_inputs_ = direct_sampler_contract_report_.ready_for_direct_path;
+        direct_sampler_disable_reason_ = direct_sampler_contract_report_.reason;
+        KARMA_TRACE("render.bgfx",
+                    "direct sampler readiness uniforms={} aligned={} sourceModePresent={} sourceModeCompat={} sourceAbsentIntegrity={} enabled={} reason={} integrityReason={} source='{}' binary='{}' manifest='{}'",
+                    direct_sampler_contract_report_.uniform_contract_ready ? 1 : 0,
+                    direct_sampler_contract_report_.shader_alignment_ready ? 1 : 0,
+                    direct_sampler_shader_alignment_.source_present_mode ? 1 : 0,
+                    direct_sampler_shader_alignment_.source_absent_compat_mode ? 1 : 0,
+                    direct_sampler_shader_alignment_.source_absent_integrity_ready ? 1 : 0,
+                    supports_direct_multi_sampler_inputs_ ? 1 : 0,
+                    direct_sampler_disable_reason_,
+                    direct_sampler_shader_alignment_.source_absent_integrity_reason,
+                    direct_sampler_shader_alignment_.source_path,
+                    direct_sampler_shader_alignment_.binary_path,
+                    direct_sampler_shader_alignment_.integrity_manifest_path);
+        if (!supports_direct_multi_sampler_inputs_) {
+            spdlog::warn("Graphics(Bgfx): direct sampler path disabled (reason={}, integrityReason={}, source='{}', binary='{}', manifest='{}')",
+                         direct_sampler_disable_reason_,
+                         direct_sampler_shader_alignment_.source_absent_integrity_reason,
+                         direct_sampler_shader_alignment_.source_path,
+                         direct_sampler_shader_alignment_.binary_path,
+                         direct_sampler_shader_alignment_.integrity_manifest_path);
+        }
     }
 
     ~BgfxBackend() override {
@@ -240,6 +710,8 @@ class BgfxBackend final : public Backend {
         }
         for (auto& [id, material] : materials_) {
             if (bgfx::isValid(material.tex)) bgfx::destroy(material.tex);
+            if (bgfx::isValid(material.normal_tex)) bgfx::destroy(material.normal_tex);
+            if (bgfx::isValid(material.occlusion_tex)) bgfx::destroy(material.occlusion_tex);
         }
         if (bgfx::isValid(program_)) bgfx::destroy(program_);
         if (bgfx::isValid(u_color_)) bgfx::destroy(u_color_);
@@ -247,7 +719,10 @@ class BgfxBackend final : public Backend {
         if (bgfx::isValid(u_light_color_)) bgfx::destroy(u_light_color_);
         if (bgfx::isValid(u_ambient_color_)) bgfx::destroy(u_ambient_color_);
         if (bgfx::isValid(u_unlit_)) bgfx::destroy(u_unlit_);
+        if (bgfx::isValid(u_texture_mode_)) bgfx::destroy(u_texture_mode_);
         if (bgfx::isValid(s_tex_)) bgfx::destroy(s_tex_);
+        if (bgfx::isValid(s_normal_)) bgfx::destroy(s_normal_);
+        if (bgfx::isValid(s_occlusion_)) bgfx::destroy(s_occlusion_);
         if (bgfx::isValid(white_tex_)) bgfx::destroy(white_tex_);
         bgfx::shutdown();
     }
@@ -338,30 +813,72 @@ class BgfxBackend final : public Backend {
         if (!initialized_) {
             return renderer::kInvalidMaterial;
         }
-        const detail::ResolvedMaterialSemantics semantics = detail::ResolveMaterialSemantics(material);
+        const detail::MaterialTextureSetLifecycleIngestion texture_ingestion =
+            detail::IngestMaterialTextureSetForLifecycle(material);
+        const detail::MaterialShaderInputContract shader_input_contract =
+            detail::ResolveMaterialShaderInputContract(
+                material, texture_ingestion, supports_direct_multi_sampler_inputs_);
+        const detail::ResolvedMaterialSemantics semantics =
+            detail::ResolveMaterialSemantics(material);
         if (!detail::ValidateResolvedMaterialSemantics(semantics)) {
             spdlog::error("Graphics(Bgfx): material semantics validation failed");
             return renderer::kInvalidMaterial;
         }
         Material out;
         out.semantics = semantics;
-        if (material.albedo && !material.albedo->pixels.empty()) {
+        out.shader_input_path = shader_input_contract.path;
+        out.shader_uses_normal_input = shader_input_contract.used_normal_lifecycle_texture;
+        out.shader_uses_occlusion_input = shader_input_contract.used_occlusion_lifecycle_texture;
+        if (shader_input_contract.path == detail::MaterialShaderTextureInputPath::DirectMultiSampler &&
+            shader_input_contract.direct_albedo_texture) {
+            out.tex = createTextureFromData(*shader_input_contract.direct_albedo_texture);
+        } else if (shader_input_contract.path == detail::MaterialShaderTextureInputPath::CompositeFallback &&
+                   shader_input_contract.fallback_composite_texture) {
+            out.tex = createTextureFromData(*shader_input_contract.fallback_composite_texture);
+        } else if (material.albedo && !material.albedo->pixels.empty()) {
             out.tex = createTextureFromData(*material.albedo);
             KARMA_TRACE("render.bgfx", "createMaterial texture={} {}x{}",
                         bgfx::isValid(out.tex) ? 1 : 0,
                         material.albedo->width,
                         material.albedo->height);
         }
+        if (shader_input_contract.path == detail::MaterialShaderTextureInputPath::DirectMultiSampler &&
+            shader_input_contract.direct_normal_texture) {
+            out.normal_tex = createTextureFromData(*shader_input_contract.direct_normal_texture);
+        } else if (texture_ingestion.normal.texture) {
+            out.normal_tex = createTextureFromData(*texture_ingestion.normal.texture);
+        }
+        if (shader_input_contract.path == detail::MaterialShaderTextureInputPath::DirectMultiSampler &&
+            shader_input_contract.direct_occlusion_texture) {
+            out.occlusion_tex = createTextureFromData(*shader_input_contract.direct_occlusion_texture);
+        } else if (texture_ingestion.occlusion.texture) {
+            out.occlusion_tex = createTextureFromData(*texture_ingestion.occlusion.texture);
+        }
         KARMA_TRACE("render.bgfx",
-                    "createMaterial semantics metallic={:.3f} roughness={:.3f} normalVar={:.3f} occlusion={:.3f} emissive=({:.3f},{:.3f},{:.3f}) alphaMode={} alpha={} cutoff={:.3f} draw={} blend={} doubleSided={} mrTex={} emissiveTex={} normalTex={} occlusionTex={}",
+                    "createMaterial semantics metallic={:.3f} roughness={:.3f} normalVar={:.3f} occlusion={:.3f} occlusionEdge={:.3f} emissive=({:.3f},{:.3f},{:.3f}) alphaMode={} alpha={} cutoff={:.3f} draw={} blend={} doubleSided={} mrTex={} emissiveTex={} normalTex={} occlusionTex={} normalLifecycleTex={} occlusionLifecycleTex={} normalBounded={} occlusionBounded={} shaderPath={} shaderDirect={} shaderFallbackComposite={} shaderConsumesNormal={} shaderConsumesOcclusion={} shaderUsesAlbedo={} shaderTextureBounded={}",
                     out.semantics.metallic, out.semantics.roughness, out.semantics.normal_variation, out.semantics.occlusion,
+                    out.semantics.occlusion_edge,
                     out.semantics.emissive.r, out.semantics.emissive.g, out.semantics.emissive.b,
                     static_cast<int>(out.semantics.alpha_mode), out.semantics.base_color.a, out.semantics.alpha_cutoff,
                     out.semantics.draw ? 1 : 0, out.semantics.alpha_blend ? 1 : 0, out.semantics.double_sided ? 1 : 0,
                     out.semantics.used_metallic_roughness_texture ? 1 : 0,
                     out.semantics.used_emissive_texture ? 1 : 0,
                     out.semantics.used_normal_texture ? 1 : 0,
-                    out.semantics.used_occlusion_texture ? 1 : 0);
+                    out.semantics.used_occlusion_texture ? 1 : 0,
+                    bgfx::isValid(out.normal_tex) ? 1 : 0,
+                    bgfx::isValid(out.occlusion_tex) ? 1 : 0,
+                    texture_ingestion.normal.bounded ? 1 : 0,
+                    texture_ingestion.occlusion.bounded ? 1 : 0,
+                    static_cast<int>(shader_input_contract.path),
+                    shader_input_contract.path == detail::MaterialShaderTextureInputPath::DirectMultiSampler ? 1 : 0,
+                    (shader_input_contract.path == detail::MaterialShaderTextureInputPath::CompositeFallback &&
+                     shader_input_contract.fallback_composite_texture && bgfx::isValid(out.tex))
+                        ? 1
+                        : 0,
+                    shader_input_contract.used_normal_lifecycle_texture ? 1 : 0,
+                    shader_input_contract.used_occlusion_lifecycle_texture ? 1 : 0,
+                    shader_input_contract.used_albedo_texture ? 1 : 0,
+                    shader_input_contract.bounded ? 1 : 0);
         renderer::MaterialId id = next_material_id_++;
         materials_[id] = out;
         return id;
@@ -371,6 +888,8 @@ class BgfxBackend final : public Backend {
         auto it = materials_.find(material);
         if (it == materials_.end()) return;
         if (bgfx::isValid(it->second.tex)) bgfx::destroy(it->second.tex);
+        if (bgfx::isValid(it->second.normal_tex)) bgfx::destroy(it->second.normal_tex);
+        if (bgfx::isValid(it->second.occlusion_tex)) bgfx::destroy(it->second.occlusion_tex);
         materials_.erase(it);
     }
 
@@ -460,6 +979,11 @@ class BgfxBackend final : public Backend {
             shadow_semantics,
             light_.direction,
             shadow_casters);
+        std::size_t direct_sampler_draws = 0u;
+        std::size_t fallback_sampler_draws = 0u;
+        std::size_t direct_contract_draws = 0u;
+        std::size_t forced_fallback_draws = 0u;
+        std::size_t unexpected_direct_draws = 0u;
 
         for (const RenderableDraw& renderable : renderables) {
             const auto& item = *renderable.item;
@@ -503,12 +1027,66 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_light_color_, light_color);
             bgfx::setUniform(u_ambient_color_, ambient_color);
             bgfx::setUniform(u_unlit_, unlit);
+
+            const bool use_direct_sampler_path =
+                supports_direct_multi_sampler_inputs_ &&
+                renderable.material->shader_input_path == detail::MaterialShaderTextureInputPath::DirectMultiSampler;
+            const bool contract_requests_direct =
+                renderable.material->shader_input_path == detail::MaterialShaderTextureInputPath::DirectMultiSampler;
+            if (contract_requests_direct) {
+                ++direct_contract_draws;
+            }
+            if (use_direct_sampler_path) {
+                ++direct_sampler_draws;
+            } else {
+                ++fallback_sampler_draws;
+            }
+            if (use_direct_sampler_path && !contract_requests_direct) {
+                ++unexpected_direct_draws;
+            }
+            if (!use_direct_sampler_path && contract_requests_direct) {
+                ++forced_fallback_draws;
+            }
+            bgfx::TextureHandle direct_albedo_texture = white_tex_;
             if (bgfx::isValid(renderable.material->tex)) {
-                bgfx::setTexture(0, s_tex_, renderable.material->tex);
+                direct_albedo_texture = renderable.material->tex;
+            }
+            bgfx::TextureHandle fallback_base_texture = white_tex_;
+            if (bgfx::isValid(renderable.material->tex)) {
+                fallback_base_texture = renderable.material->tex;
             } else if (bgfx::isValid(renderable.mesh->tex)) {
-                bgfx::setTexture(0, s_tex_, renderable.mesh->tex);
-            } else if (bgfx::isValid(white_tex_)) {
-                bgfx::setTexture(0, s_tex_, white_tex_);
+                fallback_base_texture = renderable.mesh->tex;
+            }
+            const bgfx::TextureHandle base_texture = use_direct_sampler_path ? direct_albedo_texture : fallback_base_texture;
+            if (bgfx::isValid(base_texture)) {
+                bgfx::setTexture(0, s_tex_, base_texture);
+            }
+            if (bgfx::isValid(s_normal_)) {
+                const bgfx::TextureHandle normal_texture =
+                    (use_direct_sampler_path && bgfx::isValid(renderable.material->normal_tex))
+                        ? renderable.material->normal_tex
+                        : white_tex_;
+                if (bgfx::isValid(normal_texture)) {
+                    bgfx::setTexture(1, s_normal_, normal_texture);
+                }
+            }
+            if (bgfx::isValid(s_occlusion_)) {
+                const bgfx::TextureHandle occlusion_texture =
+                    (use_direct_sampler_path && bgfx::isValid(renderable.material->occlusion_tex))
+                        ? renderable.material->occlusion_tex
+                        : white_tex_;
+                if (bgfx::isValid(occlusion_texture)) {
+                    bgfx::setTexture(2, s_occlusion_, occlusion_texture);
+                }
+            }
+            if (bgfx::isValid(u_texture_mode_)) {
+                const float texture_mode[4] = {
+                    (use_direct_sampler_path && renderable.material->shader_uses_normal_input) ? 1.0f : 0.0f,
+                    (use_direct_sampler_path && renderable.material->shader_uses_occlusion_input) ? 1.0f : 0.0f,
+                    0.0f,
+                    0.0f,
+                };
+                bgfx::setUniform(u_texture_mode_, texture_mode);
             }
             uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA;
             if (!semantics.double_sided) {
@@ -520,6 +1098,67 @@ class BgfxBackend final : public Backend {
             bgfx::setState(state);
             bgfx::submit(0, program_);
         }
+        KARMA_TRACE_CHANGED(
+            "render.bgfx",
+            std::to_string(layer) + ":" +
+                std::to_string(renderables.size()) + ":" +
+                std::to_string(direct_sampler_draws) + ":" +
+                std::to_string(fallback_sampler_draws) + ":" +
+                std::to_string(supports_direct_multi_sampler_inputs_ ? 1 : 0) + ":" +
+                direct_sampler_disable_reason_,
+            "direct sampler frame layer={} draws={} direct={} fallback={} enabled={} reason={}",
+            layer,
+            renderables.size(),
+            direct_sampler_draws,
+            fallback_sampler_draws,
+            supports_direct_multi_sampler_inputs_ ? 1 : 0,
+            direct_sampler_disable_reason_);
+        const detail::DirectSamplerDrawInvariantReport draw_invariants =
+            detail::EvaluateDirectSamplerDrawInvariants(
+                detail::DirectSamplerDrawInvariantInput{
+                    supports_direct_multi_sampler_inputs_,
+                    renderables.size(),
+                    direct_contract_draws,
+                    direct_sampler_draws,
+                    fallback_sampler_draws,
+                    forced_fallback_draws,
+                    unexpected_direct_draws,
+                });
+        if (!draw_invariants.ok) {
+            spdlog::error(
+                "Graphics(Bgfx): direct sampler assertion failed (enabled={}, directContract={}, directDraws={}, fallbackDraws={}, forcedFallback={}, unexpectedDirect={}, reason={}, invariant={})",
+                supports_direct_multi_sampler_inputs_ ? 1 : 0,
+                direct_contract_draws,
+                direct_sampler_draws,
+                fallback_sampler_draws,
+                forced_fallback_draws,
+                unexpected_direct_draws,
+                direct_sampler_disable_reason_,
+                draw_invariants.reason);
+        }
+        KARMA_TRACE_CHANGED(
+            "render.bgfx",
+            std::to_string(layer) + ":" +
+                std::to_string(renderables.size()) + ":" +
+                std::to_string(direct_contract_draws) + ":" +
+                std::to_string(direct_sampler_draws) + ":" +
+                std::to_string(fallback_sampler_draws) + ":" +
+                std::to_string(forced_fallback_draws) + ":" +
+                std::to_string(unexpected_direct_draws) + ":" +
+                std::to_string(draw_invariants.ok ? 1 : 0) + ":" +
+                draw_invariants.reason,
+            "direct sampler assertions layer={} draws={} contractDirect={} actualDirect={} fallback={} forcedFallback={} unexpectedDirect={} ok={} enabled={} reason={} invariant={}",
+            layer,
+            renderables.size(),
+            direct_contract_draws,
+            direct_sampler_draws,
+            fallback_sampler_draws,
+            forced_fallback_draws,
+            unexpected_direct_draws,
+            draw_invariants.ok ? 1 : 0,
+            supports_direct_multi_sampler_inputs_ ? 1 : 0,
+            direct_sampler_disable_reason_,
+            draw_invariants.reason);
 
         for (const auto& line : debug_lines_) {
             if (line.layer != layer) {
@@ -547,8 +1186,18 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_light_color_, zeros);
             bgfx::setUniform(u_ambient_color_, zeros);
             bgfx::setUniform(u_unlit_, unlit);
+            if (bgfx::isValid(u_texture_mode_)) {
+                const float texture_mode[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+                bgfx::setUniform(u_texture_mode_, texture_mode);
+            }
             if (bgfx::isValid(white_tex_)) {
                 bgfx::setTexture(0, s_tex_, white_tex_);
+                if (bgfx::isValid(s_normal_)) {
+                    bgfx::setTexture(1, s_normal_, white_tex_);
+                }
+                if (bgfx::isValid(s_occlusion_)) {
+                    bgfx::setTexture(2, s_occlusion_, white_tex_);
+                }
             }
 
             float identity[16];
@@ -590,7 +1239,10 @@ class BgfxBackend final : public Backend {
     bgfx::UniformHandle u_light_color_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_ambient_color_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_unlit_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_texture_mode_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_tex_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle s_normal_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle s_occlusion_ = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle white_tex_ = BGFX_INVALID_HANDLE;
     bgfx::VertexLayout layout_{};
 
@@ -606,6 +1258,10 @@ class BgfxBackend final : public Backend {
     int height_ = 720;
     renderer::MeshId next_mesh_id_ = 1;
     renderer::MaterialId next_material_id_ = 1;
+    BgfxDirectSamplerShaderAlignment direct_sampler_shader_alignment_{};
+    detail::BgfxDirectSamplerContractReport direct_sampler_contract_report_{};
+    std::string direct_sampler_disable_reason_ = "not_initialized";
+    bool supports_direct_multi_sampler_inputs_ = false;
     bool initialized_ = false;
 };
 

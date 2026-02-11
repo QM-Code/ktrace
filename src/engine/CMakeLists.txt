@@ -239,16 +239,39 @@ if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
 endif()
 
 if(BUILD_TESTING)
+    add_library(network_test_endpoint_alloc STATIC
+        ${PROJECT_SOURCE_DIR}/src/engine/network/tests/loopback_endpoint_alloc.cpp
+    )
+    target_include_directories(network_test_endpoint_alloc PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
+
+    add_library(network_test_loopback_fixture STATIC
+        ${PROJECT_SOURCE_DIR}/src/engine/network/tests/loopback_enet_fixture.cpp
+    )
+    target_include_directories(network_test_loopback_fixture PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
+    if(TARGET enet_static)
+        target_link_libraries(network_test_loopback_fixture PRIVATE enet_static)
+    elseif(TARGET enet)
+        target_link_libraries(network_test_loopback_fixture PRIVATE enet)
+    endif()
+
     add_executable(client_transport_contract_test
         ${PROJECT_SOURCE_DIR}/src/engine/network/tests/client_transport_contract_test.cpp
     )
-    target_link_libraries(client_transport_contract_test PRIVATE karma_engine_core)
+    target_link_libraries(client_transport_contract_test PRIVATE
+        karma_engine_core
+        network_test_endpoint_alloc
+        network_test_loopback_fixture
+    )
     target_include_directories(client_transport_contract_test PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
 
     add_executable(server_transport_contract_test
         ${PROJECT_SOURCE_DIR}/src/engine/network/tests/server_transport_contract_test.cpp
     )
-    target_link_libraries(server_transport_contract_test PRIVATE karma_engine_core)
+    target_link_libraries(server_transport_contract_test PRIVATE
+        karma_engine_core
+        network_test_endpoint_alloc
+        network_test_loopback_fixture
+    )
     target_include_directories(server_transport_contract_test PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
 
     add_executable(directional_shadow_contract_test

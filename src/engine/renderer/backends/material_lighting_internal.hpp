@@ -31,6 +31,7 @@ inline ResolvedMaterialLighting ResolveMaterialLighting(const ResolvedMaterialSe
     const float roughness = ClampLightingFinite(material.roughness, 1.0f, 0.04f, 1.0f);
     const float normal_variation = ClampLightingFinite(material.normal_variation, 0.0f, 0.0f, 1.0f);
     const float occlusion = ClampLightingFinite(material.occlusion, 1.0f, 0.0f, 1.0f);
+    const float occlusion_edge = ClampLightingFinite(material.occlusion_edge, 0.0f, 0.0f, 1.0f);
     const float one_minus_metallic = 1.0f - metallic;
     const float smoothness = 1.0f - roughness;
     const float microfacet = smoothness * smoothness;
@@ -43,23 +44,26 @@ inline ResolvedMaterialLighting ResolveMaterialLighting(const ResolvedMaterialSe
 
     const float diffuse_direct = one_minus_metallic * (0.60f + (0.40f * smoothness));
     const float specular_direct = fresnel_f0 * (0.20f + (0.80f * microfacet));
-    const float normal_detail_gain =
-        1.0f + (0.24f * normal_variation * (0.40f + (0.60f * smoothness)));
-    const float normal_detail_roughness_damp =
-        std::clamp(1.0f - (0.20f * normal_variation * roughness), 0.70f, 1.0f);
+    const float normal_response = std::clamp(std::sqrt(normal_variation), 0.0f, 1.0f);
+    const float normal_detail_gain = std::clamp(
+        1.0f + (normal_response * ((0.05f + (0.17f * smoothness)) - (0.05f * roughness))),
+        0.92f,
+        1.25f);
     const float direct_scale = std::clamp(
         (diffuse_direct + specular_direct) *
             ComputeEnvironmentSpecularBoost(environment, roughness) *
-            normal_detail_gain *
-            normal_detail_roughness_damp,
+            normal_detail_gain,
         0.05f,
         1.8f);
 
+    const float occlusion_edge_lift =
+        0.10f * occlusion_edge * (1.0f - occlusion) * (0.30f + (0.70f * smoothness));
+    const float integrated_occlusion = std::clamp(occlusion + occlusion_edge_lift, 0.0f, 1.0f);
     const float diffuse_ambient = one_minus_metallic * (0.40f + (0.60f * roughness));
     const float specular_ambient = fresnel_f0 * (0.05f + (0.35f * microfacet)) * environment.specular_strength;
     const float ambient_scale = std::clamp(
         (diffuse_ambient + specular_ambient) *
-            (0.35f + (0.65f * occlusion)),
+            (0.35f + (0.65f * integrated_occlusion)),
         0.30f,
         2.25f);
 

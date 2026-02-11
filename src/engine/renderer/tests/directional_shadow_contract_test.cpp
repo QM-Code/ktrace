@@ -1,4 +1,5 @@
 #include "renderer/backends/debug_line_internal.hpp"
+#include "renderer/backends/direct_sampler_observability_internal.hpp"
 #include "renderer/backends/directional_shadow_internal.hpp"
 #include "renderer/backends/environment_lighting_internal.hpp"
 #include "renderer/backends/material_lighting_internal.hpp"
@@ -8,9 +9,11 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -19,19 +22,35 @@ using karma::renderer_backend::detail::ComputeDirectionalShadowFactor;
 using karma::renderer_backend::detail::ComputeEnvironmentAmbientColor;
 using karma::renderer_backend::detail::ComputeEnvironmentClearColor;
 using karma::renderer_backend::detail::ComputeEnvironmentSpecularBoost;
+using karma::renderer_backend::detail::BuildShaderPathTextureIngestion;
+using karma::renderer_backend::detail::DirectSamplerDrawInvariantInput;
+using karma::renderer_backend::detail::EvaluateBgfxDirectSamplerContract;
+using karma::renderer_backend::detail::EvaluateDirectSamplerDrawInvariants;
+using karma::renderer_backend::detail::EvaluateDiligentDirectSamplerContract;
 using karma::renderer_backend::detail::ExpandTextureToRgba8;
+using karma::renderer_backend::detail::IngestMaterialTextureLifecycle;
+using karma::renderer_backend::detail::IngestMaterialTextureSetForLifecycle;
+using karma::renderer_backend::detail::IsUsableTexture;
+using karma::renderer_backend::detail::kDiligentMaterialVariantCount;
+using karma::renderer_backend::detail::kTextureLifecycleMaxDimension;
+using karma::renderer_backend::detail::kTextureLifecycleMaxTexels;
+using karma::renderer_backend::detail::MaterialShaderTextureInputPath;
+using karma::renderer_backend::detail::MaterialTextureSemantic;
 using karma::renderer_backend::detail::ResolveDebugLineSemantics;
 using karma::renderer_backend::detail::DirectionalShadowCaster;
 using karma::renderer_backend::detail::DirectionalShadowMap;
 using karma::renderer_backend::detail::ResolveEnvironmentLightingSemantics;
 using karma::renderer_backend::detail::ResolveMaterialLighting;
+using karma::renderer_backend::detail::ResolveMaterialShaderInputContract;
 using karma::renderer_backend::detail::ResolveMaterialSemantics;
 using karma::renderer_backend::detail::ResolveDirectionalShadowSemantics;
+using karma::renderer_backend::detail::ResolveShaderPathDirectSample;
 using karma::renderer_backend::detail::ResolvedDebugLineSemantics;
 using karma::renderer_backend::detail::ResolvedEnvironmentLightingSemantics;
 using karma::renderer_backend::detail::ResolvedMaterialLighting;
 using karma::renderer_backend::detail::ResolvedMaterialSemantics;
 using karma::renderer_backend::detail::ResolvedDirectionalShadowSemantics;
+using karma::renderer_backend::detail::SamplerVariableAvailability;
 using karma::renderer_backend::detail::SampleDirectionalShadowVisibility;
 using karma::renderer_backend::detail::ValidateResolvedDebugLineSemantics;
 using karma::renderer_backend::detail::ValidateResolvedEnvironmentLightingSemantics;
@@ -42,6 +61,57 @@ using karma::renderer_backend::detail::BuildDirectionalShadowMap;
 
 bool NearlyEqual(float lhs, float rhs, float epsilon = 1e-4f) {
     return std::fabs(lhs - rhs) <= epsilon;
+}
+
+uint8_t ToU8(float value) {
+    return static_cast<uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
+}
+
+bool ValidateCompositeMatchesDirectPath(
+    const karma::renderer::MeshData::TextureData& composite,
+    const karma::renderer::MeshData::TextureData* albedo,
+    const karma::renderer::MeshData::TextureData* normal,
+    const karma::renderer::MeshData::TextureData* occlusion,
+    int max_lsb_delta,
+    const char* context) {
+    if (!IsUsableTexture(composite) || composite.channels != 4) {
+        std::cerr << "invalid composite texture in direct/fallback comparison";
+        if (context) {
+            std::cerr << " (" << context << ")";
+        }
+        std::cerr << "\n";
+        return false;
+    }
+    const std::size_t width = static_cast<std::size_t>(composite.width);
+    const std::size_t height = static_cast<std::size_t>(composite.height);
+    for (std::size_t y = 0; y < height; ++y) {
+        for (std::size_t x = 0; x < width; ++x) {
+            const glm::vec4 direct_sample = ResolveShaderPathDirectSample(
+                albedo, normal, occlusion, x, y, width, height);
+            const uint8_t expected[4] = {
+                ToU8(direct_sample.r),
+                ToU8(direct_sample.g),
+                ToU8(direct_sample.b),
+                ToU8(direct_sample.a),
+            };
+            const std::size_t base = ((y * width) + x) * 4u;
+            for (std::size_t c = 0; c < 4u; ++c) {
+                const int delta = std::abs(
+                    static_cast<int>(composite.pixels[base + c]) -
+                    static_cast<int>(expected[c]));
+                if (delta > max_lsb_delta) {
+                    std::cerr << "composite/direct mismatch at (" << x << "," << y << ") channel "
+                              << c << " delta=" << delta;
+                    if (context) {
+                        std::cerr << " (" << context << ")";
+                    }
+                    std::cerr << "\n";
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
 }
 
 bool RunShadowSemanticsClampChecks() {
@@ -253,16 +323,14 @@ bool RunMaterialTextureSemanticsChecks() {
     normal.height = 4;
     normal.channels = 3;
     normal.pixels.assign(4u * 4u * 3u, 0u);
-    for (std::size_t i = 0; i < 16u; ++i) {
-        const std::size_t base = i * 3u;
-        normal.pixels[base + 0u] = 128u;
-        normal.pixels[base + 1u] = 128u;
-        normal.pixels[base + 2u] = 255u;
-    }
-    {
-        const std::size_t center = ((2u * 4u) + 2u) * 3u;
-        normal.pixels[center + 0u] = 255u;
-        normal.pixels[center + 1u] = 0u;
+    for (std::size_t y = 0; y < 4u; ++y) {
+        for (std::size_t x = 0; x < 4u; ++x) {
+            const std::size_t base = ((y * 4u) + x) * 3u;
+            const bool high_cell = (((x + y) & 1u) == 0u);
+            normal.pixels[base + 0u] = high_cell ? 255u : 128u;
+            normal.pixels[base + 1u] = high_cell ? 0u : 128u;
+            normal.pixels[base + 2u] = 255u;
+        }
     }
     material.normal = normal;
 
@@ -467,6 +535,1075 @@ bool RunMaterialTextureClampPolicyChecks() {
     return true;
 }
 
+bool RunMaterialTextureLifecycleIngestionChecks() {
+    karma::renderer::MaterialDesc material{};
+    karma::renderer::MeshData::TextureData normal{};
+    normal.width = 1600;
+    normal.height = 900;
+    normal.channels = 3;
+    normal.pixels.assign(static_cast<std::size_t>(normal.width * normal.height * normal.channels), 0u);
+    for (int y = 0; y < normal.height; ++y) {
+        for (int x = 0; x < normal.width; ++x) {
+            const std::size_t base = static_cast<std::size_t>((y * normal.width + x) * normal.channels);
+            normal.pixels[base + 0u] = static_cast<uint8_t>((x * 255) / std::max(1, normal.width - 1));
+            normal.pixels[base + 1u] = static_cast<uint8_t>((y * 255) / std::max(1, normal.height - 1));
+            normal.pixels[base + 2u] = 255u;
+        }
+    }
+    material.normal = normal;
+
+    karma::renderer::MeshData::TextureData occlusion{};
+    occlusion.width = 1536;
+    occlusion.height = 1024;
+    occlusion.channels = 4;
+    occlusion.pixels.assign(static_cast<std::size_t>(occlusion.width * occlusion.height * occlusion.channels), 0u);
+    for (int y = 0; y < occlusion.height; ++y) {
+        for (int x = 0; x < occlusion.width; ++x) {
+            const std::size_t base = static_cast<std::size_t>((y * occlusion.width + x) * occlusion.channels);
+            const uint8_t ao = (((x + y) & 1) == 0) ? 255u : 32u;
+            occlusion.pixels[base + 0u] = ao;
+            occlusion.pixels[base + 1u] = 0u;
+            occlusion.pixels[base + 2u] = 0u;
+            occlusion.pixels[base + 3u] = 255u;
+        }
+    }
+    material.occlusion = occlusion;
+
+    const auto ingestion = IngestMaterialTextureSetForLifecycle(material);
+    if (!ingestion.normal.texture || !ingestion.occlusion.texture) {
+        std::cerr << "expected lifecycle ingestion to preserve usable normal/occlusion textures\n";
+        return false;
+    }
+    if (!ingestion.normal.bounded || !ingestion.occlusion.bounded) {
+        std::cerr << "expected oversized lifecycle textures to be bounded\n";
+        return false;
+    }
+    if (ingestion.normal.texture->channels != 3 || ingestion.occlusion.texture->channels != 1) {
+        std::cerr << "expected lifecycle ingestion to normalize normal->RGB and occlusion->R channel layouts\n";
+        return false;
+    }
+    if (ingestion.normal.texture->width > kTextureLifecycleMaxDimension ||
+        ingestion.normal.texture->height > kTextureLifecycleMaxDimension ||
+        ingestion.occlusion.texture->width > kTextureLifecycleMaxDimension ||
+        ingestion.occlusion.texture->height > kTextureLifecycleMaxDimension) {
+        std::cerr << "lifecycle ingestion exceeded max texture dimension bounds\n";
+        return false;
+    }
+    const std::size_t normal_texels = static_cast<std::size_t>(ingestion.normal.texture->width) *
+                                      static_cast<std::size_t>(ingestion.normal.texture->height);
+    const std::size_t occlusion_texels = static_cast<std::size_t>(ingestion.occlusion.texture->width) *
+                                         static_cast<std::size_t>(ingestion.occlusion.texture->height);
+    if (normal_texels > kTextureLifecycleMaxTexels || occlusion_texels > kTextureLifecycleMaxTexels) {
+        std::cerr << "lifecycle ingestion exceeded max texture texel budget\n";
+        return false;
+    }
+    if (!IsUsableTexture(*ingestion.normal.texture) || !IsUsableTexture(*ingestion.occlusion.texture)) {
+        std::cerr << "lifecycle ingestion produced unusable normalized texture payloads\n";
+        return false;
+    }
+
+    const ResolvedMaterialSemantics semantics = ResolveMaterialSemantics(material);
+    if (!ValidateResolvedMaterialSemantics(semantics)) {
+        std::cerr << "lifecycle-ingested semantics failed validation\n";
+        return false;
+    }
+    if (!semantics.used_normal_texture || !semantics.used_occlusion_texture) {
+        std::cerr << "expected lifecycle semantics to preserve normal/occlusion usage flags\n";
+        return false;
+    }
+
+    karma::renderer::MeshData::TextureData checker_1c{};
+    checker_1c.width = 8;
+    checker_1c.height = 8;
+    checker_1c.channels = 1;
+    checker_1c.pixels.assign(8u * 8u, 0u);
+    for (std::size_t y = 0; y < 8u; ++y) {
+        for (std::size_t x = 0; x < 8u; ++x) {
+            checker_1c.pixels[(y * 8u) + x] = (((x + y) & 1u) == 0u) ? 255u : 0u;
+        }
+    }
+    karma::renderer::MeshData::TextureData checker_4c{};
+    checker_4c.width = 8;
+    checker_4c.height = 8;
+    checker_4c.channels = 4;
+    checker_4c.pixels.assign(8u * 8u * 4u, 0u);
+    for (std::size_t y = 0; y < 8u; ++y) {
+        for (std::size_t x = 0; x < 8u; ++x) {
+            const std::size_t dst = ((y * 8u) + x) * 4u;
+            checker_4c.pixels[dst + 0u] = checker_1c.pixels[(y * 8u) + x];
+            checker_4c.pixels[dst + 1u] = 0u;
+            checker_4c.pixels[dst + 2u] = 0u;
+            checker_4c.pixels[dst + 3u] = 255u;
+        }
+    }
+    const auto checker_1c_ingestion =
+        IngestMaterialTextureLifecycle(checker_1c, MaterialTextureSemantic::Occlusion);
+    const auto checker_4c_ingestion =
+        IngestMaterialTextureLifecycle(checker_4c, MaterialTextureSemantic::Occlusion);
+    if (!checker_1c_ingestion.texture || !checker_4c_ingestion.texture) {
+        std::cerr << "checker occlusion lifecycle ingestion unexpectedly failed\n";
+        return false;
+    }
+    if (checker_1c_ingestion.texture->pixels != checker_4c_ingestion.texture->pixels) {
+        std::cerr << "expected occlusion lifecycle ingestion to preserve channel-layout parity\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunShaderPathLifecycleConsumptionChecks() {
+    karma::renderer::MaterialDesc material{};
+    karma::renderer::MeshData::TextureData albedo{};
+    albedo.width = 4;
+    albedo.height = 4;
+    albedo.channels = 4;
+    albedo.pixels.assign(4u * 4u * 4u, 0u);
+    for (std::size_t y = 0; y < 4u; ++y) {
+        for (std::size_t x = 0; x < 4u; ++x) {
+            const std::size_t dst = ((y * 4u) + x) * 4u;
+            albedo.pixels[dst + 0u] = 200u;
+            albedo.pixels[dst + 1u] = 180u;
+            albedo.pixels[dst + 2u] = 160u;
+            albedo.pixels[dst + 3u] = 255u;
+        }
+    }
+    material.albedo = albedo;
+
+    karma::renderer::MeshData::TextureData normal{};
+    normal.width = 4;
+    normal.height = 4;
+    normal.channels = 3;
+    normal.pixels.assign(4u * 4u * 3u, 0u);
+    for (std::size_t y = 0; y < 4u; ++y) {
+        for (std::size_t x = 0; x < 4u; ++x) {
+            const std::size_t dst = ((y * 4u) + x) * 3u;
+            const bool strong = (x >= 2u);
+            normal.pixels[dst + 0u] = strong ? 255u : 128u;
+            normal.pixels[dst + 1u] = strong ? 0u : 128u;
+            normal.pixels[dst + 2u] = 255u;
+        }
+    }
+    material.normal = normal;
+
+    karma::renderer::MeshData::TextureData occlusion_1c{};
+    occlusion_1c.width = 4;
+    occlusion_1c.height = 4;
+    occlusion_1c.channels = 1;
+    occlusion_1c.pixels.assign(4u * 4u, 0u);
+    for (std::size_t y = 0; y < 4u; ++y) {
+        for (std::size_t x = 0; x < 4u; ++x) {
+            occlusion_1c.pixels[(y * 4u) + x] = (y < 2u) ? 255u : 64u;
+        }
+    }
+    material.occlusion = occlusion_1c;
+
+    const auto lifecycle_ingestion = IngestMaterialTextureSetForLifecycle(material);
+    const auto direct_contract = ResolveMaterialShaderInputContract(
+        material, lifecycle_ingestion, true);
+    if (direct_contract.path != MaterialShaderTextureInputPath::DirectMultiSampler) {
+        std::cerr << "expected direct multi-sampler path when capability is available\n";
+        return false;
+    }
+    if (!direct_contract.used_albedo_texture ||
+        !direct_contract.used_normal_lifecycle_texture ||
+        !direct_contract.used_occlusion_lifecycle_texture) {
+        std::cerr << "direct path did not report expected consumed texture sources\n";
+        return false;
+    }
+    if (!direct_contract.direct_normal_texture || !direct_contract.direct_occlusion_texture) {
+        std::cerr << "direct path missing expected normal/occlusion textures\n";
+        return false;
+    }
+
+    const auto* direct_albedo = direct_contract.direct_albedo_texture
+        ? &(*direct_contract.direct_albedo_texture)
+        : nullptr;
+    const auto* direct_normal = direct_contract.direct_normal_texture
+        ? &(*direct_contract.direct_normal_texture)
+        : nullptr;
+    const auto* direct_occlusion = direct_contract.direct_occlusion_texture
+        ? &(*direct_contract.direct_occlusion_texture)
+        : nullptr;
+    const uint8_t top_flat = ToU8(
+        ResolveShaderPathDirectSample(direct_albedo, direct_normal, direct_occlusion, 0u, 0u, 4u, 4u).r);
+    const uint8_t top_strong = ToU8(
+        ResolveShaderPathDirectSample(direct_albedo, direct_normal, direct_occlusion, 3u, 0u, 4u, 4u).r);
+    const uint8_t bottom_flat = ToU8(
+        ResolveShaderPathDirectSample(direct_albedo, direct_normal, direct_occlusion, 0u, 3u, 4u, 4u).r);
+    if (!(top_strong > top_flat)) {
+        std::cerr << "expected direct normal sampler path to brighten stronger normal response\n";
+        return false;
+    }
+    if (!(bottom_flat < top_flat)) {
+        std::cerr << "expected direct occlusion sampler path to darken occluded areas\n";
+        return false;
+    }
+
+    const auto fallback_contract = ResolveMaterialShaderInputContract(
+        material, lifecycle_ingestion, false);
+    if (fallback_contract.path != MaterialShaderTextureInputPath::CompositeFallback ||
+        !fallback_contract.fallback_composite_texture) {
+        std::cerr << "expected deterministic composite fallback when direct path is unavailable\n";
+        return false;
+    }
+    if (!ValidateCompositeMatchesDirectPath(
+            *fallback_contract.fallback_composite_texture,
+            direct_albedo,
+            direct_normal,
+            direct_occlusion,
+            1,
+            "base direct/fallback parity")) {
+        return false;
+    }
+    const auto fallback_contract_repeat = ResolveMaterialShaderInputContract(
+        material, lifecycle_ingestion, false);
+    if (fallback_contract_repeat.path != fallback_contract.path ||
+        !fallback_contract_repeat.fallback_composite_texture ||
+        fallback_contract_repeat.fallback_composite_texture->pixels !=
+            fallback_contract.fallback_composite_texture->pixels) {
+        std::cerr << "composite fallback path should be deterministic for identical material inputs\n";
+        return false;
+    }
+
+    karma::renderer::MaterialDesc material_4c = material;
+    karma::renderer::MeshData::TextureData occlusion_4c{};
+    occlusion_4c.width = 4;
+    occlusion_4c.height = 4;
+    occlusion_4c.channels = 4;
+    occlusion_4c.pixels.assign(4u * 4u * 4u, 0u);
+    for (std::size_t y = 0; y < 4u; ++y) {
+        for (std::size_t x = 0; x < 4u; ++x) {
+            const std::size_t dst = ((y * 4u) + x) * 4u;
+            occlusion_4c.pixels[dst + 0u] = (y < 2u) ? 255u : 64u;
+            occlusion_4c.pixels[dst + 1u] = 0u;
+            occlusion_4c.pixels[dst + 2u] = 0u;
+            occlusion_4c.pixels[dst + 3u] = 255u;
+        }
+    }
+    material_4c.occlusion = occlusion_4c;
+    const auto lifecycle_ingestion_4c = IngestMaterialTextureSetForLifecycle(material_4c);
+    const auto direct_contract_4c =
+        ResolveMaterialShaderInputContract(material_4c, lifecycle_ingestion_4c, true);
+    const auto fallback_contract_4c =
+        ResolveMaterialShaderInputContract(material_4c, lifecycle_ingestion_4c, false);
+    if (direct_contract_4c.path != MaterialShaderTextureInputPath::DirectMultiSampler ||
+        !direct_contract_4c.direct_occlusion_texture ||
+        fallback_contract_4c.path != MaterialShaderTextureInputPath::CompositeFallback ||
+        !fallback_contract_4c.fallback_composite_texture) {
+        std::cerr << "failed to build shader-input contracts for RGBA occlusion variant\n";
+        return false;
+    }
+
+    const auto* direct_albedo_4c = direct_contract_4c.direct_albedo_texture
+        ? &(*direct_contract_4c.direct_albedo_texture)
+        : nullptr;
+    const auto* direct_normal_4c = direct_contract_4c.direct_normal_texture
+        ? &(*direct_contract_4c.direct_normal_texture)
+        : nullptr;
+    const auto* direct_occlusion_4c = direct_contract_4c.direct_occlusion_texture
+        ? &(*direct_contract_4c.direct_occlusion_texture)
+        : nullptr;
+    for (std::size_t y = 0; y < 4u; ++y) {
+        for (std::size_t x = 0; x < 4u; ++x) {
+            const glm::vec4 direct_1c =
+                ResolveShaderPathDirectSample(direct_albedo, direct_normal, direct_occlusion, x, y, 4u, 4u);
+            const glm::vec4 direct_4c =
+                ResolveShaderPathDirectSample(direct_albedo_4c, direct_normal_4c, direct_occlusion_4c, x, y, 4u, 4u);
+            if (std::abs(static_cast<int>(ToU8(direct_1c.r)) - static_cast<int>(ToU8(direct_4c.r))) > 1 ||
+                std::abs(static_cast<int>(ToU8(direct_1c.g)) - static_cast<int>(ToU8(direct_4c.g))) > 1 ||
+                std::abs(static_cast<int>(ToU8(direct_1c.b)) - static_cast<int>(ToU8(direct_4c.b))) > 1) {
+                std::cerr << "expected direct sampler path parity across 1-channel and 4-channel occlusion inputs\n";
+                return false;
+            }
+        }
+    }
+    if (!ValidateCompositeMatchesDirectPath(
+            *fallback_contract_4c.fallback_composite_texture,
+            direct_albedo_4c,
+            direct_normal_4c,
+            direct_occlusion_4c,
+            1,
+            "rgba occlusion direct/fallback parity")) {
+        return false;
+    }
+    if (fallback_contract.fallback_composite_texture->pixels !=
+        fallback_contract_4c.fallback_composite_texture->pixels) {
+        std::cerr << "expected fallback composite parity across 1-channel and 4-channel occlusion inputs\n";
+        return false;
+    }
+
+    karma::renderer::MaterialDesc missing_normal_material = material;
+    missing_normal_material.normal.reset();
+    const auto missing_normal_lifecycle = IngestMaterialTextureSetForLifecycle(missing_normal_material);
+    const auto missing_normal_direct =
+        ResolveMaterialShaderInputContract(missing_normal_material, missing_normal_lifecycle, true);
+    const auto missing_normal_fallback =
+        ResolveMaterialShaderInputContract(missing_normal_material, missing_normal_lifecycle, false);
+    if (missing_normal_direct.path != MaterialShaderTextureInputPath::DirectMultiSampler ||
+        missing_normal_direct.direct_normal_texture ||
+        !missing_normal_direct.direct_occlusion_texture) {
+        std::cerr << "missing-normal direct contract should consume only occlusion path inputs\n";
+        return false;
+    }
+    if (missing_normal_fallback.path != MaterialShaderTextureInputPath::CompositeFallback ||
+        !missing_normal_fallback.fallback_composite_texture) {
+        std::cerr << "missing-normal fallback contract failed\n";
+        return false;
+    }
+    if (!ValidateCompositeMatchesDirectPath(
+            *missing_normal_fallback.fallback_composite_texture,
+            missing_normal_direct.direct_albedo_texture ? &(*missing_normal_direct.direct_albedo_texture) : nullptr,
+            nullptr,
+            missing_normal_direct.direct_occlusion_texture ? &(*missing_normal_direct.direct_occlusion_texture) : nullptr,
+            1,
+            "missing-normal direct/fallback parity")) {
+        return false;
+    }
+
+    karma::renderer::MaterialDesc missing_occlusion_material = material;
+    missing_occlusion_material.occlusion.reset();
+    const auto missing_occlusion_lifecycle = IngestMaterialTextureSetForLifecycle(missing_occlusion_material);
+    const auto missing_occlusion_direct =
+        ResolveMaterialShaderInputContract(missing_occlusion_material, missing_occlusion_lifecycle, true);
+    const auto missing_occlusion_fallback =
+        ResolveMaterialShaderInputContract(missing_occlusion_material, missing_occlusion_lifecycle, false);
+    if (missing_occlusion_direct.path != MaterialShaderTextureInputPath::DirectMultiSampler ||
+        missing_occlusion_direct.direct_occlusion_texture ||
+        !missing_occlusion_direct.direct_normal_texture) {
+        std::cerr << "missing-occlusion direct contract should consume only normal path inputs\n";
+        return false;
+    }
+    if (missing_occlusion_fallback.path != MaterialShaderTextureInputPath::CompositeFallback ||
+        !missing_occlusion_fallback.fallback_composite_texture) {
+        std::cerr << "missing-occlusion fallback contract failed\n";
+        return false;
+    }
+    if (!ValidateCompositeMatchesDirectPath(
+            *missing_occlusion_fallback.fallback_composite_texture,
+            missing_occlusion_direct.direct_albedo_texture ? &(*missing_occlusion_direct.direct_albedo_texture) : nullptr,
+            missing_occlusion_direct.direct_normal_texture ? &(*missing_occlusion_direct.direct_normal_texture) : nullptr,
+            nullptr,
+            1,
+            "missing-occlusion direct/fallback parity")) {
+        return false;
+    }
+
+    karma::renderer::MaterialDesc oversized{};
+    oversized.normal = material.normal;
+    oversized.normal->width = 1600;
+    oversized.normal->height = 1200;
+    oversized.normal->channels = 3;
+    oversized.normal->pixels.assign(static_cast<std::size_t>(1600 * 1200 * 3), 255u);
+    oversized.occlusion = material.occlusion;
+    oversized.occlusion->width = 2000;
+    oversized.occlusion->height = 1500;
+    oversized.occlusion->channels = 1;
+    oversized.occlusion->pixels.assign(static_cast<std::size_t>(2000 * 1500), 255u);
+    const auto oversized_lifecycle = IngestMaterialTextureSetForLifecycle(oversized);
+    const auto oversized_shader_ingestion =
+        BuildShaderPathTextureIngestion(oversized, oversized_lifecycle);
+    const auto oversized_fallback_contract =
+        ResolveMaterialShaderInputContract(oversized, oversized_lifecycle, false);
+    if (!oversized_shader_ingestion.texture ||
+        oversized_fallback_contract.path != MaterialShaderTextureInputPath::CompositeFallback ||
+        !oversized_fallback_contract.fallback_composite_texture) {
+        std::cerr << "expected shader-path ingestion to produce composite without albedo when lifecycle textures exist\n";
+        return false;
+    }
+    if (oversized_shader_ingestion.texture->width > kTextureLifecycleMaxDimension ||
+        oversized_shader_ingestion.texture->height > kTextureLifecycleMaxDimension) {
+        std::cerr << "expected shader-path lifecycle composition to stay within bounded dimensions\n";
+        return false;
+    }
+    if (!oversized_shader_ingestion.bounded) {
+        std::cerr << "expected shader-path ingestion to report bounded lifecycle downscale for oversized inputs\n";
+        return false;
+    }
+    if (oversized_fallback_contract.fallback_composite_texture->width > kTextureLifecycleMaxDimension ||
+        oversized_fallback_contract.fallback_composite_texture->height > kTextureLifecycleMaxDimension ||
+        !oversized_fallback_contract.bounded) {
+        std::cerr << "expected bounded fallback contract to keep oversized lifecycle textures within limits\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunDirectSamplerObservabilityContractChecks() {
+    std::array<SamplerVariableAvailability, kDiligentMaterialVariantCount> material_variants{};
+    for (auto& variant : material_variants) {
+        variant.srb_ready = true;
+        variant.has_s_tex = true;
+        variant.has_s_normal = true;
+        variant.has_s_occlusion = true;
+    }
+
+    SamplerVariableAvailability line_partial{};
+    line_partial.srb_ready = true;
+    line_partial.has_s_tex = true;
+    line_partial.has_s_normal = false;
+    line_partial.has_s_occlusion = false;
+    const auto ready_with_partial_line =
+        EvaluateDiligentDirectSamplerContract(material_variants, line_partial);
+    if (!ready_with_partial_line.ready_for_direct_path ||
+        !ready_with_partial_line.material_pipeline_contract_ready ||
+        ready_with_partial_line.line_pipeline_contract_ready ||
+        ready_with_partial_line.reason != "ok_line_sampler_contract_unavailable") {
+        std::cerr << "expected Diligent direct sampler readiness to remain enabled when only line sampler contract is partial\n";
+        return false;
+    }
+
+    auto broken_material_variants = material_variants;
+    broken_material_variants[2].has_s_normal = false;
+    const auto disabled_material_contract =
+        EvaluateDiligentDirectSamplerContract(broken_material_variants, line_partial);
+    if (disabled_material_contract.ready_for_direct_path ||
+        disabled_material_contract.material_pipeline_contract_ready ||
+        disabled_material_contract.reason.find("variant2_missing_s_normal") == std::string::npos) {
+        std::cerr << "expected Diligent direct sampler readiness to disable when material sampler contract is missing\n";
+        return false;
+    }
+
+    const auto bgfx_source_present_alignment =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                true,   // source_exists
+                true,   // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                true,   // binary_up_to_date
+                true,   // source_absent_integrity_ready
+                "source_present_integrity_not_required",
+            });
+    if (!bgfx_source_present_alignment.ready ||
+        !bgfx_source_present_alignment.source_present_mode ||
+        bgfx_source_present_alignment.source_absent_compat_mode ||
+        bgfx_source_present_alignment.reason != "ok") {
+        std::cerr << "expected BGFX source-present alignment policy to require strict fresh source/binary contract\n";
+        return false;
+    }
+
+    const auto bgfx_source_present_stale =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                true,   // source_exists
+                true,   // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                true,   // source_absent_integrity_ready
+                "source_present_integrity_not_required",
+            });
+    if (bgfx_source_present_stale.ready ||
+        bgfx_source_present_stale.reason != "binary_stale_vs_source") {
+        std::cerr << "expected BGFX source-present alignment policy to disable stale binaries\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_pass =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                true,   // manifest_parse_ready
+                "ok",
+                true,   // manifest_version_supported
+                true,   // manifest_algorithm_supported
+                true,   // manifest_hash_present
+                true,   // binary_hash_available
+                true,   // hash_matches_manifest
+            });
+    if (!bgfx_source_absent_integrity_pass.ready ||
+        bgfx_source_absent_integrity_pass.reason != "ok_source_absent_binary_integrity") {
+        std::cerr << "expected BGFX source-absent integrity policy to allow manifest/hash validated deployed binaries\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_parse_fail =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                false,  // manifest_parse_ready
+                "source_missing_and_integrity_manifest_invalid_token_form",
+                false,  // manifest_version_supported
+                false,  // manifest_algorithm_supported
+                false,  // manifest_hash_present
+                false,  // binary_hash_available
+                false,  // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_parse_fail.ready ||
+        bgfx_source_absent_integrity_parse_fail.reason !=
+            "source_missing_and_integrity_manifest_invalid_token_form") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on manifest parse failure\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_duplicate_key =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                false,  // manifest_parse_ready
+                "source_missing_and_integrity_manifest_duplicate_key",
+                false,  // manifest_version_supported
+                false,  // manifest_algorithm_supported
+                false,  // manifest_hash_present
+                false,  // binary_hash_available
+                false,  // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_duplicate_key.ready ||
+        bgfx_source_absent_integrity_duplicate_key.reason !=
+            "source_missing_and_integrity_manifest_duplicate_key") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on duplicate manifest keys\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_noncanonical_line_endings =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                false,  // manifest_parse_ready
+                "source_missing_and_integrity_manifest_noncanonical_line_endings",
+                false,  // manifest_version_supported
+                false,  // manifest_algorithm_supported
+                false,  // manifest_hash_present
+                false,  // binary_hash_available
+                false,  // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_noncanonical_line_endings.ready ||
+        bgfx_source_absent_integrity_noncanonical_line_endings.reason !=
+            "source_missing_and_integrity_manifest_noncanonical_line_endings") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on noncanonical line endings\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_noncanonical_whitespace =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                false,  // manifest_parse_ready
+                "source_missing_and_integrity_manifest_noncanonical_whitespace",
+                false,  // manifest_version_supported
+                false,  // manifest_algorithm_supported
+                false,  // manifest_hash_present
+                false,  // binary_hash_available
+                false,  // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_noncanonical_whitespace.ready ||
+        bgfx_source_absent_integrity_noncanonical_whitespace.reason !=
+            "source_missing_and_integrity_manifest_noncanonical_whitespace") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on noncanonical whitespace\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_unknown_key =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                false,  // manifest_parse_ready
+                "source_missing_and_integrity_manifest_unknown_key",
+                false,  // manifest_version_supported
+                false,  // manifest_algorithm_supported
+                false,  // manifest_hash_present
+                false,  // binary_hash_available
+                false,  // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_unknown_key.ready ||
+        bgfx_source_absent_integrity_unknown_key.reason !=
+            "source_missing_and_integrity_manifest_unknown_key") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on unknown manifest keys\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_invalid_value_form =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                false,  // manifest_parse_ready
+                "source_missing_and_integrity_manifest_invalid_value_form",
+                false,  // manifest_version_supported
+                false,  // manifest_algorithm_supported
+                false,  // manifest_hash_present
+                false,  // binary_hash_available
+                false,  // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_invalid_value_form.ready ||
+        bgfx_source_absent_integrity_invalid_value_form.reason !=
+            "source_missing_and_integrity_manifest_invalid_value_form") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on invalid manifest value forms\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_version_unsupported =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                true,   // manifest_parse_ready
+                "ok",
+                false,  // manifest_version_supported
+                true,   // manifest_algorithm_supported
+                true,   // manifest_hash_present
+                true,   // binary_hash_available
+                true,   // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_version_unsupported.ready ||
+        bgfx_source_absent_integrity_version_unsupported.reason !=
+            "source_missing_and_integrity_manifest_version_unsupported") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on manifest version mismatch\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_algorithm_unsupported =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                true,   // manifest_parse_ready
+                "ok",
+                true,   // manifest_version_supported
+                false,  // manifest_algorithm_supported
+                true,   // manifest_hash_present
+                true,   // binary_hash_available
+                true,   // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_algorithm_unsupported.ready ||
+        bgfx_source_absent_integrity_algorithm_unsupported.reason !=
+            "source_missing_and_integrity_manifest_algorithm_unsupported") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on unsupported manifest algorithm\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_missing_manifest =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                false,  // manifest_exists
+                false,  // manifest_parse_ready
+                "source_missing_and_integrity_manifest_parse_failed",
+                false,  // manifest_version_supported
+                false,  // manifest_algorithm_supported
+                false,  // manifest_hash_present
+                false,  // binary_hash_available
+                false,  // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_missing_manifest.ready ||
+        bgfx_source_absent_integrity_missing_manifest.reason !=
+            "source_missing_and_integrity_manifest_missing") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable when manifest is missing\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_hash_mismatch =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                true,   // manifest_parse_ready
+                "ok",
+                true,   // manifest_version_supported
+                true,   // manifest_algorithm_supported
+                true,   // manifest_hash_present
+                true,   // binary_hash_available
+                false,  // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_hash_mismatch.ready ||
+        bgfx_source_absent_integrity_hash_mismatch.reason !=
+            "source_missing_and_integrity_hash_mismatch") {
+        std::cerr << "expected BGFX source-absent integrity policy to disable on manifest/hash mismatch\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_signed_envelope_parse_fail =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                false,  // manifest_parse_ready
+                "source_missing_and_integrity_manifest_signed_envelope_metadata_missing",
+                true,   // manifest_version_supported
+                true,   // manifest_algorithm_supported
+                true,   // manifest_hash_present
+                true,   // binary_hash_available
+                true,   // hash_matches_manifest
+            });
+    if (bgfx_source_absent_integrity_signed_envelope_parse_fail.ready ||
+        bgfx_source_absent_integrity_signed_envelope_parse_fail.reason !=
+            "source_missing_and_integrity_manifest_signed_envelope_metadata_missing") {
+        std::cerr << "expected BGFX source-absent integrity policy to propagate signed-envelope parse guardrail reasons\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_integrity_signed_envelope_deferred =
+        karma::renderer_backend::detail::EvaluateBgfxSourceAbsentIntegrityPolicy(
+            karma::renderer_backend::detail::BgfxSourceAbsentIntegrityInput{
+                true,   // manifest_exists
+                true,   // manifest_parse_ready
+                "ok",
+                true,   // manifest_version_supported
+                true,   // manifest_algorithm_supported
+                true,   // manifest_hash_present
+                true,   // binary_hash_available
+                true,   // hash_matches_manifest
+                true,   // signed_envelope_declared
+                false,  // signed_envelope_verification_available
+            });
+    if (bgfx_source_absent_integrity_signed_envelope_deferred.ready ||
+        bgfx_source_absent_integrity_signed_envelope_deferred.reason !=
+            "source_missing_and_integrity_signed_envelope_verification_deferred") {
+        std::cerr << "expected BGFX source-absent integrity policy to defer signed-envelope verification deterministically\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_pass.ready,
+                bgfx_source_absent_integrity_pass.reason,
+            });
+    if (!bgfx_source_absent_alignment.ready ||
+        bgfx_source_absent_alignment.source_present_mode ||
+        !bgfx_source_absent_alignment.source_absent_compat_mode ||
+        bgfx_source_absent_alignment.reason != "ok_source_absent_binary_integrity") {
+        std::cerr << "expected BGFX source-absent alignment compatibility to allow valid deployed binaries\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment_integrity_fail =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_hash_mismatch.ready,
+                bgfx_source_absent_integrity_hash_mismatch.reason,
+            });
+    if (bgfx_source_absent_alignment_integrity_fail.ready ||
+        bgfx_source_absent_alignment_integrity_fail.reason !=
+            "source_missing_and_integrity_hash_mismatch") {
+        std::cerr << "expected BGFX source-absent alignment policy to propagate integrity failure reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment_signed_envelope_parse_fail =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_signed_envelope_parse_fail.ready,
+                bgfx_source_absent_integrity_signed_envelope_parse_fail.reason,
+            });
+    if (bgfx_source_absent_alignment_signed_envelope_parse_fail.ready ||
+        bgfx_source_absent_alignment_signed_envelope_parse_fail.reason !=
+            "source_missing_and_integrity_manifest_signed_envelope_metadata_missing") {
+        std::cerr << "expected BGFX source-absent alignment policy to propagate signed-envelope parse guardrail reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment_signed_envelope_deferred =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_signed_envelope_deferred.ready,
+                bgfx_source_absent_integrity_signed_envelope_deferred.reason,
+            });
+    if (bgfx_source_absent_alignment_signed_envelope_deferred.ready ||
+        bgfx_source_absent_alignment_signed_envelope_deferred.reason !=
+            "source_missing_and_integrity_signed_envelope_verification_deferred") {
+        std::cerr << "expected BGFX source-absent alignment policy to propagate signed-envelope verification-deferred reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment_duplicate_key_fail =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_duplicate_key.ready,
+                bgfx_source_absent_integrity_duplicate_key.reason,
+            });
+    if (bgfx_source_absent_alignment_duplicate_key_fail.ready ||
+        bgfx_source_absent_alignment_duplicate_key_fail.reason !=
+            "source_missing_and_integrity_manifest_duplicate_key") {
+        std::cerr << "expected BGFX source-absent alignment policy to propagate duplicate-key parse reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment_noncanonical_line_endings_fail =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_noncanonical_line_endings.ready,
+                bgfx_source_absent_integrity_noncanonical_line_endings.reason,
+            });
+    if (bgfx_source_absent_alignment_noncanonical_line_endings_fail.ready ||
+        bgfx_source_absent_alignment_noncanonical_line_endings_fail.reason !=
+            "source_missing_and_integrity_manifest_noncanonical_line_endings") {
+        std::cerr << "expected BGFX source-absent alignment policy to propagate noncanonical line-ending reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment_noncanonical_whitespace_fail =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_noncanonical_whitespace.ready,
+                bgfx_source_absent_integrity_noncanonical_whitespace.reason,
+            });
+    if (bgfx_source_absent_alignment_noncanonical_whitespace_fail.ready ||
+        bgfx_source_absent_alignment_noncanonical_whitespace_fail.reason !=
+            "source_missing_and_integrity_manifest_noncanonical_whitespace") {
+        std::cerr << "expected BGFX source-absent alignment policy to propagate noncanonical-whitespace reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment_unknown_key_fail =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_unknown_key.ready,
+                bgfx_source_absent_integrity_unknown_key.reason,
+            });
+    if (bgfx_source_absent_alignment_unknown_key_fail.ready ||
+        bgfx_source_absent_alignment_unknown_key_fail.reason !=
+            "source_missing_and_integrity_manifest_unknown_key") {
+        std::cerr << "expected BGFX source-absent alignment policy to propagate unknown-key parse reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_alignment_invalid_token_fail =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                true,   // binary_exists
+                true,   // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_parse_fail.ready,
+                bgfx_source_absent_integrity_parse_fail.reason,
+            });
+    if (bgfx_source_absent_alignment_invalid_token_fail.ready ||
+        bgfx_source_absent_alignment_invalid_token_fail.reason !=
+            "source_missing_and_integrity_manifest_invalid_token_form") {
+        std::cerr << "expected BGFX source-absent alignment policy to propagate invalid-token parse reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_missing_binary =
+        karma::renderer_backend::detail::EvaluateBgfxDirectSamplerAlignmentPolicy(
+            karma::renderer_backend::detail::BgfxDirectSamplerAlignmentInput{
+                false,  // source_exists
+                false,  // source_declares_direct_contract
+                false,  // binary_exists
+                false,  // binary_non_empty
+                false,  // binary_up_to_date
+                bgfx_source_absent_integrity_pass.ready,
+                bgfx_source_absent_integrity_pass.reason,
+            });
+    if (bgfx_source_absent_missing_binary.ready ||
+        bgfx_source_absent_missing_binary.reason != "source_missing_and_binary_missing") {
+        std::cerr << "expected BGFX source-absent alignment policy to disable missing deployed binaries\n";
+        return false;
+    }
+
+    const auto bgfx_ready_contract = EvaluateBgfxDirectSamplerContract(
+        true,   // uniform_contract_ready
+        bgfx_source_present_alignment);
+    if (!bgfx_ready_contract.ready_for_direct_path ||
+        !bgfx_ready_contract.uniform_contract_ready ||
+        !bgfx_ready_contract.shader_alignment_ready ||
+        bgfx_ready_contract.reason != "ok") {
+        std::cerr << "expected BGFX direct sampler readiness to enable when uniform and alignment contracts are ready\n";
+        return false;
+    }
+
+    const auto bgfx_uniform_unavailable = EvaluateBgfxDirectSamplerContract(
+        false,  // uniform_contract_ready
+        bgfx_source_present_alignment);
+    if (bgfx_uniform_unavailable.ready_for_direct_path ||
+        bgfx_uniform_unavailable.reason != "uniform_contract_unavailable") {
+        std::cerr << "expected BGFX direct sampler readiness to disable when uniform contract is unavailable\n";
+        return false;
+    }
+
+    const auto bgfx_alignment_unavailable = EvaluateBgfxDirectSamplerContract(
+        true,   // uniform_contract_ready
+        bgfx_source_present_stale);
+    if (bgfx_alignment_unavailable.ready_for_direct_path ||
+        bgfx_alignment_unavailable.reason != "binary_stale_vs_source") {
+        std::cerr << "expected BGFX direct sampler readiness to disable with strict source-present stale reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_ready_contract = EvaluateBgfxDirectSamplerContract(
+        true,   // uniform_contract_ready
+        bgfx_source_absent_alignment);
+    if (!bgfx_source_absent_ready_contract.ready_for_direct_path ||
+        bgfx_source_absent_ready_contract.reason != "ok_source_absent_binary_integrity") {
+        std::cerr << "expected BGFX direct sampler readiness to remain enabled for source-absent valid deployment path\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_disabled_contract = EvaluateBgfxDirectSamplerContract(
+        true,   // uniform_contract_ready
+        bgfx_source_absent_alignment_integrity_fail);
+    if (bgfx_source_absent_disabled_contract.ready_for_direct_path ||
+        bgfx_source_absent_disabled_contract.reason != "source_missing_and_integrity_hash_mismatch") {
+        std::cerr << "expected BGFX direct sampler readiness to propagate source-absent integrity disable reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_signed_envelope_parse_fail_contract = EvaluateBgfxDirectSamplerContract(
+        true,   // uniform_contract_ready
+        bgfx_source_absent_alignment_signed_envelope_parse_fail);
+    if (bgfx_source_absent_signed_envelope_parse_fail_contract.ready_for_direct_path ||
+        bgfx_source_absent_signed_envelope_parse_fail_contract.reason !=
+            "source_missing_and_integrity_manifest_signed_envelope_metadata_missing") {
+        std::cerr << "expected BGFX direct sampler readiness to propagate signed-envelope parse guardrail reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_signed_envelope_deferred_contract = EvaluateBgfxDirectSamplerContract(
+        true,   // uniform_contract_ready
+        bgfx_source_absent_alignment_signed_envelope_deferred);
+    if (bgfx_source_absent_signed_envelope_deferred_contract.ready_for_direct_path ||
+        bgfx_source_absent_signed_envelope_deferred_contract.reason !=
+            "source_missing_and_integrity_signed_envelope_verification_deferred") {
+        std::cerr << "expected BGFX direct sampler readiness to propagate signed-envelope verification-deferred reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_duplicate_disabled_contract = EvaluateBgfxDirectSamplerContract(
+        true,   // uniform_contract_ready
+        bgfx_source_absent_alignment_duplicate_key_fail);
+    if (bgfx_source_absent_duplicate_disabled_contract.ready_for_direct_path ||
+        bgfx_source_absent_duplicate_disabled_contract.reason !=
+            "source_missing_and_integrity_manifest_duplicate_key") {
+        std::cerr << "expected BGFX direct sampler readiness to propagate duplicate-key parse disable reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_noncanonical_line_endings_disabled_contract =
+        EvaluateBgfxDirectSamplerContract(
+            true,   // uniform_contract_ready
+            bgfx_source_absent_alignment_noncanonical_line_endings_fail);
+    if (bgfx_source_absent_noncanonical_line_endings_disabled_contract.ready_for_direct_path ||
+        bgfx_source_absent_noncanonical_line_endings_disabled_contract.reason !=
+            "source_missing_and_integrity_manifest_noncanonical_line_endings") {
+        std::cerr << "expected BGFX direct sampler readiness to propagate noncanonical line-ending disable reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_noncanonical_whitespace_disabled_contract =
+        EvaluateBgfxDirectSamplerContract(
+            true,   // uniform_contract_ready
+            bgfx_source_absent_alignment_noncanonical_whitespace_fail);
+    if (bgfx_source_absent_noncanonical_whitespace_disabled_contract.ready_for_direct_path ||
+        bgfx_source_absent_noncanonical_whitespace_disabled_contract.reason !=
+            "source_missing_and_integrity_manifest_noncanonical_whitespace") {
+        std::cerr << "expected BGFX direct sampler readiness to propagate noncanonical-whitespace disable reason\n";
+        return false;
+    }
+
+    const auto bgfx_source_absent_unknown_key_disabled_contract = EvaluateBgfxDirectSamplerContract(
+        true,   // uniform_contract_ready
+        bgfx_source_absent_alignment_unknown_key_fail);
+    if (bgfx_source_absent_unknown_key_disabled_contract.ready_for_direct_path ||
+        bgfx_source_absent_unknown_key_disabled_contract.reason !=
+            "source_missing_and_integrity_manifest_unknown_key") {
+        std::cerr << "expected BGFX direct sampler readiness to propagate unknown-key parse disable reason\n";
+        return false;
+    }
+
+    const auto enabled_invariants = EvaluateDirectSamplerDrawInvariants(
+        DirectSamplerDrawInvariantInput{
+            true,   // direct_path_enabled
+            8u,     // total_draws
+            3u,     // direct_contract_draws
+            3u,     // direct_draws
+            5u,     // fallback_draws
+            0u,     // forced_fallback_draws
+            0u,     // unexpected_direct_draws
+        });
+    if (!enabled_invariants.ok || enabled_invariants.reason != "ok") {
+        std::cerr << "expected enabled direct sampler invariants to pass\n";
+        return false;
+    }
+
+    const auto disabled_invariants = EvaluateDirectSamplerDrawInvariants(
+        DirectSamplerDrawInvariantInput{
+            false,  // direct_path_enabled
+            8u,     // total_draws
+            3u,     // direct_contract_draws
+            0u,     // direct_draws
+            8u,     // fallback_draws
+            3u,     // forced_fallback_draws
+            0u,     // unexpected_direct_draws
+        });
+    if (!disabled_invariants.ok || disabled_invariants.reason != "ok") {
+        std::cerr << "expected disabled direct sampler invariants to pass\n";
+        return false;
+    }
+
+    const auto forced_fallback_violation = EvaluateDirectSamplerDrawInvariants(
+        DirectSamplerDrawInvariantInput{
+            true,   // direct_path_enabled
+            8u,     // total_draws
+            3u,     // direct_contract_draws
+            2u,     // direct_draws
+            6u,     // fallback_draws
+            1u,     // forced_fallback_draws
+            0u,     // unexpected_direct_draws
+        });
+    if (forced_fallback_violation.ok ||
+        forced_fallback_violation.reason.find("forced_fallback_while_enabled") == std::string::npos ||
+        forced_fallback_violation.reason.find("direct_contract_draw_mismatch_enabled") == std::string::npos) {
+        std::cerr << "expected enabled direct sampler invariant violations to be reported explicitly\n";
+        return false;
+    }
+
+    const auto disabled_direct_violation = EvaluateDirectSamplerDrawInvariants(
+        DirectSamplerDrawInvariantInput{
+            false,  // direct_path_enabled
+            4u,     // total_draws
+            2u,     // direct_contract_draws
+            1u,     // direct_draws
+            3u,     // fallback_draws
+            1u,     // forced_fallback_draws
+            1u,     // unexpected_direct_draws
+        });
+    if (disabled_direct_violation.ok ||
+        disabled_direct_violation.reason.find("direct_draws_while_disabled") == std::string::npos ||
+        disabled_direct_violation.reason.find("unexpected_direct_draws_nonzero") == std::string::npos ||
+        disabled_direct_violation.reason.find("forced_fallback_draw_mismatch_disabled") == std::string::npos) {
+        std::cerr << "expected disabled direct sampler invariant violations to be reported explicitly\n";
+        return false;
+    }
+
+    return true;
+}
+
 bool RunOcclusionEdgeCaseParityChecks() {
     auto resolve_occlusion = [](uint8_t value, int channels, float strength) -> ResolvedMaterialSemantics {
         karma::renderer::MaterialDesc material{};
@@ -494,6 +1631,11 @@ bool RunOcclusionEdgeCaseParityChecks() {
         std::cerr << "expected near-black occlusion edge case to clamp to full attenuation\n";
         return false;
     }
+    if (!NearlyEqual(black_1c.occlusion_edge, 0.0f, 1e-4f) ||
+        !NearlyEqual(black_4c.occlusion_edge, 0.0f, 1e-4f)) {
+        std::cerr << "expected single-sample black occlusion edge weight to remain zero\n";
+        return false;
+    }
 
     const ResolvedMaterialSemantics white_1c = resolve_occlusion(254u, 1, 1.0f);
     const ResolvedMaterialSemantics white_4c = resolve_occlusion(254u, 4, 1.0f);
@@ -503,6 +1645,49 @@ bool RunOcclusionEdgeCaseParityChecks() {
     }
     if (!NearlyEqual(white_1c.occlusion, 1.0f, 1e-4f) || !NearlyEqual(white_4c.occlusion, 1.0f, 1e-4f)) {
         std::cerr << "expected near-white occlusion edge case to clamp to no attenuation\n";
+        return false;
+    }
+    if (!NearlyEqual(white_1c.occlusion_edge, 0.0f, 1e-4f) ||
+        !NearlyEqual(white_4c.occlusion_edge, 0.0f, 1e-4f)) {
+        std::cerr << "expected single-sample white occlusion edge weight to remain zero\n";
+        return false;
+    }
+
+    auto resolve_checker_occlusion = [](int channels) -> ResolvedMaterialSemantics {
+        karma::renderer::MaterialDesc material{};
+        material.occlusion_strength = 1.0f;
+        karma::renderer::MeshData::TextureData texture{};
+        texture.width = 8;
+        texture.height = 8;
+        texture.channels = channels;
+        texture.pixels.assign(static_cast<std::size_t>(texture.width * texture.height * channels), 0u);
+        for (int y = 0; y < texture.height; ++y) {
+            for (int x = 0; x < texture.width; ++x) {
+                const bool high = (((x + y) & 1) == 0);
+                const std::size_t base = static_cast<std::size_t>((y * texture.width + x) * channels);
+                texture.pixels[base] = high ? 255u : 0u;
+                if (channels > 1) {
+                    texture.pixels[base + static_cast<std::size_t>(channels - 1)] = 255u;
+                }
+            }
+        }
+        material.occlusion = texture;
+        return ResolveMaterialSemantics(material);
+    };
+
+    const ResolvedMaterialSemantics checker_1c = resolve_checker_occlusion(1);
+    const ResolvedMaterialSemantics checker_4c = resolve_checker_occlusion(4);
+    if (!ValidateResolvedMaterialSemantics(checker_1c) || !ValidateResolvedMaterialSemantics(checker_4c)) {
+        std::cerr << "checker occlusion semantics invalid\n";
+        return false;
+    }
+    if (!(checker_1c.occlusion_edge > 0.20f) || !(checker_4c.occlusion_edge > 0.20f)) {
+        std::cerr << "expected checker occlusion to produce non-trivial edge weight\n";
+        return false;
+    }
+    if (std::fabs(checker_1c.occlusion - checker_4c.occlusion) > 0.06f ||
+        std::fabs(checker_1c.occlusion_edge - checker_4c.occlusion_edge) > 0.06f) {
+        std::cerr << "expected checker occlusion semantics to stay channel-layout stable\n";
         return false;
     }
 
@@ -518,7 +1703,8 @@ bool RunOcclusionEdgeCaseParityChecks() {
         std::cerr << "no-occlusion semantics invalid\n";
         return false;
     }
-    if (no_occlusion_sem.used_occlusion_texture || !NearlyEqual(no_occlusion_sem.occlusion, 1.0f, 1e-4f)) {
+    if (no_occlusion_sem.used_occlusion_texture || !NearlyEqual(no_occlusion_sem.occlusion, 1.0f, 1e-4f) ||
+        !NearlyEqual(no_occlusion_sem.occlusion_edge, 0.0f, 1e-4f)) {
         std::cerr << "expected no-occlusion path to keep default occlusion=1.0\n";
         return false;
     }
@@ -611,6 +1797,118 @@ bool RunNormalDetailPolicyRefinementChecks() {
                   << smooth_boost << ", rough=" << rough_boost << ")\n";
         return false;
     }
+    return true;
+}
+
+bool RunNormalDetailResponseAndOcclusionIntegrationChecks() {
+    karma::renderer::MeshData::TextureData strong_normal{};
+    strong_normal.width = 1;
+    strong_normal.height = 1;
+    strong_normal.channels = 3;
+    strong_normal.pixels = {255u, 0u, 255u};
+
+    karma::renderer::DirectionalLightData light{};
+    light.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+    light.color = glm::vec4(1.0f);
+    light.ambient = glm::vec4(0.2f, 0.2f, 0.2f, 1.0f);
+
+    karma::renderer::EnvironmentLightingData environment{};
+    const ResolvedEnvironmentLightingSemantics env_sem = ResolveEnvironmentLightingSemantics(environment);
+
+    karma::renderer::MaterialDesc base{};
+    base.base_color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+    base.metallic_factor = 0.2f;
+    base.roughness_factor = 0.25f;
+
+    const ResolvedMaterialSemantics base_sem = ResolveMaterialSemantics(base);
+    const ResolvedMaterialLighting base_light = ResolveMaterialLighting(base_sem, light, env_sem, 1.0f);
+    if (!ValidateResolvedMaterialSemantics(base_sem) || !ValidateResolvedMaterialLighting(base_light)) {
+        std::cerr << "baseline material response invalid\n";
+        return false;
+    }
+
+    auto resolve_detail = [&](float normal_scale) -> std::pair<ResolvedMaterialSemantics, ResolvedMaterialLighting> {
+        karma::renderer::MaterialDesc detail = base;
+        detail.normal_scale = normal_scale;
+        detail.normal = strong_normal;
+        const ResolvedMaterialSemantics sem = ResolveMaterialSemantics(detail);
+        const ResolvedMaterialLighting lit = ResolveMaterialLighting(sem, light, env_sem, 1.0f);
+        return {sem, lit};
+    };
+
+    const auto [low_sem, low_light] = resolve_detail(0.25f);
+    const auto [mid_sem, mid_light] = resolve_detail(0.60f);
+    const auto [high_sem, high_light] = resolve_detail(1.0f);
+    if (!ValidateResolvedMaterialSemantics(low_sem) || !ValidateResolvedMaterialLighting(low_light) ||
+        !ValidateResolvedMaterialSemantics(mid_sem) || !ValidateResolvedMaterialLighting(mid_light) ||
+        !ValidateResolvedMaterialSemantics(high_sem) || !ValidateResolvedMaterialLighting(high_light)) {
+        std::cerr << "normal-detail response tuning outputs invalid\n";
+        return false;
+    }
+
+    if (!(low_sem.normal_variation < mid_sem.normal_variation && mid_sem.normal_variation < high_sem.normal_variation)) {
+        std::cerr << "expected normal variation to increase with normal scale\n";
+        return false;
+    }
+
+    const float low_boost = low_light.light_color.r - base_light.light_color.r;
+    const float mid_boost = mid_light.light_color.r - base_light.light_color.r;
+    const float high_boost = high_light.light_color.r - base_light.light_color.r;
+    if (!(low_boost > 0.0f && mid_boost > low_boost && high_boost > mid_boost)) {
+        std::cerr << "expected bounded monotonic normal/detail direct-light boosts, got "
+                  << low_boost << ", " << mid_boost << ", " << high_boost << "\n";
+        return false;
+    }
+    if (!(high_boost < 0.35f)) {
+        std::cerr << "expected high-end normal/detail boost to stay bounded, got " << high_boost << "\n";
+        return false;
+    }
+
+    karma::renderer::MaterialDesc checker_occlusion = base;
+    checker_occlusion.occlusion_strength = 1.0f;
+    karma::renderer::MeshData::TextureData occlusion_checker{};
+    occlusion_checker.width = 8;
+    occlusion_checker.height = 8;
+    occlusion_checker.channels = 1;
+    occlusion_checker.pixels.assign(8u * 8u, 0u);
+    for (std::size_t y = 0; y < 8u; ++y) {
+        for (std::size_t x = 0; x < 8u; ++x) {
+            occlusion_checker.pixels[(y * 8u) + x] = (((x + y) & 1u) == 0u) ? 255u : 0u;
+        }
+    }
+    checker_occlusion.occlusion = occlusion_checker;
+
+    const ResolvedMaterialSemantics checker_sem = ResolveMaterialSemantics(checker_occlusion);
+    if (!ValidateResolvedMaterialSemantics(checker_sem)) {
+        std::cerr << "checker occlusion integration semantics invalid\n";
+        return false;
+    }
+    if (!(checker_sem.occlusion_edge > 0.20f)) {
+        std::cerr << "expected checker occlusion integration path to capture edge weight\n";
+        return false;
+    }
+
+    const ResolvedMaterialLighting checker_edge_light = ResolveMaterialLighting(checker_sem, light, env_sem, 1.0f);
+    ResolvedMaterialSemantics checker_no_edge_sem = checker_sem;
+    checker_no_edge_sem.occlusion_edge = 0.0f;
+    const ResolvedMaterialLighting checker_no_edge_light =
+        ResolveMaterialLighting(checker_no_edge_sem, light, env_sem, 1.0f);
+    if (!ValidateResolvedMaterialLighting(checker_edge_light) ||
+        !ValidateResolvedMaterialLighting(checker_no_edge_light)) {
+        std::cerr << "checker occlusion integration lighting invalid\n";
+        return false;
+    }
+
+    const float edge_lift = checker_edge_light.ambient_color.r - checker_no_edge_light.ambient_color.r;
+    if (!(edge_lift > 1e-4f && edge_lift < 0.08f)) {
+        std::cerr << "expected occlusion edge integration lift to be bounded, got " << edge_lift << "\n";
+        return false;
+    }
+    if (!(checker_edge_light.ambient_color.r < base_light.ambient_color.r)) {
+        std::cerr << "expected occluded material to remain below unoccluded ambient response\n";
+        return false;
+    }
+
     return true;
 }
 
@@ -769,10 +2067,22 @@ int main() {
     if (!RunMaterialTextureClampPolicyChecks()) {
         return 1;
     }
+    if (!RunMaterialTextureLifecycleIngestionChecks()) {
+        return 1;
+    }
+    if (!RunShaderPathLifecycleConsumptionChecks()) {
+        return 1;
+    }
+    if (!RunDirectSamplerObservabilityContractChecks()) {
+        return 1;
+    }
     if (!RunOcclusionEdgeCaseParityChecks()) {
         return 1;
     }
     if (!RunNormalDetailPolicyRefinementChecks()) {
+        return 1;
+    }
+    if (!RunNormalDetailResponseAndOcclusionIntegrationChecks()) {
         return 1;
     }
     if (!RunMaterialLightingChecks()) {

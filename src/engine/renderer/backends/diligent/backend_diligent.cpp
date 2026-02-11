@@ -1,6 +1,7 @@
 #include "karma/renderer/backend.hpp"
 
 #include "../backend_factory_internal.hpp"
+#include "../direct_sampler_observability_internal.hpp"
 #include "../debug_line_internal.hpp"
 #include "../directional_shadow_internal.hpp"
 #include "../environment_lighting_internal.hpp"
@@ -30,6 +31,7 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -54,6 +56,12 @@ struct Mesh {
 struct Material {
     detail::ResolvedMaterialSemantics semantics{};
     Diligent::RefCntAutoPtr<Diligent::ITextureView> srv;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> normal_srv;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> occlusion_srv;
+    detail::MaterialShaderTextureInputPath shader_input_path =
+        detail::MaterialShaderTextureInputPath::Disabled;
+    bool shader_uses_normal_input = false;
+    bool shader_uses_occlusion_input = false;
 };
 
 struct Constants {
@@ -63,6 +71,7 @@ struct Constants {
     glm::vec4 u_lightColor;
     glm::vec4 u_ambientColor;
     glm::vec4 u_unlit;
+    glm::vec4 u_textureMode;
 };
 
 struct LineVertex {
@@ -182,6 +191,45 @@ class DiligentBackend final : public Backend {
         if (!hasReadyPipelines() || !hasReadyLinePipeline() || !swapchain_) {
             return;
         }
+        std::array<detail::SamplerVariableAvailability, detail::kDiligentMaterialVariantCount>
+            material_sampler_availability{};
+        for (std::size_t i = 0; i < material_sampler_availability.size(); ++i) {
+            Diligent::IShaderResourceBinding* srb = pipeline_variants_[i].srb;
+            detail::SamplerVariableAvailability& availability = material_sampler_availability[i];
+            availability.srb_ready = (srb != nullptr);
+            if (availability.srb_ready) {
+                availability.has_s_tex = hasSamplerVariable(srb, "s_tex");
+                availability.has_s_normal = hasSamplerVariable(srb, "s_normal");
+                availability.has_s_occlusion = hasSamplerVariable(srb, "s_occlusion");
+            }
+        }
+        detail::SamplerVariableAvailability line_sampler_availability{};
+        line_sampler_availability.srb_ready = (line_pipeline_.srb != nullptr);
+        if (line_sampler_availability.srb_ready) {
+            line_sampler_availability.has_s_tex = hasSamplerVariable(line_pipeline_.srb, "s_tex");
+            line_sampler_availability.has_s_normal = hasSamplerVariable(line_pipeline_.srb, "s_normal");
+            line_sampler_availability.has_s_occlusion = hasSamplerVariable(line_pipeline_.srb, "s_occlusion");
+        }
+        direct_sampler_contract_report_ = detail::EvaluateDiligentDirectSamplerContract(
+            material_sampler_availability,
+            line_sampler_availability);
+        supports_direct_multi_sampler_inputs_ = direct_sampler_contract_report_.ready_for_direct_path;
+        direct_sampler_disable_reason_ = supports_direct_multi_sampler_inputs_
+            ? std::string("ok")
+            : direct_sampler_contract_report_.reason;
+        KARMA_TRACE("render.diligent",
+                    "direct sampler readiness enabled={} materialContract={} lineContract={} reason={}",
+                    supports_direct_multi_sampler_inputs_ ? 1 : 0,
+                    direct_sampler_contract_report_.material_pipeline_contract_ready ? 1 : 0,
+                    direct_sampler_contract_report_.line_pipeline_contract_ready ? 1 : 0,
+                    direct_sampler_disable_reason_);
+        if (!supports_direct_multi_sampler_inputs_) {
+            spdlog::warn("Diligent: direct sampler path disabled (reason={})",
+                         direct_sampler_disable_reason_);
+        } else if (!direct_sampler_contract_report_.line_pipeline_contract_ready) {
+            KARMA_TRACE("render.diligent",
+                        "line sampler contract is partial; direct material path remains enabled");
+        }
         initialized_ = true;
     }
 
@@ -294,6 +342,11 @@ class DiligentBackend final : public Backend {
         if (!initialized_) {
             return renderer::kInvalidMaterial;
         }
+        const detail::MaterialTextureSetLifecycleIngestion texture_ingestion =
+            detail::IngestMaterialTextureSetForLifecycle(material);
+        const detail::MaterialShaderInputContract shader_input_contract =
+            detail::ResolveMaterialShaderInputContract(
+                material, texture_ingestion, supports_direct_multi_sampler_inputs_);
         const detail::ResolvedMaterialSemantics semantics = detail::ResolveMaterialSemantics(material);
         if (!detail::ValidateResolvedMaterialSemantics(semantics)) {
             spdlog::error("Diligent: material semantics validation failed");
@@ -301,21 +354,57 @@ class DiligentBackend final : public Backend {
         }
         Material out;
         out.semantics = semantics;
-        if (material.albedo && !material.albedo->pixels.empty()) {
+        out.shader_input_path = shader_input_contract.path;
+        out.shader_uses_normal_input = shader_input_contract.used_normal_lifecycle_texture;
+        out.shader_uses_occlusion_input = shader_input_contract.used_occlusion_lifecycle_texture;
+        if (shader_input_contract.path == detail::MaterialShaderTextureInputPath::DirectMultiSampler &&
+            shader_input_contract.direct_albedo_texture) {
+            out.srv = createTextureView(*shader_input_contract.direct_albedo_texture);
+        } else if (shader_input_contract.path == detail::MaterialShaderTextureInputPath::CompositeFallback &&
+                   shader_input_contract.fallback_composite_texture) {
+            out.srv = createTextureView(*shader_input_contract.fallback_composite_texture);
+        } else if (material.albedo && !material.albedo->pixels.empty()) {
             out.srv = createTextureView(*material.albedo);
             KARMA_TRACE("render.diligent", "createMaterial texture={} {}x{}",
                         out.srv ? 1 : 0, material.albedo->width, material.albedo->height);
         }
+        if (shader_input_contract.path == detail::MaterialShaderTextureInputPath::DirectMultiSampler &&
+            shader_input_contract.direct_normal_texture) {
+            out.normal_srv = createTextureView(*shader_input_contract.direct_normal_texture);
+        } else if (texture_ingestion.normal.texture) {
+            out.normal_srv = createTextureView(*texture_ingestion.normal.texture);
+        }
+        if (shader_input_contract.path == detail::MaterialShaderTextureInputPath::DirectMultiSampler &&
+            shader_input_contract.direct_occlusion_texture) {
+            out.occlusion_srv = createTextureView(*shader_input_contract.direct_occlusion_texture);
+        } else if (texture_ingestion.occlusion.texture) {
+            out.occlusion_srv = createTextureView(*texture_ingestion.occlusion.texture);
+        }
         KARMA_TRACE("render.diligent",
-                    "createMaterial semantics metallic={:.3f} roughness={:.3f} normalVar={:.3f} occlusion={:.3f} emissive=({:.3f},{:.3f},{:.3f}) alphaMode={} alpha={} cutoff={:.3f} draw={} blend={} doubleSided={} mrTex={} emissiveTex={} normalTex={} occlusionTex={}",
+                    "createMaterial semantics metallic={:.3f} roughness={:.3f} normalVar={:.3f} occlusion={:.3f} occlusionEdge={:.3f} emissive=({:.3f},{:.3f},{:.3f}) alphaMode={} alpha={} cutoff={:.3f} draw={} blend={} doubleSided={} mrTex={} emissiveTex={} normalTex={} occlusionTex={} normalLifecycleTex={} occlusionLifecycleTex={} normalBounded={} occlusionBounded={} shaderPath={} shaderDirect={} shaderFallbackComposite={} shaderConsumesNormal={} shaderConsumesOcclusion={} shaderUsesAlbedo={} shaderTextureBounded={}",
                     out.semantics.metallic, out.semantics.roughness, out.semantics.normal_variation, out.semantics.occlusion,
+                    out.semantics.occlusion_edge,
                     out.semantics.emissive.r, out.semantics.emissive.g, out.semantics.emissive.b,
                     static_cast<int>(out.semantics.alpha_mode), out.semantics.base_color.a, out.semantics.alpha_cutoff,
                     out.semantics.draw ? 1 : 0, out.semantics.alpha_blend ? 1 : 0, out.semantics.double_sided ? 1 : 0,
                     out.semantics.used_metallic_roughness_texture ? 1 : 0,
                     out.semantics.used_emissive_texture ? 1 : 0,
                     out.semantics.used_normal_texture ? 1 : 0,
-                    out.semantics.used_occlusion_texture ? 1 : 0);
+                    out.semantics.used_occlusion_texture ? 1 : 0,
+                    out.normal_srv ? 1 : 0,
+                    out.occlusion_srv ? 1 : 0,
+                    texture_ingestion.normal.bounded ? 1 : 0,
+                    texture_ingestion.occlusion.bounded ? 1 : 0,
+                    static_cast<int>(shader_input_contract.path),
+                    shader_input_contract.path == detail::MaterialShaderTextureInputPath::DirectMultiSampler ? 1 : 0,
+                    (shader_input_contract.path == detail::MaterialShaderTextureInputPath::CompositeFallback &&
+                     shader_input_contract.fallback_composite_texture && out.srv)
+                        ? 1
+                        : 0,
+                    shader_input_contract.used_normal_lifecycle_texture ? 1 : 0,
+                    shader_input_contract.used_occlusion_lifecycle_texture ? 1 : 0,
+                    shader_input_contract.used_albedo_texture ? 1 : 0,
+                    shader_input_contract.bounded ? 1 : 0);
         renderer::MaterialId id = next_material_id_++;
         materials_[id] = out;
         return id;
@@ -407,6 +496,11 @@ class DiligentBackend final : public Backend {
             detail::ResolveEnvironmentLightingSemantics(environment_);
         const detail::DirectionalShadowMap shadow_map =
             detail::BuildDirectionalShadowMap(shadow_semantics, light_.direction, shadow_casters);
+        std::size_t direct_sampler_draws = 0u;
+        std::size_t fallback_sampler_draws = 0u;
+        std::size_t direct_contract_draws = 0u;
+        std::size_t forced_fallback_draws = 0u;
+        std::size_t unexpected_direct_draws = 0u;
 
         for (const RenderableDraw& renderable : renderables) {
             const auto& item = *renderable.item;
@@ -443,16 +537,57 @@ class DiligentBackend final : public Backend {
             constants.u_ambientColor = lighting.ambient_color;
             constants.u_unlit = glm::vec4(light_.unlit, 0.0f, 0.0f, 0.0f);
 
+            const bool use_direct_sampler_path =
+                supports_direct_multi_sampler_inputs_ &&
+                mat.shader_input_path == detail::MaterialShaderTextureInputPath::DirectMultiSampler;
+            const bool contract_requests_direct =
+                mat.shader_input_path == detail::MaterialShaderTextureInputPath::DirectMultiSampler;
+            if (contract_requests_direct) {
+                ++direct_contract_draws;
+            }
+            if (use_direct_sampler_path) {
+                ++direct_sampler_draws;
+            } else {
+                ++fallback_sampler_draws;
+            }
+            if (use_direct_sampler_path && !contract_requests_direct) {
+                ++unexpected_direct_draws;
+            }
+            if (!use_direct_sampler_path && contract_requests_direct) {
+                ++forced_fallback_draws;
+            }
+            constants.u_textureMode = glm::vec4(
+                (use_direct_sampler_path && mat.shader_uses_normal_input) ? 1.0f : 0.0f,
+                (use_direct_sampler_path && mat.shader_uses_occlusion_input) ? 1.0f : 0.0f,
+                0.0f,
+                0.0f);
+
             Diligent::MapHelper<Constants> cb_data(context_, constant_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
             *cb_data = constants;
 
             if (pipeline->srb) {
                 if (auto* texVar = pipeline->srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_tex")) {
-                    auto texture_view = mat.srv ? mat.srv : mesh.srv;
+                    auto texture_view = use_direct_sampler_path
+                        ? (mat.srv ? mat.srv : white_srv_)
+                        : (mat.srv ? mat.srv : mesh.srv);
                     if (!texture_view) {
                         texture_view = white_srv_;
                     }
                     texVar->Set(texture_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+                }
+                if (auto* normalVar = pipeline->srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_normal")) {
+                    auto normal_view = (use_direct_sampler_path && mat.normal_srv) ? mat.normal_srv : white_srv_;
+                    if (!normal_view) {
+                        normal_view = white_srv_;
+                    }
+                    normalVar->Set(normal_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+                }
+                if (auto* occlusionVar = pipeline->srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_occlusion")) {
+                    auto occlusion_view = (use_direct_sampler_path && mat.occlusion_srv) ? mat.occlusion_srv : white_srv_;
+                    if (!occlusion_view) {
+                        occlusion_view = white_srv_;
+                    }
+                    occlusionVar->Set(occlusion_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
                 }
             }
             context_->CommitShaderResources(pipeline->srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -468,6 +603,67 @@ class DiligentBackend final : public Backend {
             draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
             context_->DrawIndexed(draw);
         }
+        KARMA_TRACE_CHANGED(
+            "render.diligent",
+            std::to_string(layer) + ":" +
+                std::to_string(renderables.size()) + ":" +
+                std::to_string(direct_sampler_draws) + ":" +
+                std::to_string(fallback_sampler_draws) + ":" +
+                std::to_string(supports_direct_multi_sampler_inputs_ ? 1 : 0) + ":" +
+                direct_sampler_disable_reason_,
+            "direct sampler frame layer={} draws={} direct={} fallback={} enabled={} reason={}",
+            layer,
+            renderables.size(),
+            direct_sampler_draws,
+            fallback_sampler_draws,
+            supports_direct_multi_sampler_inputs_ ? 1 : 0,
+            direct_sampler_disable_reason_);
+        const detail::DirectSamplerDrawInvariantReport draw_invariants =
+            detail::EvaluateDirectSamplerDrawInvariants(
+                detail::DirectSamplerDrawInvariantInput{
+                    supports_direct_multi_sampler_inputs_,
+                    renderables.size(),
+                    direct_contract_draws,
+                    direct_sampler_draws,
+                    fallback_sampler_draws,
+                    forced_fallback_draws,
+                    unexpected_direct_draws,
+                });
+        if (!draw_invariants.ok) {
+            spdlog::error(
+                "Diligent: direct sampler assertion failed (enabled={}, directContract={}, directDraws={}, fallbackDraws={}, forcedFallback={}, unexpectedDirect={}, reason={}, invariant={})",
+                supports_direct_multi_sampler_inputs_ ? 1 : 0,
+                direct_contract_draws,
+                direct_sampler_draws,
+                fallback_sampler_draws,
+                forced_fallback_draws,
+                unexpected_direct_draws,
+                direct_sampler_disable_reason_,
+                draw_invariants.reason);
+        }
+        KARMA_TRACE_CHANGED(
+            "render.diligent",
+            std::to_string(layer) + ":" +
+                std::to_string(renderables.size()) + ":" +
+                std::to_string(direct_contract_draws) + ":" +
+                std::to_string(direct_sampler_draws) + ":" +
+                std::to_string(fallback_sampler_draws) + ":" +
+                std::to_string(forced_fallback_draws) + ":" +
+                std::to_string(unexpected_direct_draws) + ":" +
+                std::to_string(draw_invariants.ok ? 1 : 0) + ":" +
+                draw_invariants.reason,
+            "direct sampler assertions layer={} draws={} contractDirect={} actualDirect={} fallback={} forcedFallback={} unexpectedDirect={} ok={} enabled={} reason={} invariant={}",
+            layer,
+            renderables.size(),
+            direct_contract_draws,
+            direct_sampler_draws,
+            fallback_sampler_draws,
+            forced_fallback_draws,
+            unexpected_direct_draws,
+            draw_invariants.ok ? 1 : 0,
+            supports_direct_multi_sampler_inputs_ ? 1 : 0,
+            direct_sampler_disable_reason_,
+            draw_invariants.reason);
 
         if (line_pipeline_.pso && line_pipeline_.srb && line_vertex_buffer_) {
             float aspect = (height_ > 0) ? float(width_) / float(height_) : 1.0f;
@@ -493,10 +689,17 @@ class DiligentBackend final : public Backend {
                 line_constants.u_lightColor = glm::vec4(0.0f);
                 line_constants.u_ambientColor = glm::vec4(0.0f);
                 line_constants.u_unlit = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+                line_constants.u_textureMode = glm::vec4(0.0f);
                 Diligent::MapHelper<Constants> cb_data(context_, constant_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
                 *cb_data = line_constants;
 
                 if (auto* tex_var = line_pipeline_.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_tex")) {
+                    tex_var->Set(white_srv_, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+                }
+                if (auto* tex_var = line_pipeline_.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_normal")) {
+                    tex_var->Set(white_srv_, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+                }
+                if (auto* tex_var = line_pipeline_.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_occlusion")) {
                     tex_var->Set(white_srv_, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
                 }
                 context_->CommitShaderResources(line_pipeline_.srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -545,6 +748,8 @@ class DiligentBackend final : public Backend {
     };
 
     static constexpr std::size_t kPipelineVariantCount = 4;
+    static_assert(kPipelineVariantCount == detail::kDiligentMaterialVariantCount,
+                  "pipeline variant count must match direct sampler observability contract");
 
     static std::size_t PipelineVariantIndex(bool alpha_blend, bool double_sided) {
         return (alpha_blend ? 2u : 0u) + (double_sided ? 1u : 0u);
@@ -565,6 +770,12 @@ class DiligentBackend final : public Backend {
 
     bool hasReadyLinePipeline() const {
         return line_pipeline_.pso && line_pipeline_.srb && line_vertex_buffer_;
+    }
+
+    bool hasSamplerVariable(Diligent::IShaderResourceBinding* srb, const char* name) const {
+        return srb &&
+               name &&
+               srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, name);
     }
 
     void createPipelineVariants() {
@@ -589,6 +800,7 @@ cbuffer Constants {
     float4 u_lightColor;
     float4 u_ambientColor;
     float4 u_unlit;
+    float4 u_textureMode;
 };
 PSInput main(VSInput input) {
     PSInput outp;
@@ -612,13 +824,31 @@ cbuffer Constants {
     float4 u_lightColor;
     float4 u_ambientColor;
     float4 u_unlit;
+    float4 u_textureMode;
 };
 Texture2D s_tex;
 SamplerState s_tex_sampler;
+Texture2D s_normal;
+SamplerState s_normal_sampler;
+Texture2D s_occlusion;
+SamplerState s_occlusion_sampler;
 float4 main(PSInput input) : SV_TARGET {
     float3 n = normalize(input.Nor);
     float4 texColor = s_tex.Sample(s_tex_sampler, input.UV);
-    float4 baseColor = u_color * texColor;
+    float normalModulation = 1.0;
+    if (u_textureMode.x > 0.5) {
+        float2 encodedNormal = s_normal.Sample(s_normal_sampler, input.UV).rg * 2.0 - float2(1.0, 1.0);
+        float normalResponse = clamp(length(encodedNormal), 0.0, 1.0);
+        normalModulation = clamp(1.0 + (0.16 * max(0.0, normalResponse - 0.18)), 1.0, 1.18);
+    }
+    float occlusionModulation = 1.0;
+    if (u_textureMode.y > 0.5) {
+        float ao = clamp(s_occlusion.Sample(s_occlusion_sampler, input.UV).r, 0.0, 1.0);
+        occlusionModulation = clamp(0.25 + (0.75 * ao), 0.25, 1.0);
+    }
+    float combinedModulation = clamp(normalModulation * occlusionModulation, 0.20, 1.20);
+    float4 shadedTexColor = float4(clamp(texColor.rgb * combinedModulation, 0.0, 1.0), clamp(texColor.a, 0.0, 1.0));
+    float4 baseColor = u_color * shadedTexColor;
     if (u_unlit.x > 0.5) {
         return baseColor;
     }
@@ -690,6 +920,7 @@ cbuffer Constants {
     float4 u_lightColor;
     float4 u_ambientColor;
     float4 u_unlit;
+    float4 u_textureMode;
 };
 PSInput main(VSInput input) {
     PSInput outp;
@@ -713,9 +944,14 @@ cbuffer Constants {
     float4 u_lightColor;
     float4 u_ambientColor;
     float4 u_unlit;
+    float4 u_textureMode;
 };
 Texture2D s_tex;
 SamplerState s_tex_sampler;
+Texture2D s_normal;
+SamplerState s_normal_sampler;
+Texture2D s_occlusion;
+SamplerState s_occlusion_sampler;
 float4 main(PSInput input) : SV_TARGET {
     float4 texColor = s_tex.Sample(s_tex_sampler, input.UV);
     return u_color * texColor;
@@ -771,7 +1007,9 @@ float4 main(PSInput input) : SV_TARGET {
         pso_ci.pPS = ps;
 
         Diligent::ShaderResourceVariableDesc vars[] = {
-            {Diligent::SHADER_TYPE_PIXEL, "s_tex", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE}
+            {Diligent::SHADER_TYPE_PIXEL, "s_tex", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
+            {Diligent::SHADER_TYPE_PIXEL, "s_normal", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
+            {Diligent::SHADER_TYPE_PIXEL, "s_occlusion", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
         };
         Diligent::SamplerDesc sampler_desc{};
         sampler_desc.MinFilter = Diligent::FILTER_TYPE_LINEAR;
@@ -781,13 +1019,15 @@ float4 main(PSInput input) : SV_TARGET {
         sampler_desc.AddressV = Diligent::TEXTURE_ADDRESS_CLAMP;
         sampler_desc.AddressW = Diligent::TEXTURE_ADDRESS_CLAMP;
         Diligent::ImmutableSamplerDesc samplers[] = {
-            {Diligent::SHADER_TYPE_PIXEL, "s_tex_sampler", sampler_desc}
+            {Diligent::SHADER_TYPE_PIXEL, "s_tex_sampler", sampler_desc},
+            {Diligent::SHADER_TYPE_PIXEL, "s_normal_sampler", sampler_desc},
+            {Diligent::SHADER_TYPE_PIXEL, "s_occlusion_sampler", sampler_desc},
         };
         pso_ci.PSODesc.ResourceLayout.DefaultVariableType = Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC;
         pso_ci.PSODesc.ResourceLayout.Variables = vars;
-        pso_ci.PSODesc.ResourceLayout.NumVariables = 1;
+        pso_ci.PSODesc.ResourceLayout.NumVariables = 3;
         pso_ci.PSODesc.ResourceLayout.ImmutableSamplers = samplers;
-        pso_ci.PSODesc.ResourceLayout.NumImmutableSamplers = 1;
+        pso_ci.PSODesc.ResourceLayout.NumImmutableSamplers = 3;
 
         device_->CreateGraphicsPipelineState(pso_ci, &line_pipeline_.pso);
         if (!line_pipeline_.pso) {
@@ -852,7 +1092,9 @@ float4 main(PSInput input) : SV_TARGET {
         pso_ci.pPS = ps;
 
         Diligent::ShaderResourceVariableDesc vars[] = {
-            {Diligent::SHADER_TYPE_PIXEL, "s_tex", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE}
+            {Diligent::SHADER_TYPE_PIXEL, "s_tex", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
+            {Diligent::SHADER_TYPE_PIXEL, "s_normal", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
+            {Diligent::SHADER_TYPE_PIXEL, "s_occlusion", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
         };
         Diligent::SamplerDesc sampler_desc{};
         sampler_desc.MinFilter = Diligent::FILTER_TYPE_LINEAR;
@@ -862,13 +1104,15 @@ float4 main(PSInput input) : SV_TARGET {
         sampler_desc.AddressV = Diligent::TEXTURE_ADDRESS_WRAP;
         sampler_desc.AddressW = Diligent::TEXTURE_ADDRESS_WRAP;
         Diligent::ImmutableSamplerDesc samplers[] = {
-            {Diligent::SHADER_TYPE_PIXEL, "s_tex_sampler", sampler_desc}
+            {Diligent::SHADER_TYPE_PIXEL, "s_tex_sampler", sampler_desc},
+            {Diligent::SHADER_TYPE_PIXEL, "s_normal_sampler", sampler_desc},
+            {Diligent::SHADER_TYPE_PIXEL, "s_occlusion_sampler", sampler_desc},
         };
         pso_ci.PSODesc.ResourceLayout.DefaultVariableType = Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC;
         pso_ci.PSODesc.ResourceLayout.Variables = vars;
-        pso_ci.PSODesc.ResourceLayout.NumVariables = 1;
+        pso_ci.PSODesc.ResourceLayout.NumVariables = 3;
         pso_ci.PSODesc.ResourceLayout.ImmutableSamplers = samplers;
-        pso_ci.PSODesc.ResourceLayout.NumImmutableSamplers = 1;
+        pso_ci.PSODesc.ResourceLayout.NumImmutableSamplers = 3;
 
         device_->CreateGraphicsPipelineState(pso_ci, &out_variant.pso);
         if (!out_variant.pso) {
@@ -958,6 +1202,9 @@ float4 main(PSInput input) : SV_TARGET {
     LinePipeline line_pipeline_{};
     Diligent::RefCntAutoPtr<Diligent::IBuffer> constant_buffer_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer> line_vertex_buffer_;
+    detail::DiligentDirectSamplerContractReport direct_sampler_contract_report_{};
+    std::string direct_sampler_disable_reason_ = "not_initialized";
+    bool supports_direct_multi_sampler_inputs_ = false;
 
     std::unordered_map<renderer::MeshId, Mesh> meshes_;
     std::unordered_map<renderer::MaterialId, Material> materials_;
