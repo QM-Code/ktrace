@@ -43,6 +43,8 @@
 namespace karma::renderer_backend {
 namespace {
 
+constexpr uint32_t kDiligentMaterialMaxAnisotropy = 8u;
+
 struct Mesh {
     Diligent::RefCntAutoPtr<Diligent::IBuffer> vb;
     Diligent::RefCntAutoPtr<Diligent::IBuffer> ib;
@@ -1097,9 +1099,10 @@ float4 main(PSInput input) : SV_TARGET {
             {Diligent::SHADER_TYPE_PIXEL, "s_occlusion", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
         };
         Diligent::SamplerDesc sampler_desc{};
-        sampler_desc.MinFilter = Diligent::FILTER_TYPE_LINEAR;
-        sampler_desc.MagFilter = Diligent::FILTER_TYPE_LINEAR;
-        sampler_desc.MipFilter = Diligent::FILTER_TYPE_LINEAR;
+        sampler_desc.MinFilter = Diligent::FILTER_TYPE_ANISOTROPIC;
+        sampler_desc.MagFilter = Diligent::FILTER_TYPE_ANISOTROPIC;
+        sampler_desc.MipFilter = Diligent::FILTER_TYPE_ANISOTROPIC;
+        sampler_desc.MaxAnisotropy = kDiligentMaterialMaxAnisotropy;
         sampler_desc.AddressU = Diligent::TEXTURE_ADDRESS_WRAP;
         sampler_desc.AddressV = Diligent::TEXTURE_ADDRESS_WRAP;
         sampler_desc.AddressW = Diligent::TEXTURE_ADDRESS_WRAP;
@@ -1168,25 +1171,36 @@ float4 main(PSInput input) : SV_TARGET {
         if (tex.width <= 0 || tex.height <= 0) {
             return view;
         }
-        const std::vector<uint8_t> rgba_pixels = detail::ExpandTextureToRgba8(tex);
-        if (rgba_pixels.empty()) {
+        const std::vector<detail::Rgba8MipLevel> mip_chain = detail::BuildRgba8MipChain(tex);
+        if (mip_chain.empty()) {
+            return view;
+        }
+        const detail::Rgba8MipLevel& base_level = mip_chain.front();
+        if (base_level.width <= 0 || base_level.height <= 0 || base_level.pixels.empty()) {
             return view;
         }
         Diligent::TextureDesc desc{};
         desc.Name = "albedo_tex";
         desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
-        desc.Width = static_cast<uint32_t>(tex.width);
-        desc.Height = static_cast<uint32_t>(tex.height);
-        desc.MipLevels = 1;
+        desc.Width = static_cast<uint32_t>(base_level.width);
+        desc.Height = static_cast<uint32_t>(base_level.height);
+        desc.MipLevels = static_cast<uint32_t>(mip_chain.size());
         desc.Format = Diligent::TEX_FORMAT_RGBA8_UNORM;
         desc.BindFlags = Diligent::BIND_SHADER_RESOURCE;
         desc.Usage = Diligent::USAGE_IMMUTABLE;
         Diligent::TextureData texData{};
-        Diligent::TextureSubResData subres{};
-        subres.pData = rgba_pixels.data();
-        subres.Stride = static_cast<uint32_t>(tex.width * 4);
-        texData.pSubResources = &subres;
-        texData.NumSubresources = 1;
+        std::vector<Diligent::TextureSubResData> subresources(mip_chain.size());
+        for (std::size_t mip = 0; mip < mip_chain.size(); ++mip) {
+            const detail::Rgba8MipLevel& level = mip_chain[mip];
+            if (level.width <= 0 || level.height <= 0 || level.pixels.empty()) {
+                return view;
+            }
+            Diligent::TextureSubResData& subres = subresources[mip];
+            subres.pData = level.pixels.data();
+            subres.Stride = static_cast<uint32_t>(level.width * 4);
+        }
+        texData.pSubResources = subresources.data();
+        texData.NumSubresources = static_cast<uint32_t>(subresources.size());
         Diligent::RefCntAutoPtr<Diligent::ITexture> outTex;
         device_->CreateTexture(desc, &texData, &outTex);
         if (outTex) {

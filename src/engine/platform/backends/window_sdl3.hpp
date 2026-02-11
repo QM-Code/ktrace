@@ -2,8 +2,6 @@
 
 #include "karma/platform/window.hpp"
 
-#include <SDL3/SDL.h>
-
 #include <vector>
 
 namespace karma::platform {
@@ -31,7 +29,7 @@ class WindowSdl3 final : public Window {
     NativeWindowHandle nativeHandle() const override;
 
  private:
-    SDL_Window* window_ = nullptr;
+    void* window_ = nullptr;
     std::string preferred_video_driver_;
     bool should_close_ = false;
     float content_scale_ = 1.0f;

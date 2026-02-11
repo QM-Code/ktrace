@@ -3,8 +3,7 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/common/config_store.hpp"
-
-#include <enet.h>
+#include "network/tests/loopback_enet_fixture.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -83,30 +82,20 @@ std::optional<ServerFixture> CreateServerFixture() {
     return std::nullopt;
 }
 
-void PumpClient(ENetHost* client_host, ClientCapture* capture) {
-    if (!client_host || !capture) {
+void PumpClient(karma::network::tests::LoopbackEnetEndpoint* client_endpoint,
+                ClientCapture* capture) {
+    if (!client_endpoint || !capture) {
         return;
     }
-    ENetEvent event{};
-    while (enet_host_service(client_host, &event, 0) > 0) {
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                capture->connected = true;
-                break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-            case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
-                capture->disconnected = true;
-                break;
-            case ENET_EVENT_TYPE_RECEIVE: {
-                const auto decoded = bz3::net::DecodeServerMessage(event.packet->data, event.packet->dataLength);
-                if (decoded.has_value()) {
-                    capture->messages.push_back(std::move(*decoded));
-                }
-                enet_packet_destroy(event.packet);
-                break;
-            }
-            default:
-                break;
+
+    std::vector<std::vector<std::byte>> payloads{};
+    karma::network::tests::PumpLoopbackEndpointCapturePayloads(client_endpoint, &payloads);
+    capture->connected = capture->connected || client_endpoint->connected;
+    capture->disconnected = capture->disconnected || client_endpoint->disconnected;
+    for (const auto& payload : payloads) {
+        const auto decoded = bz3::net::DecodeServerMessage(payload.data(), payload.size());
+        if (decoded.has_value()) {
+            capture->messages.push_back(std::move(*decoded));
         }
     }
 }
@@ -125,21 +114,12 @@ bool WaitUntil(std::chrono::milliseconds timeout, StepFn&& step, DoneFn&& done) 
     return done();
 }
 
-bool SendPayload(ENetHost* client_host, ENetPeer* peer, const std::vector<std::byte>& payload) {
-    if (!client_host || !peer || payload.empty()) {
+bool SendPayload(karma::network::tests::LoopbackEnetEndpoint* client_endpoint,
+                 const std::vector<std::byte>& payload) {
+    if (!client_endpoint || payload.empty()) {
         return false;
     }
-    ENetPacket* packet =
-        enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-    if (!packet) {
-        return false;
-    }
-    if (enet_peer_send(peer, 0, packet) != 0) {
-        enet_packet_destroy(packet);
-        return false;
-    }
-    enet_host_flush(client_host);
-    return true;
+    return karma::network::tests::SendLoopbackPayload(client_endpoint, payload);
 }
 
 TestResult TestAcceptedJoinAndGameplayEvents() {
@@ -150,46 +130,34 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
         return TestResult::Skip;
     }
 
-    ENetHost* client_host = enet_host_create(nullptr, 1, 2, 0, 0);
-    if (!client_host) {
+    auto client_endpoint_opt = karma::network::tests::CreateLoopbackClientEndpoint(fixture->port, 2);
+    if (!client_endpoint_opt.has_value()) {
         PrintSkip("unable to create ENet client host");
         return TestResult::Skip;
     }
-
-    ENetAddress address{};
-    if (enet_address_set_host(&address, "127.0.0.1") != 0) {
-        enet_host_destroy(client_host);
-        return FailTest("accepted-test: failed to resolve 127.0.0.1");
-    }
-    address.port = fixture->port;
-    ENetPeer* peer = enet_host_connect(client_host, &address, 2, 0);
-    if (!peer) {
-        enet_host_destroy(client_host);
-        return FailTest("accepted-test: enet_host_connect returned null");
-    }
+    auto client_endpoint = std::move(*client_endpoint_opt);
 
     ClientCapture capture{};
     std::vector<bz3::server::net::ServerInputEvent> server_events{};
     const auto step = [&]() {
         auto polled = fixture->source->poll();
         server_events.insert(server_events.end(), polled.begin(), polled.end());
-        PumpClient(client_host, &capture);
+        PumpClient(&client_endpoint, &capture);
     };
 
     if (!WaitUntil(std::chrono::milliseconds(1000), step, [&]() { return capture.connected; })) {
-        enet_host_destroy(client_host);
-        return FailTest("accepted-test: timed out waiting for ENET_EVENT_TYPE_CONNECT");
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        return FailTest("accepted-test: timed out waiting for client connect event");
     }
 
-    if (!SendPayload(client_host, peer, bz3::net::EncodeClientRequestPlayerSpawn(9999))
-        || !SendPayload(client_host,
-                        peer,
+    if (!SendPayload(&client_endpoint, bz3::net::EncodeClientRequestPlayerSpawn(9999))
+        || !SendPayload(&client_endpoint,
                         bz3::net::EncodeClientCreateShot(9999,
                                                          88,
                                                          bz3::net::Vec3{1.0f, 2.0f, 3.0f},
                                                          bz3::net::Vec3{4.0f, 5.0f, 6.0f}))
-        || !SendPayload(client_host, peer, bz3::net::EncodeClientLeave(9999))) {
-        enet_host_destroy(client_host);
+        || !SendPayload(&client_endpoint, bz3::net::EncodeClientLeave(9999))) {
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("accepted-test: failed to send one or more pre-join payloads");
     }
 
@@ -199,7 +167,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
     }
     if (!Expect(server_events.empty(),
                 "accepted-test: pre-join spawn/shot/leave should not emit server-side events")) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return TestResult::Fail;
     }
     server_events.clear();
@@ -213,8 +181,8 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
         "cached-content",
         "cached-manifest",
         3);
-    if (!SendPayload(client_host, peer, join_payload)) {
-        enet_host_destroy(client_host);
+    if (!SendPayload(&client_endpoint, join_payload)) {
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("accepted-test: failed to send join payload");
     }
 
@@ -225,7 +193,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                    return event.type == bz3::server::net::ServerInputEvent::Type::ClientJoin;
                                });
         })) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("accepted-test: timed out waiting for server ClientJoin event");
     }
 
@@ -239,11 +207,11 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
         }
     }
     if (!Expect(joined_client_id != 0, "joined client_id not captured")) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return TestResult::Fail;
     }
     if (!Expect(joined_name == "loopback-player", "joined player name mismatch")) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return TestResult::Fail;
     }
 
@@ -286,15 +254,15 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
             }
             return saw_join_accept && saw_init && saw_snapshot;
         })) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest(
             "accepted-test: timed out waiting for JoinResponse/Init/SessionSnapshot after onJoinResult");
     }
 
     server_events.clear();
     const auto spawn_payload = bz3::net::EncodeClientRequestPlayerSpawn(joined_client_id + 1);
-    if (!SendPayload(client_host, peer, spawn_payload)) {
-        enet_host_destroy(client_host);
+    if (!SendPayload(&client_endpoint, spawn_payload)) {
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("accepted-test: failed to send request_spawn payload");
     }
     if (!WaitUntil(std::chrono::milliseconds(1000), step, [&]() {
@@ -306,7 +274,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                           && event.request_spawn.client_id == joined_client_id;
                                });
         })) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("accepted-test: timed out waiting for ClientRequestSpawn server event");
     }
 
@@ -315,8 +283,8 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                                                77,
                                                                bz3::net::Vec3{1.0f, 2.0f, 3.0f},
                                                                bz3::net::Vec3{4.0f, 5.0f, 6.0f});
-    if (!SendPayload(client_host, peer, shot_payload)) {
-        enet_host_destroy(client_host);
+    if (!SendPayload(&client_endpoint, shot_payload)) {
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("accepted-test: failed to send create_shot payload");
     }
     if (!WaitUntil(std::chrono::milliseconds(1000), step, [&]() {
@@ -329,13 +297,13 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                           && event.create_shot.local_shot_id == 77;
                                });
         })) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("accepted-test: timed out waiting for ClientCreateShot server event");
     }
 
-    enet_peer_disconnect(peer, 0);
+    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_endpoint, 0));
     WaitUntil(std::chrono::milliseconds(300), step, [&]() { return capture.disconnected; });
-    enet_host_destroy(client_host);
+    karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
     return TestResult::Pass;
 }
 
@@ -347,35 +315,24 @@ TestResult TestProtocolMismatchRejected() {
         return TestResult::Skip;
     }
 
-    ENetHost* client_host = enet_host_create(nullptr, 1, 2, 0, 0);
-    if (!client_host) {
+    auto client_endpoint_opt = karma::network::tests::CreateLoopbackClientEndpoint(fixture->port, 2);
+    if (!client_endpoint_opt.has_value()) {
         PrintSkip("unable to create ENet client host for mismatch test");
         return TestResult::Skip;
     }
-
-    ENetAddress address{};
-    if (enet_address_set_host(&address, "127.0.0.1") != 0) {
-        enet_host_destroy(client_host);
-        return FailTest("mismatch-test: failed to resolve 127.0.0.1");
-    }
-    address.port = fixture->port;
-    ENetPeer* peer = enet_host_connect(client_host, &address, 2, 0);
-    if (!peer) {
-        enet_host_destroy(client_host);
-        return FailTest("mismatch-test: enet_host_connect returned null");
-    }
+    auto client_endpoint = std::move(*client_endpoint_opt);
 
     ClientCapture capture{};
     std::vector<bz3::server::net::ServerInputEvent> server_events{};
     const auto step = [&]() {
         auto polled = fixture->source->poll();
         server_events.insert(server_events.end(), polled.begin(), polled.end());
-        PumpClient(client_host, &capture);
+        PumpClient(&client_endpoint, &capture);
     };
 
     if (!WaitUntil(std::chrono::milliseconds(1000), step, [&]() { return capture.connected; })) {
-        enet_host_destroy(client_host);
-        return FailTest("mismatch-test: timed out waiting for ENET_EVENT_TYPE_CONNECT");
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        return FailTest("mismatch-test: timed out waiting for client connect event");
     }
 
     const auto bad_join_payload = bz3::net::EncodeClientJoinRequest(
@@ -387,8 +344,8 @@ TestResult TestProtocolMismatchRejected() {
         "",
         "",
         0);
-    if (!SendPayload(client_host, peer, bad_join_payload)) {
-        enet_host_destroy(client_host);
+    if (!SendPayload(&client_endpoint, bad_join_payload)) {
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("mismatch-test: failed to send bad join payload");
     }
 
@@ -404,12 +361,12 @@ TestResult TestProtocolMismatchRejected() {
             saw_disconnect = capture.disconnected;
             return saw_disconnect;
         })) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("mismatch-test: timed out waiting for rejected JoinResponse or disconnect");
     }
 
     if (!saw_reject && !saw_disconnect) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return FailTest("mismatch-test: neither reject response nor disconnect observed");
     }
 
@@ -419,11 +376,11 @@ TestResult TestProtocolMismatchRejected() {
                                  return event.type == bz3::server::net::ServerInputEvent::Type::ClientJoin;
                              }),
                 "server emitted ClientJoin event for protocol-mismatch request")) {
-        enet_host_destroy(client_host);
+        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
         return TestResult::Fail;
     }
 
-    enet_host_destroy(client_host);
+    karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
     return TestResult::Pass;
 }
 

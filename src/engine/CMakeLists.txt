@@ -39,8 +39,6 @@ set(ENGINE_CLIENT_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/scene/scene_bootstrap.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/platform/window_factory.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/platform/backends/window_sdl3.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/platform/backends/window_sdl2_stub.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/platform/backends/window_glfw_stub.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/renderer/backend_factory.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/renderer/device.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/renderer/render_system.cpp

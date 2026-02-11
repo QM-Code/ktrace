@@ -79,12 +79,11 @@ This audit focuses on capabilities present in `KARMA-REPO` that are not yet repr
 - KARMA ships real GLFW + SDL implementations:
   - `KARMA-REPO/src/platform/backends/window_glfw.cpp:1`
   - `KARMA-REPO/src/platform/backends/window_sdl.cpp:1`
-- Rewrite has real SDL3 path with GLFW/SDL2 stubs:
+- Rewrite enforces an SDL3-only active platform backend path:
   - `m-rewrite/src/engine/platform/backends/window_sdl3.cpp:1`
-  - `m-rewrite/src/engine/platform/backends/window_glfw_stub.cpp:1`
-  - `m-rewrite/src/engine/platform/backends/window_sdl2_stub.cpp:1`
+  - `m-rewrite/src/engine/platform/window_factory.cpp:1`
 - Impact:
-  - Cross-platform backend breadth is intentionally narrower in rewrite at present.
+  - Cross-platform backend breadth is intentionally narrower in rewrite at present to preserve a thin, deterministic SDL3-first seam.
 
 ### 8) Renderer front-end API surface is currently narrower in rewrite
 - KARMA device-level API includes render targets, line draw, environment/shadow controls, UI draw:

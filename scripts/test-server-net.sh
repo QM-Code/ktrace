@@ -40,6 +40,8 @@ fi
 
 cd "${REPO_ROOT}"
 
+"${REPO_ROOT}/scripts/check-network-backend-encapsulation.sh"
+
 cmake -S . -B "${BUILD_DIR}"
 
 cmake --build "${BUILD_DIR}" --target \

@@ -3,8 +3,7 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/common/config_store.hpp"
-
-#include <enet.h>
+#include "network/tests/loopback_enet_fixture.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -36,8 +35,7 @@ struct ClientCapture {
 };
 
 struct ClientEndpoint {
-    ENetHost* host = nullptr;
-    ENetPeer* peer = nullptr;
+    karma::network::tests::LoopbackEnetEndpoint endpoint{};
     ClientCapture capture{};
 };
 
@@ -86,27 +84,13 @@ std::optional<ServerFixture> CreateServerFixture() {
 }
 
 std::optional<ClientEndpoint> CreateClientEndpoint(uint16_t port) {
-    ENetHost* host = enet_host_create(nullptr, 1, 2, 0, 0);
-    if (!host) {
-        return std::nullopt;
-    }
-
-    ENetAddress address{};
-    if (enet_address_set_host(&address, "127.0.0.1") != 0) {
-        enet_host_destroy(host);
-        return std::nullopt;
-    }
-    address.port = port;
-
-    ENetPeer* peer = enet_host_connect(host, &address, 2, 0);
-    if (!peer) {
-        enet_host_destroy(host);
+    auto loopback_endpoint = karma::network::tests::CreateLoopbackClientEndpoint(port, 2);
+    if (!loopback_endpoint.has_value()) {
         return std::nullopt;
     }
 
     ClientEndpoint endpoint{};
-    endpoint.host = host;
-    endpoint.peer = peer;
+    endpoint.endpoint = std::move(*loopback_endpoint);
     return endpoint;
 }
 
@@ -114,35 +98,17 @@ void DestroyClientEndpoint(ClientEndpoint* endpoint) {
     if (!endpoint) {
         return;
     }
-    if (endpoint->host) {
-        enet_host_destroy(endpoint->host);
-        endpoint->host = nullptr;
-    }
-    endpoint->peer = nullptr;
+    karma::network::tests::DestroyLoopbackEndpoint(&endpoint->endpoint);
 }
 
 void PumpClient(ClientEndpoint* endpoint) {
-    if (!endpoint || !endpoint->host) {
+    if (!endpoint) {
         return;
     }
 
-    ENetEvent event{};
-    while (enet_host_service(endpoint->host, &event, 0) > 0) {
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                endpoint->capture.connected = true;
-                break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-            case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
-                endpoint->capture.disconnected = true;
-                break;
-            case ENET_EVENT_TYPE_RECEIVE:
-                enet_packet_destroy(event.packet);
-                break;
-            default:
-                break;
-        }
-    }
+    karma::network::tests::PumpLoopbackEndpoint(&endpoint->endpoint);
+    endpoint->capture.connected = endpoint->capture.connected || endpoint->endpoint.connected;
+    endpoint->capture.disconnected = endpoint->capture.disconnected || endpoint->endpoint.disconnected;
 }
 
 template <typename StepFn, typename DoneFn>
@@ -160,20 +126,10 @@ bool WaitUntil(std::chrono::milliseconds timeout, StepFn&& step, DoneFn&& done) 
 }
 
 bool SendPayload(ClientEndpoint* endpoint, const std::vector<std::byte>& payload) {
-    if (!endpoint || !endpoint->host || !endpoint->peer || payload.empty()) {
+    if (!endpoint || payload.empty()) {
         return false;
     }
-
-    ENetPacket* packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-    if (!packet) {
-        return false;
-    }
-    if (enet_peer_send(endpoint->peer, 0, packet) != 0) {
-        enet_packet_destroy(packet);
-        return false;
-    }
-    enet_host_flush(endpoint->host);
-    return true;
+    return karma::network::tests::SendLoopbackPayload(&endpoint->endpoint, payload);
 }
 
 size_t CountEvents(const std::vector<bz3::server::net::ServerInputEvent>& events,
@@ -296,8 +252,8 @@ TestResult TestDisconnectLifecycle() {
     const uint32_t first_id = *first_id_opt;
 
     server_events.clear();
-    enet_peer_disconnect(client_a.peer, 0);
-    enet_peer_disconnect(client_a.peer, 0);
+    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_a.endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_a.endpoint, 0));
     if (!WaitUntil(std::chrono::milliseconds(1200), step_a, [&]() {
             return client_a.capture.disconnected
                    && CountEvents(
@@ -438,7 +394,7 @@ TestResult TestDisconnectLifecycle() {
         return TestResult::Fail;
     }
 
-    enet_peer_disconnect(client_b.peer, 0);
+    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_b.endpoint, 0));
     if (!WaitUntil(std::chrono::milliseconds(600), step_b, [&]() { return client_b.capture.disconnected; })) {
         DestroyClientEndpoint(&client_b);
         return FailTest("disconnect-test: timed out waiting for disconnect after explicit leave");
@@ -511,8 +467,8 @@ TestResult TestDisconnectLifecycle() {
             DestroyClientEndpoint(&churn_client);
             return FailTest("disconnect-test: failed sending churn leave");
         }
-        enet_peer_disconnect(churn_client.peer, 0);
-        enet_peer_disconnect(churn_client.peer, 0);
+        static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&churn_client.endpoint, 0));
+        static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&churn_client.endpoint, 0));
 
         if (!WaitUntil(std::chrono::milliseconds(1200), churn_step, [&]() {
                 return churn_client.capture.disconnected

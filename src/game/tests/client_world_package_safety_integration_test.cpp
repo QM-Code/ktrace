@@ -6,8 +6,7 @@
 #include "karma/common/config_store.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/world_archive.hpp"
-
-#include <enet.h>
+#include "network/tests/loopback_enet_fixture.hpp"
 
 #include <algorithm>
 #include <array>
@@ -45,13 +44,7 @@ struct ServerFixture {
 class ScopedRawEnet {
  public:
     ScopedRawEnet() {
-        initialized_ = (enet_initialize() == 0);
-    }
-
-    ~ScopedRawEnet() {
-        if (initialized_) {
-            enet_deinitialize();
-        }
+        initialized_ = karma::network::tests::InitializeLoopbackEnet();
     }
 
     bool initialized() const { return initialized_; }
@@ -62,17 +55,14 @@ class ScopedRawEnet {
 
 struct RawServerFixture {
     uint16_t port = 0;
-    ENetHost* host = nullptr;
-    ENetPeer* peer = nullptr;
+    karma::network::tests::LoopbackEnetEndpoint endpoint{};
 
     RawServerFixture() = default;
-    RawServerFixture(uint16_t in_port, ENetHost* in_host) : port(in_port), host(in_host) {}
+    RawServerFixture(uint16_t in_port, karma::network::tests::LoopbackEnetEndpoint&& in_endpoint)
+        : port(in_port),
+          endpoint(std::move(in_endpoint)) {}
     ~RawServerFixture() {
-        if (host) {
-            enet_host_destroy(host);
-            host = nullptr;
-        }
-        peer = nullptr;
+        karma::network::tests::DestroyLoopbackEndpoint(&endpoint);
     }
 
     RawServerFixture(const RawServerFixture&) = delete;
@@ -80,19 +70,20 @@ struct RawServerFixture {
 
     RawServerFixture(RawServerFixture&& other) noexcept
         : port(other.port),
-          host(std::exchange(other.host, nullptr)),
-          peer(std::exchange(other.peer, nullptr)) {}
+          endpoint(std::move(other.endpoint)) {
+        other.port = 0;
+        other.endpoint = {};
+    }
 
     RawServerFixture& operator=(RawServerFixture&& other) noexcept {
         if (this == &other) {
             return *this;
         }
-        if (host) {
-            enet_host_destroy(host);
-        }
+        karma::network::tests::DestroyLoopbackEndpoint(&endpoint);
         port = other.port;
-        host = std::exchange(other.host, nullptr);
-        peer = std::exchange(other.peer, nullptr);
+        endpoint = std::move(other.endpoint);
+        other.port = 0;
+        other.endpoint = {};
         return *this;
     }
 };
@@ -154,71 +145,40 @@ std::optional<RawServerFixture> CreateRawServerFixture() {
     constexpr uint16_t kFirstPort = 32300;
     constexpr uint16_t kLastPort = 32348;
     for (uint16_t port = kFirstPort; port < kLastPort; ++port) {
-        ENetAddress address{};
-        address.host = ENET_HOST_ANY;
-        address.port = port;
-        ENetHost* host = enet_host_create(&address, 1, 2, 0, 0);
-        if (host) {
-            return RawServerFixture{port, host};
+        auto endpoint = karma::network::tests::CreateLoopbackServerEndpointAtPort(port, 1, 2);
+        if (endpoint.has_value()) {
+            return RawServerFixture{port, std::move(*endpoint)};
         }
     }
     return std::nullopt;
 }
 
-bool SendRawServerPayload(ENetHost* host, ENetPeer* peer, const std::vector<std::byte>& payload) {
-    if (!host || !peer || payload.empty()) {
+bool SendRawServerPayload(karma::network::tests::LoopbackEnetEndpoint* server_endpoint,
+                          const std::vector<std::byte>& payload) {
+    if (!server_endpoint || payload.empty()) {
         return false;
     }
-
-    ENetPacket* packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-    if (!packet) {
-        return false;
-    }
-    if (enet_peer_send(peer, 0, packet) != 0) {
-        enet_packet_destroy(packet);
-        return false;
-    }
-    enet_host_flush(host);
-    return true;
+    return karma::network::tests::SendLoopbackPayload(server_endpoint, payload);
 }
 
 void PumpRawServerEvents(RawServerFixture* server,
                          std::optional<bz3::net::ClientMessage>* join_request,
                          bool* disconnected) {
-    if (!server || !server->host) {
+    if (!server) {
         return;
     }
 
-    ENetEvent event{};
-    while (enet_host_service(server->host, &event, 0) > 0) {
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                server->peer = event.peer;
-                break;
-            case ENET_EVENT_TYPE_RECEIVE:
-                if (event.packet && event.packet->data && event.packet->dataLength > 0) {
-                    const auto decoded =
-                        bz3::net::DecodeClientMessage(event.packet->data, event.packet->dataLength);
-                    if (decoded.has_value() &&
-                        decoded->type == bz3::net::ClientMessageType::JoinRequest &&
-                        join_request) {
-                        *join_request = std::move(*decoded);
-                    }
-                }
-                if (event.packet) {
-                    enet_packet_destroy(event.packet);
-                }
-                break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-            case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
-                server->peer = nullptr;
-                if (disconnected) {
-                    *disconnected = true;
-                }
-                break;
-            default:
-                break;
+    std::vector<std::vector<std::byte>> payloads{};
+    karma::network::tests::PumpLoopbackEndpointCapturePayloads(&server->endpoint, &payloads);
+    for (const auto& payload : payloads) {
+        const auto decoded = bz3::net::DecodeClientMessage(payload.data(), payload.size());
+        if (decoded.has_value() && decoded->type == bz3::net::ClientMessageType::JoinRequest &&
+            join_request) {
+            *join_request = std::move(*decoded);
         }
+    }
+    if (disconnected) {
+        *disconnected = *disconnected || server->endpoint.disconnected;
     }
 }
 
@@ -576,7 +536,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
     if (!start_done || !started.value_or(false)) {
         return FailTest("client failed to start against raw ENet server");
     }
-    if (!raw_server.peer || disconnected) {
+    if (!karma::network::tests::LoopbackEndpointHasPeer(&raw_server.endpoint) || disconnected) {
         client.shutdown();
         return FailTest("raw ENet server did not observe connected peer");
     }
@@ -587,7 +547,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
         client.shutdown();
         return FailTest("raw ENet server did not receive join request");
     }
-    if (disconnected || !raw_server.peer) {
+    if (disconnected || !karma::network::tests::LoopbackEndpointHasPeer(&raw_server.endpoint)) {
         client.shutdown();
         return FailTest("client disconnected before transfer test could begin");
     }
@@ -601,15 +561,11 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
             .hash = entry.hash});
     }
 
-    if (!SendRawServerPayload(raw_server.host,
-                              raw_server.peer,
-                              bz3::net::EncodeServerJoinResponse(true, ""))) {
+    if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerJoinResponse(true, ""))) {
         client.shutdown();
         return FailTest("failed to send raw join response");
     }
-    if (!SendRawServerPayload(raw_server.host,
-                              raw_server.peer,
-                              bz3::net::EncodeServerInit(2,
+    if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerInit(2,
                                                          "raw-server",
                                                          world.world_name,
                                                          bz3::net::kProtocolVersion,
@@ -634,9 +590,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
         return FailTest("world package too small for interrupted-transfer test");
     }
     const std::string transfer_id = "resume-transfer-1";
-    if (!SendRawServerPayload(raw_server.host,
-                              raw_server.peer,
-                              bz3::net::EncodeServerWorldTransferBegin(transfer_id,
+    if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerWorldTransferBegin(transfer_id,
                                                                        world.world_id,
                                                                        world.world_revision,
                                                                        world.world_package.size(),
@@ -646,9 +600,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
         client.shutdown();
         return FailTest("failed to send raw transfer begin");
     }
-    if (!SendRawServerPayload(raw_server.host,
-                              raw_server.peer,
-                              bz3::net::EncodeServerWorldTransferChunk(
+    if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerWorldTransferChunk(
                                   transfer_id,
                                   0,
                                   BuildChunk(world.world_package, 0, kChunkSize)))) {
@@ -657,9 +609,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
     }
 
     // Simulate interrupted transfer recovery by restarting begin and resuming at chunk 1.
-    if (!SendRawServerPayload(raw_server.host,
-                              raw_server.peer,
-                              bz3::net::EncodeServerWorldTransferBegin(transfer_id,
+    if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerWorldTransferBegin(transfer_id,
                                                                        world.world_id,
                                                                        world.world_revision,
                                                                        world.world_package.size(),
@@ -670,9 +620,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
         return FailTest("failed to send raw retry begin");
     }
     for (uint32_t chunk_index = 1; chunk_index < total_chunk_count; ++chunk_index) {
-        if (!SendRawServerPayload(raw_server.host,
-                                  raw_server.peer,
-                                  bz3::net::EncodeServerWorldTransferChunk(
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerWorldTransferChunk(
                                       transfer_id,
                                       chunk_index,
                                       BuildChunk(world.world_package, chunk_index, kChunkSize)))) {
@@ -680,9 +628,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
             return FailTest("failed to send resumed transfer chunk");
         }
     }
-    if (!SendRawServerPayload(raw_server.host,
-                              raw_server.peer,
-                              bz3::net::EncodeServerWorldTransferEnd(transfer_id,
+    if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerWorldTransferEnd(transfer_id,
                                                                      total_chunk_count,
                                                                      world.world_package.size(),
                                                                      world.world_package_hash,
@@ -691,8 +637,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
         return FailTest("failed to send raw transfer end");
     }
     if (!SendRawServerPayload(
-            raw_server.host,
-            raw_server.peer,
+            &raw_server.endpoint,
             bz3::net::EncodeServerSessionSnapshot(
                 std::vector<bz3::net::SessionSnapshotEntry>{{2, "resume-client"}}))) {
         client.shutdown();

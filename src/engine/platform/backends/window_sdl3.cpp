@@ -235,6 +235,10 @@ void SetEnvVar(const char* name, const char* value) {
     }
 #endif
 }
+
+SDL_Window* AsSdlWindow(void* window) {
+    return static_cast<SDL_Window*>(window);
+}
 }
 
 WindowSdl3::WindowSdl3(const WindowConfig& config) {
@@ -281,9 +285,9 @@ WindowSdl3::WindowSdl3(const WindowConfig& config) {
         return;
     }
 
-    SDL_StartTextInput(window_);
+    SDL_StartTextInput(AsSdlWindow(window_));
 
-    const float scale = SDL_GetWindowDisplayScale(window_);
+    const float scale = SDL_GetWindowDisplayScale(AsSdlWindow(window_));
     if (scale > 0.0f) {
         content_scale_ = std::max(1.0f, scale);
     }
@@ -291,8 +295,8 @@ WindowSdl3::WindowSdl3(const WindowConfig& config) {
 
 WindowSdl3::~WindowSdl3() {
     if (window_) {
-        SDL_StopTextInput(window_);
-        SDL_DestroyWindow(window_);
+        SDL_StopTextInput(AsSdlWindow(window_));
+        SDL_DestroyWindow(AsSdlWindow(window_));
     }
     SDL_Quit();
 }
@@ -412,7 +416,7 @@ void WindowSdl3::getFramebufferSize(int& w, int& h) const {
         h = 0;
         return;
     }
-    SDL_GetWindowSizeInPixels(window_, &w, &h);
+    SDL_GetWindowSizeInPixels(AsSdlWindow(window_), &w, &h);
 }
 
 void WindowSdl3::setVsync(bool enabled) {
@@ -421,7 +425,7 @@ void WindowSdl3::setVsync(bool enabled) {
 
 void WindowSdl3::setFullscreen(bool enabled) {
     if (!window_) return;
-    SDL_SetWindowFullscreen(window_, enabled ? SDL_WINDOW_FULLSCREEN : 0);
+    SDL_SetWindowFullscreen(AsSdlWindow(window_), enabled ? SDL_WINDOW_FULLSCREEN : 0);
 }
 
 void WindowSdl3::setCursorVisible(bool visible) {
@@ -438,7 +442,7 @@ NativeWindowHandle WindowSdl3::nativeHandle() const {
         return handle;
     }
 
-    SDL_PropertiesID props = SDL_GetWindowProperties(window_);
+    SDL_PropertiesID props = SDL_GetWindowProperties(AsSdlWindow(window_));
     if (props == 0) {
         return handle;
     }

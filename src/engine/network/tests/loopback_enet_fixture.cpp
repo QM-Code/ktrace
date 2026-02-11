@@ -1,13 +1,79 @@
 #include "network/tests/loopback_enet_fixture.hpp"
 
+#include <enet.h>
+
 #include <chrono>
+#include <mutex>
 #include <thread>
 
 namespace karma::network::tests {
 
+namespace {
+
+bool EnsureLoopbackEnetInitialized(std::string* out_error) {
+    static std::once_flag init_once;
+    static bool init_ok = false;
+    std::call_once(init_once, []() { init_ok = (enet_initialize() == 0); });
+    if (!init_ok && out_error) {
+        *out_error = "enet_initialize failed";
+    }
+    return init_ok;
+}
+
+void PumpLoopbackEndpointInternal(LoopbackEnetEndpoint* endpoint,
+                                  std::vector<std::vector<std::byte>>* out_payloads) {
+    if (!endpoint || !endpoint->host) {
+        return;
+    }
+
+    ENetEvent event{};
+    while (enet_host_service(endpoint->host, &event, 0) > 0) {
+        switch (event.type) {
+            case ENET_EVENT_TYPE_CONNECT:
+                endpoint->peer = event.peer;
+                endpoint->connected = true;
+                ++endpoint->connect_events;
+                break;
+            case ENET_EVENT_TYPE_DISCONNECT:
+            case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
+                endpoint->connected = false;
+                endpoint->disconnected = true;
+                if (endpoint->peer == event.peer) {
+                    endpoint->peer = nullptr;
+                }
+                ++endpoint->disconnect_events;
+                break;
+            case ENET_EVENT_TYPE_RECEIVE:
+                if (event.packet && out_payloads && event.packet->data && event.packet->dataLength > 0) {
+                    std::vector<std::byte> payload{};
+                    payload.insert(payload.end(),
+                                   reinterpret_cast<const std::byte*>(event.packet->data),
+                                   reinterpret_cast<const std::byte*>(event.packet->data)
+                                       + event.packet->dataLength);
+                    out_payloads->push_back(std::move(payload));
+                }
+                if (event.packet) {
+                    enet_packet_destroy(event.packet);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+} // namespace
+
+bool InitializeLoopbackEnet(std::string* out_error) {
+    return EnsureLoopbackEnetInitialized(out_error);
+}
+
 std::optional<LoopbackEnetEndpoint> CreateLoopbackServerEndpointAtPort(uint16_t port,
                                                                         size_t max_peers,
                                                                         size_t channel_count) {
+    if (!EnsureLoopbackEnetInitialized(nullptr)) {
+        return std::nullopt;
+    }
     ENetAddress address{};
     address.host = ENET_HOST_ANY;
     address.port = port;
@@ -38,6 +104,9 @@ std::optional<LoopbackEnetEndpoint> CreateLoopbackServerEndpointAtPortWithRetry(
 
 std::optional<LoopbackEnetEndpoint> CreateLoopbackClientEndpoint(uint16_t port,
                                                                  size_t channel_count) {
+    if (!EnsureLoopbackEnetInitialized(nullptr)) {
+        return std::nullopt;
+    }
     ENetHost* host = enet_host_create(nullptr, 1, channel_count, 0, 0);
     if (!host) {
         return std::nullopt;
@@ -90,36 +159,12 @@ void DestroyLoopbackEndpoint(LoopbackEnetEndpoint* endpoint) {
 }
 
 void PumpLoopbackEndpoint(LoopbackEnetEndpoint* endpoint) {
-    if (!endpoint || !endpoint->host) {
-        return;
-    }
+    PumpLoopbackEndpointInternal(endpoint, nullptr);
+}
 
-    ENetEvent event{};
-    while (enet_host_service(endpoint->host, &event, 0) > 0) {
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                endpoint->peer = event.peer;
-                endpoint->connected = true;
-                ++endpoint->connect_events;
-                break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-            case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
-                endpoint->connected = false;
-                endpoint->disconnected = true;
-                if (endpoint->peer == event.peer) {
-                    endpoint->peer = nullptr;
-                }
-                ++endpoint->disconnect_events;
-                break;
-            case ENET_EVENT_TYPE_RECEIVE:
-                if (event.packet) {
-                    enet_packet_destroy(event.packet);
-                }
-                break;
-            default:
-                break;
-        }
-    }
+void PumpLoopbackEndpointCapturePayloads(LoopbackEnetEndpoint* endpoint,
+                                         std::vector<std::vector<std::byte>>* out_payloads) {
+    PumpLoopbackEndpointInternal(endpoint, out_payloads);
 }
 
 bool SendLoopbackPayload(LoopbackEnetEndpoint* endpoint, const std::vector<std::byte>& payload) {
@@ -138,6 +183,25 @@ bool SendLoopbackPayload(LoopbackEnetEndpoint* endpoint, const std::vector<std::
     }
     enet_host_flush(endpoint->host);
     return true;
+}
+
+bool DisconnectLoopbackEndpoint(LoopbackEnetEndpoint* endpoint, uint32_t data) {
+    if (!endpoint || !endpoint->peer) {
+        return false;
+    }
+    enet_peer_disconnect(endpoint->peer, data);
+    return true;
+}
+
+uint16_t GetLoopbackEndpointBoundPort(const LoopbackEnetEndpoint* endpoint) {
+    if (!endpoint || !endpoint->host) {
+        return 0;
+    }
+    return endpoint->host->address.port;
+}
+
+bool LoopbackEndpointHasPeer(const LoopbackEnetEndpoint* endpoint) {
+    return endpoint && endpoint->peer != nullptr;
 }
 
 bool DecodeLoopbackPayloadPair(const std::vector<std::byte>& payload,

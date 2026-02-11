@@ -3,8 +3,7 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/common/config_store.hpp"
-
-#include <enet.h>
+#include "network/tests/loopback_enet_fixture.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -39,8 +38,7 @@ struct ClientCapture {
 };
 
 struct ClientEndpoint {
-    ENetHost* host = nullptr;
-    ENetPeer* peer = nullptr;
+    karma::network::tests::LoopbackEnetEndpoint endpoint{};
     ClientCapture capture{};
     std::string name{};
 };
@@ -90,67 +88,37 @@ std::optional<ServerFixture> CreateServerFixture() {
 }
 
 std::optional<ClientEndpoint> CreateClientEndpoint(uint16_t port, std::string name) {
-    ENetHost* host = enet_host_create(nullptr, 1, 2, 0, 0);
-    if (!host) {
+    auto loopback_endpoint = karma::network::tests::CreateLoopbackClientEndpoint(port, 2);
+    if (!loopback_endpoint.has_value()) {
         return std::nullopt;
     }
 
-    ENetAddress address{};
-    if (enet_address_set_host(&address, "127.0.0.1") != 0) {
-        enet_host_destroy(host);
-        return std::nullopt;
-    }
-    address.port = port;
-
-    ENetPeer* peer = enet_host_connect(host, &address, 2, 0);
-    if (!peer) {
-        enet_host_destroy(host);
-        return std::nullopt;
-    }
-
-    ClientEndpoint endpoint{};
-    endpoint.host = host;
-    endpoint.peer = peer;
-    endpoint.name = std::move(name);
-    return endpoint;
+    ClientEndpoint client{};
+    client.endpoint = std::move(*loopback_endpoint);
+    client.name = std::move(name);
+    return client;
 }
 
 void DestroyClientEndpoint(ClientEndpoint* endpoint) {
     if (!endpoint) {
         return;
     }
-    if (endpoint->host) {
-        enet_host_destroy(endpoint->host);
-        endpoint->host = nullptr;
-    }
-    endpoint->peer = nullptr;
+    karma::network::tests::DestroyLoopbackEndpoint(&endpoint->endpoint);
 }
 
 void PumpClient(ClientEndpoint* endpoint) {
-    if (!endpoint || !endpoint->host) {
+    if (!endpoint) {
         return;
     }
 
-    ENetEvent event{};
-    while (enet_host_service(endpoint->host, &event, 0) > 0) {
-        switch (event.type) {
-            case ENET_EVENT_TYPE_CONNECT:
-                endpoint->capture.connected = true;
-                break;
-            case ENET_EVENT_TYPE_DISCONNECT:
-            case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
-                endpoint->capture.disconnected = true;
-                break;
-            case ENET_EVENT_TYPE_RECEIVE: {
-                const auto decoded = bz3::net::DecodeServerMessage(event.packet->data, event.packet->dataLength);
-                if (decoded.has_value()) {
-                    endpoint->capture.messages.push_back(std::move(*decoded));
-                }
-                enet_packet_destroy(event.packet);
-                break;
-            }
-            default:
-                break;
+    std::vector<std::vector<std::byte>> payloads{};
+    karma::network::tests::PumpLoopbackEndpointCapturePayloads(&endpoint->endpoint, &payloads);
+    endpoint->capture.connected = endpoint->capture.connected || endpoint->endpoint.connected;
+    endpoint->capture.disconnected = endpoint->capture.disconnected || endpoint->endpoint.disconnected;
+    for (const auto& payload : payloads) {
+        const auto decoded = bz3::net::DecodeServerMessage(payload.data(), payload.size());
+        if (decoded.has_value()) {
+            endpoint->capture.messages.push_back(std::move(*decoded));
         }
     }
 }
@@ -170,20 +138,10 @@ bool WaitUntil(std::chrono::milliseconds timeout, StepFn&& step, DoneFn&& done) 
 }
 
 bool SendPayload(ClientEndpoint* endpoint, const std::vector<std::byte>& payload) {
-    if (!endpoint || !endpoint->host || !endpoint->peer || payload.empty()) {
+    if (!endpoint || payload.empty()) {
         return false;
     }
-
-    ENetPacket* packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
-    if (!packet) {
-        return false;
-    }
-    if (enet_peer_send(endpoint->peer, 0, packet) != 0) {
-        enet_packet_destroy(packet);
-        return false;
-    }
-    enet_host_flush(endpoint->host);
-    return true;
+    return karma::network::tests::SendLoopbackPayload(&endpoint->endpoint, payload);
 }
 
 bool HasAcceptedHandshake(const ClientEndpoint& endpoint, uint32_t expected_client_id) {
@@ -417,8 +375,8 @@ TestResult TestMultiClientBroadcasts() {
         return FailTest("multiclient: timed out waiting for player_death broadcast to both clients");
     }
 
-    enet_peer_disconnect(client_a.peer, 0);
-    enet_peer_disconnect(client_b.peer, 0);
+    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_a.endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_b.endpoint, 0));
     WaitUntil(std::chrono::milliseconds(250),
               step,
               [&]() { return client_a.capture.disconnected && client_b.capture.disconnected; });

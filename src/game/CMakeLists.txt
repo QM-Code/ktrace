@@ -58,22 +58,15 @@ target_link_libraries(bz3 PRIVATE bz3_proto)
 target_link_libraries(bz3-server PRIVATE karma_engine_core)
 target_link_libraries(bz3-server PRIVATE bz3_proto)
 
-if(TARGET enet_static)
-    target_link_libraries(bz3 PRIVATE enet_static)
-    target_link_libraries(bz3-server PRIVATE enet_static)
-elseif(TARGET enet)
-    target_link_libraries(bz3 PRIVATE enet)
-    target_link_libraries(bz3-server PRIVATE enet)
-endif()
-
 if(BUILD_TESTING)
     add_executable(enet_environment_probe_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/enet_environment_probe_test.cpp
     )
-    if(TARGET enet_static)
-        target_link_libraries(enet_environment_probe_test PRIVATE enet_static)
-    elseif(TARGET enet)
-        target_link_libraries(enet_environment_probe_test PRIVATE enet)
+    target_include_directories(enet_environment_probe_test PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/engine
+    )
+    if(TARGET network_test_support)
+        target_link_libraries(enet_environment_probe_test PRIVATE network_test_support)
     endif()
     add_test(NAME enet_environment_probe_test
              COMMAND enet_environment_probe_test)
@@ -93,12 +86,6 @@ if(BUILD_TESTING)
     )
     target_link_libraries(server_net_contract_test PRIVATE karma_engine_core)
     target_link_libraries(server_net_contract_test PRIVATE bz3_proto)
-
-    if(TARGET enet_static)
-        target_link_libraries(server_net_contract_test PRIVATE enet_static)
-    elseif(TARGET enet)
-        target_link_libraries(server_net_contract_test PRIVATE enet)
-    endif()
 
     add_test(NAME server_net_contract_test
              COMMAND server_net_contract_test)
@@ -122,14 +109,12 @@ if(BUILD_TESTING)
     target_include_directories(enet_loopback_integration_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/game
+        ${PROJECT_SOURCE_DIR}/src/engine
     )
     target_link_libraries(enet_loopback_integration_test PRIVATE karma_engine_core)
     target_link_libraries(enet_loopback_integration_test PRIVATE bz3_proto)
-
-    if(TARGET enet_static)
-        target_link_libraries(enet_loopback_integration_test PRIVATE enet_static)
-    elseif(TARGET enet)
-        target_link_libraries(enet_loopback_integration_test PRIVATE enet)
+    if(TARGET network_test_support)
+        target_link_libraries(enet_loopback_integration_test PRIVATE network_test_support)
     endif()
 
     add_test(NAME enet_loopback_integration_test
@@ -146,14 +131,12 @@ if(BUILD_TESTING)
     target_include_directories(enet_multiclient_loopback_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/game
+        ${PROJECT_SOURCE_DIR}/src/engine
     )
     target_link_libraries(enet_multiclient_loopback_test PRIVATE karma_engine_core)
     target_link_libraries(enet_multiclient_loopback_test PRIVATE bz3_proto)
-
-    if(TARGET enet_static)
-        target_link_libraries(enet_multiclient_loopback_test PRIVATE enet_static)
-    elseif(TARGET enet)
-        target_link_libraries(enet_multiclient_loopback_test PRIVATE enet)
+    if(TARGET network_test_support)
+        target_link_libraries(enet_multiclient_loopback_test PRIVATE network_test_support)
     endif()
 
     add_test(NAME enet_multiclient_loopback_test
@@ -170,14 +153,12 @@ if(BUILD_TESTING)
     target_include_directories(enet_disconnect_lifecycle_integration_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/game
+        ${PROJECT_SOURCE_DIR}/src/engine
     )
     target_link_libraries(enet_disconnect_lifecycle_integration_test PRIVATE karma_engine_core)
     target_link_libraries(enet_disconnect_lifecycle_integration_test PRIVATE bz3_proto)
-
-    if(TARGET enet_static)
-        target_link_libraries(enet_disconnect_lifecycle_integration_test PRIVATE enet_static)
-    elseif(TARGET enet)
-        target_link_libraries(enet_disconnect_lifecycle_integration_test PRIVATE enet)
+    if(TARGET network_test_support)
+        target_link_libraries(enet_disconnect_lifecycle_integration_test PRIVATE network_test_support)
     endif()
 
     add_test(NAME enet_disconnect_lifecycle_integration_test
@@ -195,14 +176,12 @@ if(BUILD_TESTING)
     target_include_directories(client_world_package_safety_integration_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/game
+        ${PROJECT_SOURCE_DIR}/src/engine
     )
     target_link_libraries(client_world_package_safety_integration_test PRIVATE karma_engine_core)
     target_link_libraries(client_world_package_safety_integration_test PRIVATE bz3_proto)
-
-    if(TARGET enet_static)
-        target_link_libraries(client_world_package_safety_integration_test PRIVATE enet_static)
-    elseif(TARGET enet)
-        target_link_libraries(client_world_package_safety_integration_test PRIVATE enet)
+    if(TARGET network_test_support)
+        target_link_libraries(client_world_package_safety_integration_test PRIVATE network_test_support)
     endif()
 
     add_test(NAME client_world_package_safety_integration_test

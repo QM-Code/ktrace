@@ -1,7 +1,5 @@
 #pragma once
 
-#include <enet.h>
-
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -11,6 +9,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+typedef struct _ENetHost ENetHost;
+typedef struct _ENetPeer ENetPeer;
 
 namespace karma::network::tests {
 
@@ -22,6 +23,8 @@ struct LoopbackEnetEndpoint {
     uint32_t connect_events = 0;
     uint32_t disconnect_events = 0;
 };
+
+bool InitializeLoopbackEnet(std::string* out_error = nullptr);
 
 std::optional<LoopbackEnetEndpoint> CreateLoopbackServerEndpointAtPort(
     uint16_t port,
@@ -48,8 +51,17 @@ void DestroyLoopbackEndpoint(LoopbackEnetEndpoint* endpoint);
 
 void PumpLoopbackEndpoint(LoopbackEnetEndpoint* endpoint);
 
+void PumpLoopbackEndpointCapturePayloads(LoopbackEnetEndpoint* endpoint,
+                                         std::vector<std::vector<std::byte>>* out_payloads);
+
 bool SendLoopbackPayload(LoopbackEnetEndpoint* endpoint,
                          const std::vector<std::byte>& payload);
+
+bool DisconnectLoopbackEndpoint(LoopbackEnetEndpoint* endpoint, uint32_t data = 0);
+
+uint16_t GetLoopbackEndpointBoundPort(const LoopbackEnetEndpoint* endpoint);
+
+bool LoopbackEndpointHasPeer(const LoopbackEnetEndpoint* endpoint);
 
 bool DecodeLoopbackPayloadPair(const std::vector<std::byte>& payload,
                                uint8_t* out_first,

@@ -23,6 +23,8 @@ using karma::renderer_backend::detail::ComputeEnvironmentAmbientColor;
 using karma::renderer_backend::detail::ComputeEnvironmentClearColor;
 using karma::renderer_backend::detail::ComputeEnvironmentSpecularBoost;
 using karma::renderer_backend::detail::BuildShaderPathTextureIngestion;
+using karma::renderer_backend::detail::BuildRgba8MipChain;
+using karma::renderer_backend::detail::ComputeRgba8MipLevelCount;
 using karma::renderer_backend::detail::DirectSamplerDrawInvariantInput;
 using karma::renderer_backend::detail::EvaluateBgfxDirectSamplerContract;
 using karma::renderer_backend::detail::EvaluateDirectSamplerDrawInvariants;
@@ -925,6 +927,103 @@ bool RunShaderPathLifecycleConsumptionChecks() {
         std::cerr << "expected bounded fallback contract to keep oversized lifecycle textures within limits\n";
         return false;
     }
+    return true;
+}
+
+bool RunTextureMipChainChecks() {
+    karma::renderer::MeshData::TextureData checker{};
+    checker.width = 2;
+    checker.height = 2;
+    checker.channels = 4;
+    checker.pixels = {
+        0u,   0u,   0u,   255u,
+        255u, 0u,   0u,   255u,
+        0u,   255u, 0u,   255u,
+        0u,   0u,   255u, 255u,
+    };
+
+    const auto checker_mips = BuildRgba8MipChain(checker);
+    if (checker_mips.size() != ComputeRgba8MipLevelCount(checker.width, checker.height)) {
+        std::cerr << "unexpected mip count for checker texture\n";
+        return false;
+    }
+    if (checker_mips.size() != 2u ||
+        checker_mips[0].width != 2 || checker_mips[0].height != 2 ||
+        checker_mips[1].width != 1 || checker_mips[1].height != 1) {
+        std::cerr << "unexpected checker mip dimensions\n";
+        return false;
+    }
+    if (checker_mips[1].pixels.size() != 4u ||
+        checker_mips[1].pixels[0] != 64u ||
+        checker_mips[1].pixels[1] != 64u ||
+        checker_mips[1].pixels[2] != 64u ||
+        checker_mips[1].pixels[3] != 255u) {
+        std::cerr << "unexpected checker mip averaging result\n";
+        return false;
+    }
+
+    karma::renderer::MeshData::TextureData odd{};
+    odd.width = 3;
+    odd.height = 5;
+    odd.channels = 4;
+    odd.pixels.resize(static_cast<std::size_t>(odd.width) *
+                      static_cast<std::size_t>(odd.height) * 4u);
+    for (std::size_t i = 0; i < odd.pixels.size(); ++i) {
+        odd.pixels[i] = static_cast<uint8_t>((i * 17u) % 251u);
+    }
+
+    const auto odd_mips = BuildRgba8MipChain(odd);
+    if (odd_mips.size() != ComputeRgba8MipLevelCount(odd.width, odd.height)) {
+        std::cerr << "unexpected mip count for odd-dimension texture\n";
+        return false;
+    }
+    const std::array<std::pair<int, int>, 3u> expected_dims{{
+        {3, 5},
+        {1, 2},
+        {1, 1},
+    }};
+    if (odd_mips.size() != expected_dims.size()) {
+        std::cerr << "unexpected odd-dimension mip level count\n";
+        return false;
+    }
+    for (std::size_t i = 0; i < odd_mips.size(); ++i) {
+        if (odd_mips[i].width != expected_dims[i].first ||
+            odd_mips[i].height != expected_dims[i].second) {
+            std::cerr << "unexpected odd-dimension mip size at level " << i << "\n";
+            return false;
+        }
+        const std::size_t expected_bytes =
+            static_cast<std::size_t>(odd_mips[i].width) *
+            static_cast<std::size_t>(odd_mips[i].height) * 4u;
+        if (odd_mips[i].pixels.size() != expected_bytes) {
+            std::cerr << "unexpected odd-dimension mip byte count at level " << i << "\n";
+            return false;
+        }
+    }
+
+    const auto odd_mips_repeat = BuildRgba8MipChain(odd);
+    if (odd_mips_repeat.size() != odd_mips.size()) {
+        std::cerr << "mip chain should be deterministic for identical texture input\n";
+        return false;
+    }
+    for (std::size_t i = 0; i < odd_mips.size(); ++i) {
+        if (odd_mips_repeat[i].width != odd_mips[i].width ||
+            odd_mips_repeat[i].height != odd_mips[i].height ||
+            odd_mips_repeat[i].pixels != odd_mips[i].pixels) {
+            std::cerr << "mip chain determinism mismatch at level " << i << "\n";
+            return false;
+        }
+    }
+
+    karma::renderer::MeshData::TextureData invalid{};
+    invalid.width = 0;
+    invalid.height = 0;
+    invalid.channels = 4;
+    if (!BuildRgba8MipChain(invalid).empty()) {
+        std::cerr << "invalid texture input should not produce mip chain\n";
+        return false;
+    }
+
     return true;
 }
 
@@ -2449,6 +2548,9 @@ int main() {
         return 1;
     }
     if (!RunShaderPathLifecycleConsumptionChecks()) {
+        return 1;
+    }
+    if (!RunTextureMipChainChecks()) {
         return 1;
     }
     if (!RunDirectSamplerObservabilityContractChecks()) {

@@ -648,6 +648,96 @@ inline std::vector<uint8_t> ExpandTextureToRgba8(const renderer::MeshData::Textu
     return out_rgba;
 }
 
+struct Rgba8MipLevel {
+    int width = 0;
+    int height = 0;
+    std::vector<uint8_t> pixels{};
+};
+
+inline std::size_t ComputeRgba8MipLevelCount(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return 0u;
+    }
+    std::size_t level_count = 1u;
+    int level_width = width;
+    int level_height = height;
+    while (level_width > 1 || level_height > 1) {
+        level_width = std::max(1, level_width / 2);
+        level_height = std::max(1, level_height / 2);
+        ++level_count;
+    }
+    return level_count;
+}
+
+inline std::vector<Rgba8MipLevel> BuildRgba8MipChain(
+    const renderer::MeshData::TextureData& texture) {
+    std::vector<Rgba8MipLevel> mip_chain{};
+    if (!IsUsableTexture(texture) || texture.width <= 0 || texture.height <= 0) {
+        return mip_chain;
+    }
+
+    std::vector<uint8_t> base_rgba = ExpandTextureToRgba8(texture);
+    if (base_rgba.empty()) {
+        return mip_chain;
+    }
+
+    mip_chain.reserve(ComputeRgba8MipLevelCount(texture.width, texture.height));
+    mip_chain.push_back(Rgba8MipLevel{
+        texture.width,
+        texture.height,
+        std::move(base_rgba),
+    });
+
+    while (mip_chain.back().width > 1 || mip_chain.back().height > 1) {
+        const Rgba8MipLevel& parent = mip_chain.back();
+        const int next_width = std::max(1, parent.width / 2);
+        const int next_height = std::max(1, parent.height / 2);
+        std::vector<uint8_t> next_pixels(
+            static_cast<std::size_t>(next_width) *
+            static_cast<std::size_t>(next_height) * 4u,
+            0u);
+
+        const auto read_parent_channel = [&parent](int x, int y, int channel) -> uint8_t {
+            const int sx = std::clamp(x, 0, parent.width - 1);
+            const int sy = std::clamp(y, 0, parent.height - 1);
+            const std::size_t index =
+                (static_cast<std::size_t>(sy) * static_cast<std::size_t>(parent.width) +
+                 static_cast<std::size_t>(sx)) *
+                    4u +
+                static_cast<std::size_t>(channel);
+            return parent.pixels[index];
+        };
+
+        for (int y = 0; y < next_height; ++y) {
+            for (int x = 0; x < next_width; ++x) {
+                const int src_x = x * 2;
+                const int src_y = y * 2;
+                for (int c = 0; c < 4; ++c) {
+                    const uint32_t sum =
+                        static_cast<uint32_t>(read_parent_channel(src_x + 0, src_y + 0, c)) +
+                        static_cast<uint32_t>(read_parent_channel(src_x + 1, src_y + 0, c)) +
+                        static_cast<uint32_t>(read_parent_channel(src_x + 0, src_y + 1, c)) +
+                        static_cast<uint32_t>(read_parent_channel(src_x + 1, src_y + 1, c));
+                    const std::size_t dst_index =
+                        (static_cast<std::size_t>(y) * static_cast<std::size_t>(next_width) +
+                         static_cast<std::size_t>(x)) *
+                            4u +
+                        static_cast<std::size_t>(c);
+                    next_pixels[dst_index] = static_cast<uint8_t>((sum + 2u) / 4u);
+                }
+            }
+        }
+
+        mip_chain.push_back(Rgba8MipLevel{
+            next_width,
+            next_height,
+            std::move(next_pixels),
+        });
+    }
+
+    return mip_chain;
+}
+
 inline ResolvedMaterialSemantics ResolveMaterialSemantics(const renderer::MaterialDesc& material) {
     ResolvedMaterialSemantics semantics{};
     semantics.alpha_mode = material.alpha_mode;
