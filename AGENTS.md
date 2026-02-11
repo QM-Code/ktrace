@@ -18,7 +18,7 @@ Repository roles:
 - `m-rewrite/`: production rewrite codebase (active implementation target).
 - `m-dev/`: behavior/reference baseline (source-of-truth for parity, not architecture to copy).
 - `KARMA-REPO/`: exploratory reference (capability ideas, not structure template).
-- `docs/`: canonical rewrite guidance and project specs.
+- `m-rewrite/docs/`: canonical rewrite guidance and project specs.
 
 ## KARMA Capability Intake Policy (Must Preserve)
 - Treat `KARMA-REPO` as a feature-intent upstream, not an architecture upstream.
@@ -33,7 +33,8 @@ Repository roles:
 - Treat `m-rewrite/` as the only active codebase for edits, builds, and git operations.
 - Run git commands from `m-rewrite/` (or with `git -C m-rewrite ...`).
 - Do not stage/commit from workspace root.
-- Top-level files (`AGENTS.md`, `docs/`) are project guidance.
+- Workspace root (`bz3-rewrite/`) is bootstrap-only and should contain only `README.md` plus sibling repos (`m-rewrite/`, `m-dev/`, `KARMA-REPO/`).
+- All active control docs are tracked inside `m-rewrite/`.
 
 ## Core Architecture Contract
 - `src/engine/` is game-agnostic and owns loop/lifecycle/timing.

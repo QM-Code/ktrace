@@ -10,7 +10,7 @@ Primary start sequence:
 5. `docs/projects/ASSIGNMENTS.md`
 6. `docs/DECISIONS.md`
 
-Top-level `bz3-rewrite/README.md` and `bz3-rewrite/AGENTS.md` are bootstrap stubs that point here.
+Workspace root `bz3-rewrite/README.md` is bootstrap-only. All active control docs live in `m-rewrite/`.
 
 Archive snapshots are kept in:
 - `docs/archive/`

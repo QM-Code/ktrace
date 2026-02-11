@@ -1,0 +1,24 @@
+# BZ3 Rewrite Workspace
+
+Start Codex from this directory, then paste:
+
+```text
+Act as project overseer/integrator for bz3-rewrite.
+
+Read in order:
+1) m-rewrite/AGENTS.md
+2) m-rewrite/docs/AGENTS.md
+3) m-rewrite/docs/OVERSEER.md
+4) m-rewrite/docs/projects/README.md
+5) m-rewrite/docs/projects/ASSIGNMENTS.md
+6) m-rewrite/docs/DECISIONS.md
+
+Then:
+- summarize current project state and active tracks,
+- identify overlap/conflict risks,
+- propose the most productive next development paths,
+- enforce bzbuild.py-only build policy and isolated build dirs,
+- define the next specialist instructions I should send.
+```
+
+All canonical project control docs are tracked in `m-rewrite/`.
