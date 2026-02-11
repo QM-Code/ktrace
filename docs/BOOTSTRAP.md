@@ -18,7 +18,9 @@ Then:
 - identify overlap/conflict risks,
 - propose a prioritized shortlist of high-value targets (including interrupted in-progress work),
 - ask the human to pick one of those or override with a different focus,
-- then propose next specialist assignments with isolated build dirs,
+- STOP and wait for the human selection,
+- do not draft specialist instruction packets until the selection is made,
+- then propose only the selected specialist assignment packet with isolated build dirs,
 - enforce bzbuild.py-only build policy,
 - include both `m-dev` parity posture and KARMA capability-intake posture.
 ```
