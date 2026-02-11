@@ -38,6 +38,16 @@ At session start, restate and apply this direction before assigning work:
   - `m-dev` behavior parity track for modern BZ3 outcomes,
   - `KARMA-REPO` capability-intake track for significant new engine features.
 
+## KARMA Refresh Gate (Required At Overseer Startup)
+- Before proposing targets, refresh upstream reference state:
+  - `git -C ../KARMA-REPO fetch --all --prune`
+- Then summarize what changed since last local reference point:
+  - new remote branches (if any),
+  - notable new commits on tracked upstream heads,
+  - candidate capability deltas worth intake.
+- Minimum cadence: once per overseer startup session (effectively daily in normal usage).
+- If fetch cannot run, explicitly state the failure and proceed with last-known state marked as stale.
+
 ## Priority Override (2026-02-10)
 - Renderer capability integration (`docs/projects/renderer-parity.md`) and engine networking foundation (`docs/projects/engine-network-foundation.md`) are the co-equal top active tracks.
 - Prioritize renderer + engine-network foundation slices ahead of non-blocking audio/content-mount/UI detail work.
@@ -49,6 +59,7 @@ Use this loop continuously while rewrite work is active:
 
 1. Detect upstream capability deltas
 - Track `KARMA-REPO` new commits/branches and identify meaningful engine-feature additions.
+- Use the startup refresh gate (`git -C ../KARMA-REPO fetch --all --prune`) before this triage.
 
 2. Triage significance
 - Keep only deltas that materially improve engine defaults, unblock rewrite parity, or reduce future rework.

@@ -181,3 +181,12 @@ Format:
 - Impact:
   - accepted batches are pushed with consistent workflow and verification,
   - assignment cadence is blocked until persistence is confirmed.
+
+### K) Overseer startup must refresh KARMA upstream state
+- Decision:
+  - at each overseer startup, run `git -C ../KARMA-REPO fetch --all --prune` before proposing targets, then summarize new branches/commits and candidate capability deltas.
+- Why:
+  - capability-intake planning must be based on current upstream reference state, not stale local snapshots.
+- Impact:
+  - KARMA intake remains timely and explicit,
+  - startup output always includes freshness status (or explicit stale-state warning if fetch fails).
