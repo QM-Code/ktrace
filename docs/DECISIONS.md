@@ -95,108 +95,80 @@ Format:
 - Impact:
   - platform expansion stays on TODO without consuming top-priority bandwidth.
 
-## Standing Execution Policies (Always On)
+## Standing Operating Decisions (Always On)
+
+Note:
+- this file records the decision and rationale,
+- canonical procedure text is maintained in `AGENTS.md`, `docs/AGENTS.md`, `docs/OVERSEER.md`, and `docs/projects/ASSIGNMENTS.md`.
 
 ### A) Documentation hierarchy and startup order are fixed
 - Decision:
-  - startup hierarchy is `AGENTS.md` -> `docs/AGENTS.md` -> `docs/projects/<project>.md`.
+  - keep startup hierarchy stable with a single quick-entry page (`docs/STARTUP_BRIEF.md`) feeding the canonical docs stack.
 - Why:
-  - reduce onboarding ambiguity.
+  - reduce onboarding ambiguity and duplicate startup instructions.
 - Impact:
-  - each specialist operates from one canonical project doc.
+  - startup guidance remains predictable and easier to maintain.
 
 ### B) Delegated build policy is `bzbuild.py`-only
 - Decision:
-  - delegated specialists must use `./bzbuild.py <build-dir>` and avoid raw `cmake -S/-B`.
+  - delegated operator flows use `./bzbuild.py <build-dir>`; no raw `cmake -S/-B` flows.
 - Why:
   - prevent toolchain/config drift.
 - Impact:
-  - consistent build behavior and fewer setup regressions.
+  - consistent build behavior across specialists and sessions.
 
-### C) Isolated build directories are required for parallel specialists
+### C) Isolated build directories and explicit wrapper build dirs are mandatory in parallel work
 - Decision:
-  - each active specialist uses assigned build-dir pairs.
+  - each specialist uses assigned isolated build dirs, and wrapper gates use explicit build-dir args during concurrent work.
 - Why:
-  - avoid collisions in shared worktrees.
+  - avoid collisions and reduce `build-dev` contention.
 - Impact:
-  - parallel tracks can validate independently.
+  - parallel tracks can validate independently with less flake from shared artifacts.
 
-### D) Wrapper scripts accept explicit build dirs and should be used that way in parallel work
+### D) Default-first engine direction remains non-negotiable
 - Decision:
-  - use `./scripts/test-engine-backends.sh <build-dir>` and `./scripts/test-server-net.sh <build-dir>` during concurrent specialist execution.
+  - engineer for a `~95%` engine default path with a `~5%` override path.
 - Why:
-  - reduce default `build-dev` contention.
+  - rewrite goal is rapid game development with a small game-facing API surface.
 - Impact:
-  - closeout gates can run with less interference.
+  - prioritize moving game-agnostic scaffolding into engine-owned contracts.
 
-### E) Default-first engine direction is non-negotiable
+### E) KARMA remains capability reference only, never a structure template
 - Decision:
-  - engineer for a `~95%` engine default path and `~5%` explicit override path.
+  - port behavior/capability intent, not upstream file layout.
 - Why:
-  - rewrite goal is rapid game development with small game-facing API surface.
+  - preserve rewrite architecture ownership.
 - Impact:
-  - favor moving game-agnostic behavior into engine-owned contracts.
+  - implementations are evaluated against rewrite contracts and outcomes.
 
-### F) KARMA is capability reference only, never structure template
+### F) Dual-track planning is mandatory
 - Decision:
-  - parity work ports behavior/capability intent, not file layout.
+  - manager/specialist framing must explicitly identify each slice as `m-dev` parity, KARMA intake, or shared unblocker.
 - Why:
-  - rewrite architecture ownership must stay clean and maintainable.
+  - prevent parity-only tunnel vision and structure-copy drift.
 - Impact:
-  - implementation choices are judged by rewrite contracts and outcomes.
+  - assignment board and packets stay strategically coherent across rotations.
 
-### G) KARMA capability intake runs continuously, but rewrite priorities remain authoritative
+### G) Overseer checkpointing is mandatory after accepted slice batches
 - Decision:
-  - track significant `KARMA-REPO` feature deltas continuously and convert accepted deltas into rewrite-owned slices, while keeping `m-dev` parity/stability and active rewrite priorities as the scheduling authority.
+  - overseer owns accepted-slice persistence and must satisfy the checkpoint gate before issuing new assignments.
 - Why:
-  - rewrite must gain modern engine capability without becoming blocked by upstream cadence or upstream structure.
+  - ensure recoverability independent of local session continuity.
 - Impact:
-  - overseer assignments explicitly separate:
-    - adopted now (high-value capability deltas),
-    - deferred (low-signal or low-priority deltas),
-    - rewrite-owned documentation updates that remove KARMA dependency over time.
+  - accepted work is routinely persisted and assignment cadence is gated by successful checkpointing.
 
-### H) Dual-track strategy is mandatory in all manager/specialist task framing
+### H) Overseer startup must refresh KARMA upstream state
 - Decision:
-  - all top-level coordination docs and specialist task packets must explicitly frame work as `m-dev` parity, `KARMA-REPO` capability intake, or a shared unblocker.
+  - each overseer startup includes upstream refresh and explicit freshness reporting before target selection.
 - Why:
-  - keeps delegation coherent as multiple specialists rotate and prevents accidental drift toward structure-copying or parity-only tunnel vision.
+  - intake triage must use current upstream state.
 - Impact:
-  - overseer prompts, assignment board updates, and handoff packets must include explicit strategic-track alignment.
+  - adopted-vs-deferred KARMA capability decisions remain explicit and timely.
 
-### I) Overseer owns commit/push checkpointing after accepted slice batches
+### I) Audio backend hierarchy is primary+fallback, not co-equal expansion
 - Decision:
-  - overseer performs scoped git checkpoint commits and push-to-remote in `m-rewrite` after accepted slice batches.
+  - keep `sdl3audio` primary/default and `miniaudio` as fallback plus contract/smoke oracle.
 - Why:
-  - project recovery must not depend on local terminal/session continuity.
+  - preserve resilience without diverting top-track bandwidth to co-equal backend expansion.
 - Impact:
-  - accepted work is frequently persisted (`commit` + `push`) with slice-level traceability,
-  - unreviewed/out-of-scope dirty files remain excluded from checkpoint commits.
-
-### J) Checkpoint script is a hard gate before new specialist assignments
-- Decision:
-  - overseer must run `./scripts/overseer-checkpoint.sh -m "<slice batch summary>" --all-accepted` after accepted slice batches, and no new specialist assignment is allowed until it succeeds.
-- Why:
-  - convert checkpointing from soft process to a mechanical gate with explicit success/failure.
-- Impact:
-  - accepted batches are pushed with consistent workflow and verification,
-  - assignment cadence is blocked until persistence is confirmed.
-
-### K) Overseer startup must refresh KARMA upstream state
-- Decision:
-  - at each overseer startup, run `git -C ../KARMA-REPO fetch --all --prune` before proposing targets, then summarize new branches/commits and candidate capability deltas.
-- Why:
-  - capability-intake planning must be based on current upstream reference state, not stale local snapshots.
-- Impact:
-  - KARMA intake remains timely and explicit,
-  - startup output always includes freshness status (or explicit stale-state warning if fetch fails).
-
-### L) Audio backend hierarchy is primary+fallback, not co-equal feature expansion
-- Decision:
-  - keep `sdl3audio` as the primary/default runtime backend and treat `miniaudio` as fallback plus contract/smoke validation backend.
-- Why:
-  - this preserves backend resilience and parity checks without spending top-track bandwidth on co-equal feature expansion across both audio implementations.
-- Impact:
-  - audio work prioritizes correctness and stability of the default (`sdl3audio`) path,
-  - `miniaudio` remains compiled/tested and usable as fallback/validation oracle,
-  - backend feature parity beyond shared contract behavior is only expanded when a concrete blocker or product requirement justifies it.
+  - audio work prioritizes default-path correctness while retaining fallback validation coverage.

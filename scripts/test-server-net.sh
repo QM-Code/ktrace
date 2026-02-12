@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-TEST_REGEX="server_net_contract_test|server_runtime_event_rules_test|enet_environment_probe_test|enet_loopback_integration_test|enet_multiclient_loopback_test|enet_disconnect_lifecycle_integration_test|client_world_package_safety_integration_test|client_transport_contract_test|server_transport_contract_test"
+TEST_REGEX="server_net_contract_test|server_runtime_event_rules_test|transport_environment_probe_test|transport_loopback_integration_test|transport_multiclient_loopback_test|transport_disconnect_lifecycle_integration_test|client_world_package_safety_integration_test|client_transport_contract_test|server_transport_contract_test"
 BUILD_DIR="build-dev"
 
 usage() {
@@ -47,10 +47,10 @@ cmake -S . -B "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}" --target \
   server_net_contract_test \
   server_runtime_event_rules_test \
-  enet_environment_probe_test \
-  enet_loopback_integration_test \
-  enet_multiclient_loopback_test \
-  enet_disconnect_lifecycle_integration_test \
+  transport_environment_probe_test \
+  transport_loopback_integration_test \
+  transport_multiclient_loopback_test \
+  transport_disconnect_lifecycle_integration_test \
   client_world_package_safety_integration_test \
   client_transport_contract_test \
   server_transport_contract_test

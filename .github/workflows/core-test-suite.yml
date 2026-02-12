@@ -50,6 +50,9 @@ jobs:
           "${RUNNER_TEMP}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=${RUNNER_TEMP}/vcpkg" >> "${GITHUB_ENV}"
 
+      - name: Enforce Network Backend Encapsulation Guardrail
+        run: ./scripts/check-network-backend-encapsulation.sh
+
       - name: Configure
         run: |
           cmake -S . -B build-dev \

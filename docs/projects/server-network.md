@@ -13,7 +13,7 @@ Own server-side networking/event-source/runtime behavior for join/spawn/shot/lea
 - `m-rewrite/src/game/server/*`
 - `m-rewrite/src/game/server/net/*`
 - `m-rewrite/src/game/net/*`
-- `m-rewrite/src/game/tests/enet_*`
+- `m-rewrite/src/game/tests/transport_*`
 - `m-rewrite/src/game/tests/server_*`
 
 ## Interface Boundaries
@@ -31,26 +31,26 @@ Own server-side networking/event-source/runtime behavior for join/spawn/shot/lea
 - scripted event-source parsing/validation.
 
 2. `server_runtime_event_rules_test`
-- runtime-event rule invariants without ENet dependency,
+- runtime-event rule invariants without transport-backend dependency,
 - unknown leave/spawn/create_shot ignored,
 - known-client gates for spawn/shot,
 - join add/idempotency and leave removal behavior.
 
-3. `enet_loopback_integration_test`
-- ENet loopback join and packet delivery with runtime processing,
+3. `transport_loopback_integration_test`
+- transport loopback join and packet delivery with runtime processing,
 - includes env probe and clean skip when unavailable.
 
-4. `enet_multiclient_loopback_test`
+4. `transport_multiclient_loopback_test`
 - multi-client loopback connection + runtime event coverage,
 - includes env probe and clean skip when unavailable.
 
-5. `enet_disconnect_lifecycle_integration_test`
+5. `transport_disconnect_lifecycle_integration_test`
 - disconnect/explicit-leave lifecycle correctness and stale-id suppression,
 - validates no duplicate leave emission across explicit leave + transport disconnect,
 - validates rapid reconnect/leave churn ordering (`join` precedes single `leave` per churn client id).
 
-6. `enet_environment_probe_test`
-- validates ENet environment preconditions used by loopback integration tests.
+6. `transport_environment_probe_test`
+- validates transport loopback environment preconditions used by loopback integration tests.
 
 7. `client_world_package_safety_integration_test`
 - validates world-transfer safety boundaries while server networking is active.
@@ -66,21 +66,21 @@ Equivalent explicit commands:
 
 ```bash
 cmake --build build-dev --target \
-  enet_environment_probe_test \
+  transport_environment_probe_test \
   server_net_contract_test \
   server_runtime_event_rules_test \
-  enet_loopback_integration_test \
-  enet_multiclient_loopback_test \
-  enet_disconnect_lifecycle_integration_test \
+  transport_loopback_integration_test \
+  transport_multiclient_loopback_test \
+  transport_disconnect_lifecycle_integration_test \
   client_world_package_safety_integration_test
 
-ctest --test-dir build-dev -R "server_net_contract_test|server_runtime_event_rules_test|enet_environment_probe_test|enet_loopback_integration_test|enet_multiclient_loopback_test|enet_disconnect_lifecycle_integration_test|client_world_package_safety_integration_test" --output-on-failure
+ctest --test-dir build-dev -R "server_net_contract_test|server_runtime_event_rules_test|transport_environment_probe_test|transport_loopback_integration_test|transport_multiclient_loopback_test|transport_disconnect_lifecycle_integration_test|client_world_package_safety_integration_test" --output-on-failure
 ```
 
 ## Result Interpretation Rules
 1. `server_*` failures are actionable contract/runtime regressions.
-2. ENet tests may `SKIP` when loopback prerequisites are unavailable.
-3. Unexpected ENet failure in a healthy environment is actionable.
+2. transport loopback tests may `SKIP` when loopback prerequisites are unavailable.
+3. Unexpected transport loopback failure in a healthy environment is actionable.
 
 ## Validation
 From `m-rewrite/`:
@@ -106,7 +106,7 @@ Full legacy material preserved at:
 
 ## Status/Handoff Notes (2026-02-10)
 - Added one reconnect/leave ordering edge slice in runtime integration harness:
-  - file: `m-rewrite/src/game/tests/enet_disconnect_lifecycle_integration_test.cpp`
+  - file: `m-rewrite/src/game/tests/transport_disconnect_lifecycle_integration_test.cpp`
   - new churn phase runs rapid leave + double-disconnect + reconnect cycles and asserts:
     - unique client ids across reconnect churn
     - single leave emission per churn client id
@@ -118,4 +118,4 @@ Full legacy material preserved at:
   - `cd m-rewrite && ./bzbuild.py -c build-sdl3-bgfx-physx-rmlui-miniaudio`
   - Result: success (`[100%] Built target bz3`)
   - `cd m-rewrite && ./scripts/test-server-net.sh build-sdl3-bgfx-physx-rmlui-miniaudio`
-  - Result: PASS (7/7), including `enet_disconnect_lifecycle_integration_test`.
+  - Result: PASS (7/7), including `transport_disconnect_lifecycle_integration_test`.

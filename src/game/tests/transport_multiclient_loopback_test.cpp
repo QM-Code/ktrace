@@ -3,7 +3,7 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/common/config_store.hpp"
-#include "network/tests/loopback_enet_fixture.hpp"
+#include "network/tests/loopback_transport_fixture.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -38,7 +38,7 @@ struct ClientCapture {
 };
 
 struct ClientEndpoint {
-    karma::network::tests::LoopbackEnetEndpoint endpoint{};
+    karma::network::tests::LoopbackTransportEndpoint endpoint{};
     ClientCapture capture{};
     std::string name{};
 };
@@ -66,7 +66,7 @@ std::filesystem::path MakeTestConfigPath(const char* suffix) {
     const auto nonce = static_cast<unsigned long long>(
         std::chrono::steady_clock::now().time_since_epoch().count());
     return std::filesystem::temp_directory_path() /
-           ("bz3-enet-multiclient-" + std::string(suffix) + "-" + std::to_string(nonce) + ".json");
+           ("bz3-transport-multiclient-" + std::string(suffix) + "-" + std::to_string(nonce) + ".json");
 }
 
 void InitEmptyConfig(const char* suffix) {
@@ -88,7 +88,7 @@ std::optional<ServerFixture> CreateServerFixture() {
 }
 
 std::optional<ClientEndpoint> CreateClientEndpoint(uint16_t port, std::string name) {
-    auto loopback_endpoint = karma::network::tests::CreateLoopbackClientEndpoint(port, 2);
+    auto loopback_endpoint = karma::network::tests::CreateLoopbackClientTransportEndpoint(port, 2);
     if (!loopback_endpoint.has_value()) {
         return std::nullopt;
     }
@@ -103,7 +103,7 @@ void DestroyClientEndpoint(ClientEndpoint* endpoint) {
     if (!endpoint) {
         return;
     }
-    karma::network::tests::DestroyLoopbackEndpoint(&endpoint->endpoint);
+    karma::network::tests::DestroyLoopbackTransportEndpoint(&endpoint->endpoint);
 }
 
 void PumpClient(ClientEndpoint* endpoint) {
@@ -112,7 +112,7 @@ void PumpClient(ClientEndpoint* endpoint) {
     }
 
     std::vector<std::vector<std::byte>> payloads{};
-    karma::network::tests::PumpLoopbackEndpointCapturePayloads(&endpoint->endpoint, &payloads);
+    karma::network::tests::PumpLoopbackTransportEndpointCapturePayloads(&endpoint->endpoint, &payloads);
     endpoint->capture.connected = endpoint->capture.connected || endpoint->endpoint.connected;
     endpoint->capture.disconnected = endpoint->capture.disconnected || endpoint->endpoint.disconnected;
     for (const auto& payload : payloads) {
@@ -141,7 +141,7 @@ bool SendPayload(ClientEndpoint* endpoint, const std::vector<std::byte>& payload
     if (!endpoint || payload.empty()) {
         return false;
     }
-    return karma::network::tests::SendLoopbackPayload(&endpoint->endpoint, payload);
+    return karma::network::tests::SendLoopbackTransportPayload(&endpoint->endpoint, payload);
 }
 
 bool HasAcceptedHandshake(const ClientEndpoint& endpoint, uint32_t expected_client_id) {
@@ -199,19 +199,19 @@ TestResult TestMultiClientBroadcasts() {
     InitEmptyConfig("broadcast");
     auto fixture = CreateServerFixture();
     if (!fixture.has_value()) {
-        PrintSkip("unable to create ENet server fixture");
+        PrintSkip("unable to create transport server fixture");
         return TestResult::Skip;
     }
 
     auto client_a_opt = CreateClientEndpoint(fixture->port, "client-a");
     if (!client_a_opt.has_value()) {
-        PrintSkip("unable to create first ENet client");
+        PrintSkip("unable to create first transport client");
         return TestResult::Skip;
     }
     auto client_b_opt = CreateClientEndpoint(fixture->port, "client-b");
     if (!client_b_opt.has_value()) {
         DestroyClientEndpoint(&client_a_opt.value());
-        PrintSkip("unable to create second ENet client");
+        PrintSkip("unable to create second transport client");
         return TestResult::Skip;
     }
 
@@ -375,8 +375,8 @@ TestResult TestMultiClientBroadcasts() {
         return FailTest("multiclient: timed out waiting for player_death broadcast to both clients");
     }
 
-    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_a.endpoint, 0));
-    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_b.endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&client_a.endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&client_b.endpoint, 0));
     WaitUntil(std::chrono::milliseconds(250),
               step,
               [&]() { return client_a.capture.disconnected && client_b.capture.disconnected; });

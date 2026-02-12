@@ -20,6 +20,7 @@ struct RenderComponent {
     renderer::MaterialId material = renderer::kInvalidMaterial;
     renderer::LayerId layer = 0;
     bool visible = true;
+    bool casts_shadow = true;
 };
 
 struct HierarchyComponent {

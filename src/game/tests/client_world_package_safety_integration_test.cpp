@@ -6,7 +6,7 @@
 #include "karma/common/config_store.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/world_archive.hpp"
-#include "network/tests/loopback_enet_fixture.hpp"
+#include "network/tests/loopback_transport_fixture.hpp"
 
 #include <algorithm>
 #include <array>
@@ -41,10 +41,10 @@ struct ServerFixture {
     std::unique_ptr<bz3::server::net::ServerEventSource> source{};
 };
 
-class ScopedRawEnet {
+class ScopedRawTransport {
  public:
-    ScopedRawEnet() {
-        initialized_ = karma::network::tests::InitializeLoopbackEnet();
+    ScopedRawTransport() {
+        initialized_ = karma::network::tests::InitializeLoopbackTransport();
     }
 
     bool initialized() const { return initialized_; }
@@ -55,14 +55,14 @@ class ScopedRawEnet {
 
 struct RawServerFixture {
     uint16_t port = 0;
-    karma::network::tests::LoopbackEnetEndpoint endpoint{};
+    karma::network::tests::LoopbackTransportEndpoint endpoint{};
 
     RawServerFixture() = default;
-    RawServerFixture(uint16_t in_port, karma::network::tests::LoopbackEnetEndpoint&& in_endpoint)
+    RawServerFixture(uint16_t in_port, karma::network::tests::LoopbackTransportEndpoint&& in_endpoint)
         : port(in_port),
           endpoint(std::move(in_endpoint)) {}
     ~RawServerFixture() {
-        karma::network::tests::DestroyLoopbackEndpoint(&endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&endpoint);
     }
 
     RawServerFixture(const RawServerFixture&) = delete;
@@ -79,7 +79,7 @@ struct RawServerFixture {
         if (this == &other) {
             return *this;
         }
-        karma::network::tests::DestroyLoopbackEndpoint(&endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&endpoint);
         port = other.port;
         endpoint = std::move(other.endpoint);
         other.port = 0;
@@ -145,7 +145,7 @@ std::optional<RawServerFixture> CreateRawServerFixture() {
     constexpr uint16_t kFirstPort = 32300;
     constexpr uint16_t kLastPort = 32348;
     for (uint16_t port = kFirstPort; port < kLastPort; ++port) {
-        auto endpoint = karma::network::tests::CreateLoopbackServerEndpointAtPort(port, 1, 2);
+        auto endpoint = karma::network::tests::CreateLoopbackServerTransportEndpointAtPort(port, 1, 2);
         if (endpoint.has_value()) {
             return RawServerFixture{port, std::move(*endpoint)};
         }
@@ -153,12 +153,12 @@ std::optional<RawServerFixture> CreateRawServerFixture() {
     return std::nullopt;
 }
 
-bool SendRawServerPayload(karma::network::tests::LoopbackEnetEndpoint* server_endpoint,
+bool SendRawServerPayload(karma::network::tests::LoopbackTransportEndpoint* server_endpoint,
                           const std::vector<std::byte>& payload) {
     if (!server_endpoint || payload.empty()) {
         return false;
     }
-    return karma::network::tests::SendLoopbackPayload(server_endpoint, payload);
+    return karma::network::tests::SendLoopbackTransportPayload(server_endpoint, payload);
 }
 
 void PumpRawServerEvents(RawServerFixture* server,
@@ -169,7 +169,7 @@ void PumpRawServerEvents(RawServerFixture* server,
     }
 
     std::vector<std::vector<std::byte>> payloads{};
-    karma::network::tests::PumpLoopbackEndpointCapturePayloads(&server->endpoint, &payloads);
+    karma::network::tests::PumpLoopbackTransportEndpointCapturePayloads(&server->endpoint, &payloads);
     for (const auto& payload : payloads) {
         const auto decoded = bz3::net::DecodeClientMessage(payload.data(), payload.size());
         if (decoded.has_value() && decoded->type == bz3::net::ClientMessageType::JoinRequest &&
@@ -510,15 +510,15 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
     (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
     (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 
-    ScopedRawEnet raw_enet{};
-    if (!raw_enet.initialized()) {
-        PrintSkip("ENet init failed for interrupted-transfer test");
+    ScopedRawTransport raw_transport{};
+    if (!raw_transport.initialized()) {
+        PrintSkip("transport init failed for interrupted-transfer test");
         return TestResult::Skip;
     }
 
     auto raw_server_opt = CreateRawServerFixture();
     if (!raw_server_opt.has_value()) {
-        PrintSkip("unable to create raw ENet server fixture");
+        PrintSkip("unable to create raw transport server fixture");
         return TestResult::Skip;
     }
     RawServerFixture raw_server = std::move(*raw_server_opt);
@@ -534,20 +534,20 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
     }, [&]() { return started.has_value(); });
     starter.join();
     if (!start_done || !started.value_or(false)) {
-        return FailTest("client failed to start against raw ENet server");
+        return FailTest("client failed to start against raw transport server");
     }
-    if (!karma::network::tests::LoopbackEndpointHasPeer(&raw_server.endpoint) || disconnected) {
+    if (!karma::network::tests::LoopbackTransportEndpointHasPeer(&raw_server.endpoint) || disconnected) {
         client.shutdown();
-        return FailTest("raw ENet server did not observe connected peer");
+        return FailTest("raw transport server did not observe connected peer");
     }
     if (!WaitUntil(std::chrono::milliseconds(2500), [&]() {
             PumpRawServerEvents(&raw_server, &join_request, &disconnected);
             client.poll();
         }, [&]() { return join_request.has_value(); })) {
         client.shutdown();
-        return FailTest("raw ENet server did not receive join request");
+        return FailTest("raw transport server did not receive join request");
     }
-    if (disconnected || !karma::network::tests::LoopbackEndpointHasPeer(&raw_server.endpoint)) {
+    if (disconnected || !karma::network::tests::LoopbackTransportEndpointHasPeer(&raw_server.endpoint)) {
         client.shutdown();
         return FailTest("client disconnected before transfer test could begin");
     }
@@ -735,7 +735,7 @@ TestResult TestFailedWorldUpdatePreservesPreviousCache() {
 
     auto server_opt = CreateServerFixture();
     if (!server_opt.has_value()) {
-        PrintSkip("unable to create ENet server fixture");
+        PrintSkip("unable to create transport server fixture");
         return TestResult::Skip;
     }
     ServerFixture server = std::move(*server_opt);

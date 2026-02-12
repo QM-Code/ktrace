@@ -59,18 +59,18 @@ target_link_libraries(bz3-server PRIVATE karma_engine_core)
 target_link_libraries(bz3-server PRIVATE bz3_proto)
 
 if(BUILD_TESTING)
-    add_executable(enet_environment_probe_test
-        ${PROJECT_SOURCE_DIR}/src/game/tests/enet_environment_probe_test.cpp
+    add_executable(transport_environment_probe_test
+        ${PROJECT_SOURCE_DIR}/src/game/tests/transport_environment_probe_test.cpp
     )
-    target_include_directories(enet_environment_probe_test PRIVATE
+    target_include_directories(transport_environment_probe_test PRIVATE
         ${PROJECT_SOURCE_DIR}/src/engine
     )
     if(TARGET network_test_support)
-        target_link_libraries(enet_environment_probe_test PRIVATE network_test_support)
+        target_link_libraries(transport_environment_probe_test PRIVATE network_test_support)
     endif()
-    add_test(NAME enet_environment_probe_test
-             COMMAND enet_environment_probe_test)
-    set_tests_properties(enet_environment_probe_test PROPERTIES
+    add_test(NAME transport_environment_probe_test
+             COMMAND transport_environment_probe_test)
+    set_tests_properties(transport_environment_probe_test PROPERTIES
                          RUN_SERIAL TRUE
                          SKIP_RETURN_CODE 77)
 
@@ -101,69 +101,69 @@ if(BUILD_TESTING)
     add_test(NAME server_runtime_event_rules_test
              COMMAND server_runtime_event_rules_test)
 
-    add_executable(enet_loopback_integration_test
-        ${PROJECT_SOURCE_DIR}/src/game/tests/enet_loopback_integration_test.cpp
+    add_executable(transport_loopback_integration_test
+        ${PROJECT_SOURCE_DIR}/src/game/tests/transport_loopback_integration_test.cpp
         ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
         ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
     )
-    target_include_directories(enet_loopback_integration_test PRIVATE
+    target_include_directories(transport_loopback_integration_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/game
         ${PROJECT_SOURCE_DIR}/src/engine
     )
-    target_link_libraries(enet_loopback_integration_test PRIVATE karma_engine_core)
-    target_link_libraries(enet_loopback_integration_test PRIVATE bz3_proto)
+    target_link_libraries(transport_loopback_integration_test PRIVATE karma_engine_core)
+    target_link_libraries(transport_loopback_integration_test PRIVATE bz3_proto)
     if(TARGET network_test_support)
-        target_link_libraries(enet_loopback_integration_test PRIVATE network_test_support)
+        target_link_libraries(transport_loopback_integration_test PRIVATE network_test_support)
     endif()
 
-    add_test(NAME enet_loopback_integration_test
-             COMMAND enet_loopback_integration_test)
-    set_tests_properties(enet_loopback_integration_test PROPERTIES
+    add_test(NAME transport_loopback_integration_test
+             COMMAND transport_loopback_integration_test)
+    set_tests_properties(transport_loopback_integration_test PROPERTIES
                          RUN_SERIAL TRUE
                          SKIP_RETURN_CODE 77)
 
-    add_executable(enet_multiclient_loopback_test
-        ${PROJECT_SOURCE_DIR}/src/game/tests/enet_multiclient_loopback_test.cpp
+    add_executable(transport_multiclient_loopback_test
+        ${PROJECT_SOURCE_DIR}/src/game/tests/transport_multiclient_loopback_test.cpp
         ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
         ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
     )
-    target_include_directories(enet_multiclient_loopback_test PRIVATE
+    target_include_directories(transport_multiclient_loopback_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/game
         ${PROJECT_SOURCE_DIR}/src/engine
     )
-    target_link_libraries(enet_multiclient_loopback_test PRIVATE karma_engine_core)
-    target_link_libraries(enet_multiclient_loopback_test PRIVATE bz3_proto)
+    target_link_libraries(transport_multiclient_loopback_test PRIVATE karma_engine_core)
+    target_link_libraries(transport_multiclient_loopback_test PRIVATE bz3_proto)
     if(TARGET network_test_support)
-        target_link_libraries(enet_multiclient_loopback_test PRIVATE network_test_support)
+        target_link_libraries(transport_multiclient_loopback_test PRIVATE network_test_support)
     endif()
 
-    add_test(NAME enet_multiclient_loopback_test
-             COMMAND enet_multiclient_loopback_test)
-    set_tests_properties(enet_multiclient_loopback_test PROPERTIES
+    add_test(NAME transport_multiclient_loopback_test
+             COMMAND transport_multiclient_loopback_test)
+    set_tests_properties(transport_multiclient_loopback_test PROPERTIES
                          RUN_SERIAL TRUE
                          SKIP_RETURN_CODE 77)
 
-    add_executable(enet_disconnect_lifecycle_integration_test
-        ${PROJECT_SOURCE_DIR}/src/game/tests/enet_disconnect_lifecycle_integration_test.cpp
+    add_executable(transport_disconnect_lifecycle_integration_test
+        ${PROJECT_SOURCE_DIR}/src/game/tests/transport_disconnect_lifecycle_integration_test.cpp
         ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
         ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
     )
-    target_include_directories(enet_disconnect_lifecycle_integration_test PRIVATE
+    target_include_directories(transport_disconnect_lifecycle_integration_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src/game
         ${PROJECT_SOURCE_DIR}/src/engine
     )
-    target_link_libraries(enet_disconnect_lifecycle_integration_test PRIVATE karma_engine_core)
-    target_link_libraries(enet_disconnect_lifecycle_integration_test PRIVATE bz3_proto)
+    target_link_libraries(transport_disconnect_lifecycle_integration_test PRIVATE karma_engine_core)
+    target_link_libraries(transport_disconnect_lifecycle_integration_test PRIVATE bz3_proto)
     if(TARGET network_test_support)
-        target_link_libraries(enet_disconnect_lifecycle_integration_test PRIVATE network_test_support)
+        target_link_libraries(transport_disconnect_lifecycle_integration_test PRIVATE network_test_support)
     endif()
 
-    add_test(NAME enet_disconnect_lifecycle_integration_test
-             COMMAND enet_disconnect_lifecycle_integration_test)
-    set_tests_properties(enet_disconnect_lifecycle_integration_test PROPERTIES
+    add_test(NAME transport_disconnect_lifecycle_integration_test
+             COMMAND transport_disconnect_lifecycle_integration_test)
+    set_tests_properties(transport_disconnect_lifecycle_integration_test PROPERTIES
                          RUN_SERIAL TRUE
                          SKIP_RETURN_CODE 77)
 

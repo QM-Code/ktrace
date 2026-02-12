@@ -3,7 +3,7 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/common/config_store.hpp"
-#include "network/tests/loopback_enet_fixture.hpp"
+#include "network/tests/loopback_transport_fixture.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -61,7 +61,7 @@ std::filesystem::path MakeTestConfigPath(const char* suffix) {
     const auto nonce = static_cast<unsigned long long>(
         std::chrono::steady_clock::now().time_since_epoch().count());
     return std::filesystem::temp_directory_path() /
-           ("bz3-enet-loopback-" + std::string(suffix) + "-" + std::to_string(nonce) + ".json");
+           ("bz3-transport-loopback-" + std::string(suffix) + "-" + std::to_string(nonce) + ".json");
 }
 
 void InitEmptyConfig(const char* suffix) {
@@ -82,14 +82,14 @@ std::optional<ServerFixture> CreateServerFixture() {
     return std::nullopt;
 }
 
-void PumpClient(karma::network::tests::LoopbackEnetEndpoint* client_endpoint,
+void PumpClient(karma::network::tests::LoopbackTransportEndpoint* client_endpoint,
                 ClientCapture* capture) {
     if (!client_endpoint || !capture) {
         return;
     }
 
     std::vector<std::vector<std::byte>> payloads{};
-    karma::network::tests::PumpLoopbackEndpointCapturePayloads(client_endpoint, &payloads);
+    karma::network::tests::PumpLoopbackTransportEndpointCapturePayloads(client_endpoint, &payloads);
     capture->connected = capture->connected || client_endpoint->connected;
     capture->disconnected = capture->disconnected || client_endpoint->disconnected;
     for (const auto& payload : payloads) {
@@ -114,25 +114,25 @@ bool WaitUntil(std::chrono::milliseconds timeout, StepFn&& step, DoneFn&& done) 
     return done();
 }
 
-bool SendPayload(karma::network::tests::LoopbackEnetEndpoint* client_endpoint,
+bool SendPayload(karma::network::tests::LoopbackTransportEndpoint* client_endpoint,
                  const std::vector<std::byte>& payload) {
     if (!client_endpoint || payload.empty()) {
         return false;
     }
-    return karma::network::tests::SendLoopbackPayload(client_endpoint, payload);
+    return karma::network::tests::SendLoopbackTransportPayload(client_endpoint, payload);
 }
 
 TestResult TestAcceptedJoinAndGameplayEvents() {
     InitEmptyConfig("accepted");
     auto fixture = CreateServerFixture();
     if (!fixture.has_value()) {
-        PrintSkip("unable to create ENet server fixture (socket bind unavailable)");
+        PrintSkip("unable to create transport server fixture (socket bind unavailable)");
         return TestResult::Skip;
     }
 
-    auto client_endpoint_opt = karma::network::tests::CreateLoopbackClientEndpoint(fixture->port, 2);
+    auto client_endpoint_opt = karma::network::tests::CreateLoopbackClientTransportEndpoint(fixture->port, 2);
     if (!client_endpoint_opt.has_value()) {
-        PrintSkip("unable to create ENet client host");
+        PrintSkip("unable to create transport client host");
         return TestResult::Skip;
     }
     auto client_endpoint = std::move(*client_endpoint_opt);
@@ -146,7 +146,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
     };
 
     if (!WaitUntil(std::chrono::milliseconds(1000), step, [&]() { return capture.connected; })) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("accepted-test: timed out waiting for client connect event");
     }
 
@@ -157,7 +157,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                                          bz3::net::Vec3{1.0f, 2.0f, 3.0f},
                                                          bz3::net::Vec3{4.0f, 5.0f, 6.0f}))
         || !SendPayload(&client_endpoint, bz3::net::EncodeClientLeave(9999))) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("accepted-test: failed to send one or more pre-join payloads");
     }
 
@@ -167,7 +167,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
     }
     if (!Expect(server_events.empty(),
                 "accepted-test: pre-join spawn/shot/leave should not emit server-side events")) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return TestResult::Fail;
     }
     server_events.clear();
@@ -182,7 +182,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
         "cached-manifest",
         3);
     if (!SendPayload(&client_endpoint, join_payload)) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("accepted-test: failed to send join payload");
     }
 
@@ -193,7 +193,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                    return event.type == bz3::server::net::ServerInputEvent::Type::ClientJoin;
                                });
         })) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("accepted-test: timed out waiting for server ClientJoin event");
     }
 
@@ -207,11 +207,11 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
         }
     }
     if (!Expect(joined_client_id != 0, "joined client_id not captured")) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return TestResult::Fail;
     }
     if (!Expect(joined_name == "loopback-player", "joined player name mismatch")) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return TestResult::Fail;
     }
 
@@ -254,7 +254,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
             }
             return saw_join_accept && saw_init && saw_snapshot;
         })) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest(
             "accepted-test: timed out waiting for JoinResponse/Init/SessionSnapshot after onJoinResult");
     }
@@ -262,7 +262,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
     server_events.clear();
     const auto spawn_payload = bz3::net::EncodeClientRequestPlayerSpawn(joined_client_id + 1);
     if (!SendPayload(&client_endpoint, spawn_payload)) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("accepted-test: failed to send request_spawn payload");
     }
     if (!WaitUntil(std::chrono::milliseconds(1000), step, [&]() {
@@ -274,7 +274,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                           && event.request_spawn.client_id == joined_client_id;
                                });
         })) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("accepted-test: timed out waiting for ClientRequestSpawn server event");
     }
 
@@ -284,7 +284,7 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                                                bz3::net::Vec3{1.0f, 2.0f, 3.0f},
                                                                bz3::net::Vec3{4.0f, 5.0f, 6.0f});
     if (!SendPayload(&client_endpoint, shot_payload)) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("accepted-test: failed to send create_shot payload");
     }
     if (!WaitUntil(std::chrono::milliseconds(1000), step, [&]() {
@@ -297,13 +297,13 @@ TestResult TestAcceptedJoinAndGameplayEvents() {
                                           && event.create_shot.local_shot_id == 77;
                                });
         })) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("accepted-test: timed out waiting for ClientCreateShot server event");
     }
 
-    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&client_endpoint, 0));
     WaitUntil(std::chrono::milliseconds(300), step, [&]() { return capture.disconnected; });
-    karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+    karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
     return TestResult::Pass;
 }
 
@@ -311,13 +311,13 @@ TestResult TestProtocolMismatchRejected() {
     InitEmptyConfig("mismatch");
     auto fixture = CreateServerFixture();
     if (!fixture.has_value()) {
-        PrintSkip("unable to create ENet server fixture for mismatch test");
+        PrintSkip("unable to create transport server fixture for mismatch test");
         return TestResult::Skip;
     }
 
-    auto client_endpoint_opt = karma::network::tests::CreateLoopbackClientEndpoint(fixture->port, 2);
+    auto client_endpoint_opt = karma::network::tests::CreateLoopbackClientTransportEndpoint(fixture->port, 2);
     if (!client_endpoint_opt.has_value()) {
-        PrintSkip("unable to create ENet client host for mismatch test");
+        PrintSkip("unable to create transport client host for mismatch test");
         return TestResult::Skip;
     }
     auto client_endpoint = std::move(*client_endpoint_opt);
@@ -331,7 +331,7 @@ TestResult TestProtocolMismatchRejected() {
     };
 
     if (!WaitUntil(std::chrono::milliseconds(1000), step, [&]() { return capture.connected; })) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("mismatch-test: timed out waiting for client connect event");
     }
 
@@ -345,7 +345,7 @@ TestResult TestProtocolMismatchRejected() {
         "",
         0);
     if (!SendPayload(&client_endpoint, bad_join_payload)) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("mismatch-test: failed to send bad join payload");
     }
 
@@ -361,12 +361,12 @@ TestResult TestProtocolMismatchRejected() {
             saw_disconnect = capture.disconnected;
             return saw_disconnect;
         })) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("mismatch-test: timed out waiting for rejected JoinResponse or disconnect");
     }
 
     if (!saw_reject && !saw_disconnect) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return FailTest("mismatch-test: neither reject response nor disconnect observed");
     }
 
@@ -376,11 +376,11 @@ TestResult TestProtocolMismatchRejected() {
                                  return event.type == bz3::server::net::ServerInputEvent::Type::ClientJoin;
                              }),
                 "server emitted ClientJoin event for protocol-mismatch request")) {
-        karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+        karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
         return TestResult::Fail;
     }
 
-    karma::network::tests::DestroyLoopbackEndpoint(&client_endpoint);
+    karma::network::tests::DestroyLoopbackTransportEndpoint(&client_endpoint);
     return TestResult::Pass;
 }
 

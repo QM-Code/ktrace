@@ -1,174 +1,119 @@
 # Overseer Playbook
 
 ## Purpose
-This file is the persistent replacement for "session memory" so a new agent can resume the same high-level coordination role immediately.
+This file defines overseer-only workflow:
+- startup alignment and triage,
+- specialist assignment/rotation protocol,
+- accepted-slice checkpoint gate.
 
-Use this when you want an agent to act as:
-- project integrator,
-- delegation coordinator,
-- specialist-task author/reviewer,
-- documentation quality gate.
+Execution command policy (for all specialists) is canonical in `docs/AGENTS.md`.
 
 ## Overseer Responsibilities
-1. Keep project-level direction aligned with `AGENTS.md` and `docs/AGENTS.md`.
-2. Convert user goals into concrete specialist task packets.
-3. Prevent overlap by enforcing owned paths + assigned build dirs.
-4. Review specialist handoffs for scope, validation, and risk.
-5. Keep `docs/projects/ASSIGNMENTS.md` and project snapshots current.
-6. Maintain this playbook and `docs/DECISIONS.md` as durable project memory.
-7. Enforce the default-first engine direction (`95% defaults, 5% overrides`) across assignments.
-8. Run continuous `KARMA-REPO` capability intake: convert significant upstream feature ideas into rewrite-owned project slices without inheriting upstream structure.
-9. Persist accepted work with overseer-owned git checkpoints (commit + push) in `m-rewrite` so recovery does not depend on local session state.
+1. Keep direction aligned with `AGENTS.md`, `docs/AGENTS.md`, and `docs/DECISIONS.md`.
+2. Convert user goals into bounded specialist packets.
+3. Prevent overlap by enforcing owned paths and assigned build dirs from `docs/projects/ASSIGNMENTS.md`.
+4. Review specialist handoffs for scope, validation, risks, and boundary integrity.
+5. Keep `docs/projects/ASSIGNMENTS.md` plus project snapshot fields current.
+6. Maintain durable memory in `docs/DECISIONS.md`.
+7. Enforce default-first direction (`95% defaults / 5% overrides`) and dual-track framing.
+8. Run continuous `KARMA-REPO` capability intake without structure mirroring.
+9. Persist accepted work via overseer checkpoint commits/pushes.
 
-## Startup Read Order (Required)
-Anchor first:
-- If starting from workspace root (`bz3-rewrite/`), run `cd m-rewrite`.
-- If you stay at workspace root, use explicit `m-rewrite/...` path prefixes.
+## Startup Protocol (Required)
+1. Anchor to repo root:
 
-Then read in order:
-1. `AGENTS.md`
-2. `docs/AGENTS.md`
-3. `docs/projects/README.md`
-4. `docs/projects/ASSIGNMENTS.md`
-5. Relevant `docs/projects/<project>.md` files for active tracks
-6. `docs/DECISIONS.md`
+```bash
+cd m-rewrite
+```
 
-## Startup Alignment Check (Required)
-At session start, restate and apply this direction before assigning work:
-- Engine owns lifecycle/subsystems; game supplies BZ3-specific content and rules.
-- Bias work toward reusable engine defaults for common scenarios.
-- Keep game-side API small and backend-agnostic.
-- Prefer slices that remove repeated setup from `src/game/*` and move it into `src/engine/*`.
-- Maintain dual-track planning explicitly:
-  - `m-dev` behavior parity track for modern BZ3 outcomes,
-  - `KARMA-REPO` capability-intake track for significant new engine features.
+2. Read in order:
+  - `docs/STARTUP_BRIEF.md`
+  - `AGENTS.md`
+  - `docs/AGENTS.md`
+  - `docs/projects/README.md`
+  - `docs/projects/ASSIGNMENTS.md`
+  - active `docs/projects/<project>.md` files
+  - `docs/DECISIONS.md`
+3. Restate startup alignment:
+  - engine owns lifecycle/subsystems; game owns BZ3 rules/protocol semantics,
+  - default-first assignment posture,
+  - dual-track posture (`m-dev` parity + KARMA capability intake).
+4. Run KARMA refresh gate before proposing targets:
 
-## KARMA Refresh Gate (Required At Overseer Startup)
-- Before proposing targets, refresh upstream reference state:
-  - `git -C ../KARMA-REPO fetch --all --prune`
-- Then summarize what changed since last local reference point:
+```bash
+git -C ../KARMA-REPO fetch --all --prune
+```
+
+5. Summarize KARMA freshness in startup output:
   - new remote branches (if any),
-  - notable new commits on tracked upstream heads,
-  - candidate capability deltas worth intake.
-- Minimum cadence: once per overseer startup session (effectively daily in normal usage).
-- If fetch cannot run, explicitly state the failure and proceed with last-known state marked as stale.
+  - notable upstream head commits,
+  - intake candidates (adopt now / defer).
+  - If fetch fails, mark KARMA state stale explicitly.
 
-## Priority Override (2026-02-10)
-- Renderer capability integration (`docs/projects/renderer-parity.md`) and engine networking foundation (`docs/projects/engine-network-foundation.md`) are the co-equal top active tracks.
-- Prioritize renderer + engine-network foundation slices ahead of non-blocking audio/content-mount/UI detail work.
-- Port KARMA-REPO renderer feature intent by capability/behavior, never by file mirroring.
-- Convert KARMA-derived intent into rewrite-owned docs/contracts so the project can continue without KARMA-REPO dependency.
+## Current Priority Override
+- Renderer parity and engine-network foundation are co-equal P0 tracks.
+- Prioritize these ahead of non-blocking audio/content-mount/UI follow-up.
+- Convert KARMA feature intent into rewrite-owned contracts/docs.
 
 ## KARMA Intake Loop (Required)
-Use this loop continuously while rewrite work is active:
+1. Detect upstream capability deltas.
+2. Triage significance (default-path leverage, parity unblock, rework reduction).
+3. Reframe accepted deltas into rewrite project slices with owned paths and validation.
+4. Schedule under current rewrite priorities and conflict constraints.
+5. Close local memory by updating rewrite docs/decisions so direction is KARMA-independent.
 
-1. Detect upstream capability deltas
-- Track `KARMA-REPO` new commits/branches and identify meaningful engine-feature additions.
-- Use the startup refresh gate (`git -C ../KARMA-REPO fetch --all --prune`) before this triage.
+## Assignment Protocol
+When issuing a specialist packet:
+- use `docs/HANDOFF_TEMPLATE.md`,
+- include explicit owned paths, non-goals, and conflict hotspots,
+- include assigned isolated build dirs from `docs/projects/ASSIGNMENTS.md`,
+- enforce `./bzbuild.py <build-dir>`-only operator flows,
+- require project-specific validation and wrapper gates with explicit build-dir args.
 
-2. Triage significance
-- Keep only deltas that materially improve engine defaults, unblock rewrite parity, or reduce future rework.
-- Defer low-signal experiments and non-essential backend-breadth changes.
-
-3. Reframe as rewrite-owned work
-- Convert accepted deltas into rewrite project slices (`docs/projects/*.md` + `docs/projects/ASSIGNMENTS.md`) with owned paths, boundaries, and validation.
-- Specify behavior/capability goals; do not carry over upstream file/layout assumptions.
-
-4. Integrate under rewrite priorities
-- Keep P0 rewrite tracks moving; schedule KARMA-intake slices where they fit priority and conflict constraints.
-
-5. Close local memory
-- On accepted slices, update rewrite docs/contracts/decisions so roadmap intent lives in-repo and does not depend on future KARMA lookup.
-
-## Renderer R1 Review Notes (2026-02-10)
-- R1 material-semantics slice is accepted for integration scope:
-  - shared resolver/validator added at `m-rewrite/src/engine/renderer/backends/material_semantics_internal.hpp`,
-  - BGFX + Diligent consume the same resolved semantics,
-  - Diligent now uses deterministic pipeline variants for blend/cull parity.
-- Residual risks to carry into R2/R2.1:
-  - no dedicated renderer assertion test yet for semantics groups (tracked as follow-up test debt),
-  - texture-driven semantics currently sample origin texel only (deterministic, but limited fidelity),
-  - ensure new internal headers are tracked in commits (untracked files are easy to miss in handoffs).
-
-## Build Isolation Policy (Required)
-From `m-rewrite/`, use `./bzbuild.py` only.
-
-Do not use raw `cmake -S/-B` for delegated specialist flows.
-
-Validation-wrapper constraint:
-- Wrapper scripts support optional build-dir arguments and still default to `build-dev`.
-- Prefer `./scripts/test-engine-backends.sh <build-dir>` and `./scripts/test-server-net.sh <build-dir>` for parallel closeouts.
-- If using default `build-dev`, treat wrapper runs as a serialized shared resource.
-- Keep normal iteration inside assigned `./bzbuild.py <build-dir>` profiles.
-
-Standard isolated build-dir pairs:
-- Physics:
-  - `build-sdl3-bgfx-jolt-rmlui-sdl3audio`
-  - `build-sdl3-bgfx-physx-rmlui-sdl3audio`
-- Audio:
-  - `build-sdl3-bgfx-jolt-imgui-sdl3audio`
-  - `build-sdl3-bgfx-jolt-imgui-miniaudio`
-- Renderer:
-  - `build-sdl3-bgfx-physx-imgui-sdl3audio`
-  - `build-sdl3-diligent-physx-imgui-sdl3audio`
-- Engine-network foundation:
-  - `build-sdl3-bgfx-jolt-rmlui-miniaudio`
-  - `build-sdl3-bgfx-physx-rmlui-miniaudio`
-
-## Git Persistence Policy (Required)
-- Git operations are run from `m-rewrite/`.
-- After each accepted slice batch:
-  1. run `./scripts/overseer-checkpoint.sh -m "<slice batch summary>" --all-accepted`,
-  2. verify it exits successfully.
-- Do not batch accepted work for long periods; checkpoint frequently so outage recovery is straightforward.
-- Never include unreviewed or out-of-scope dirty files in a checkpoint commit.
-- Assignment gate: do not issue any new specialist instructions until the checkpoint script succeeds.
-
-## Rotation Protocol
-Use this when cycling specialists in/out.
-
-1. Close current slice
-- Require handoff with:
+## Review and Rotation Protocol
+1. Close current slice with handoff evidence:
   - files changed,
-  - exact commands run + results,
-  - remaining risks/open questions.
+  - exact commands + outcomes,
+  - open risks/questions.
+2. Review gate:
+  - scope boundaries respected,
+  - required tests/wrappers passed,
+  - docs/snapshot/assignment updates complete,
+  - default-first direction preserved.
+3. Update durable state:
+  - update `docs/projects/ASSIGNMENTS.md`,
+  - update project `Project Snapshot` and status section,
+  - record major cross-track decisions in `docs/DECISIONS.md`.
+4. Decide retire vs continue:
+  - retire complete slice,
+  - continue only narrow adjacent follow-up.
 
-2. Overseer review gate
-- Confirm:
-  - scope respected,
-  - required tests passed,
-  - docs/status updated,
-  - assignment outcome improved or preserved default-first engine behavior.
+## Checkpoint Gate (Hard Requirement)
+After accepted slice batches, run from `m-rewrite/`:
 
-3. Update durable state
-- Update `docs/projects/ASSIGNMENTS.md`.
-- Update project file `Project Snapshot` + status section.
-- Add major policy/architecture decisions to `docs/DECISIONS.md`.
- - Run `./scripts/overseer-checkpoint.sh -m "<slice batch summary>" --all-accepted`.
+```bash
+./scripts/overseer-checkpoint.sh -m "<slice batch summary>" --all-accepted
+```
 
-4. Retire or continue
-- Retire if slice is complete and next step is a new concern.
-- Continue only if follow-up is narrow and directly adjacent.
-
-5. Start replacement specialist
-- Use task packet template in `docs/HANDOFF_TEMPLATE.md`.
-- Include owned paths, build dirs, validation, and doc updates.
+Rules:
+- verify successful exit before issuing any new specialist assignment,
+- do not include unreviewed/out-of-scope dirty files,
+- checkpoint frequently to preserve outage recovery.
 
 ## Message Templates
 
 ### Summon Overseer
-Use this to re-create this role in a fresh session:
-
 ```text
 Act as project overseer/integrator for bz3-rewrite.
 
 Read in order:
-1) m-rewrite/AGENTS.md
-2) m-rewrite/docs/AGENTS.md
-3) m-rewrite/docs/OVERSEER.md
-4) m-rewrite/docs/projects/README.md
-5) m-rewrite/docs/projects/ASSIGNMENTS.md
-6) m-rewrite/docs/DECISIONS.md
+1) m-rewrite/docs/STARTUP_BRIEF.md
+2) m-rewrite/AGENTS.md
+3) m-rewrite/docs/AGENTS.md
+4) m-rewrite/docs/OVERSEER.md
+5) m-rewrite/docs/projects/README.md
+6) m-rewrite/docs/projects/ASSIGNMENTS.md
+7) m-rewrite/docs/DECISIONS.md
 
 Then:
 - summarize current project state and active tracks,
@@ -177,11 +122,9 @@ Then:
 - ask the human to pick one of those or override with a different focus,
 - STOP and wait for the human selection,
 - do not draft specialist instruction packets until the selection is made,
-- then propose only the selected specialist assignment packet with isolated build dirs,
-- enforce bzbuild.py-only build policy,
-- restate how current assignments advance the default-first engine direction,
-- include `m-dev` parity posture (what parity gaps remain and why they are/aren't active),
-- include KARMA capability-intake posture (what is being tracked, what is adopted now, what is explicitly deferred).
+- then draft only the selected specialist packet with isolated build dirs,
+- enforce bzbuild.py-only build policy and explicit wrapper build-dir args,
+- include `m-dev` parity posture and KARMA intake posture (adopt now vs defer).
 ```
 
 ### Retire Specialist
@@ -194,9 +137,4 @@ Do only:
 ```
 
 ### Start Specialist
-Use `docs/HANDOFF_TEMPLATE.md` and fill per track.
-
-## Overseer Cadence
-- After each specialist handoff: quick review + accept/revise decision.
-- After each accepted slice: update docs state immediately.
-- Before new assignments: confirm no overlapping owned paths/build dirs.
+Use `docs/HANDOFF_TEMPLATE.md` and fill only one selected track packet.

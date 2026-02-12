@@ -3,7 +3,7 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/common/config_store.hpp"
-#include "network/tests/loopback_enet_fixture.hpp"
+#include "network/tests/loopback_transport_fixture.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -35,7 +35,7 @@ struct ClientCapture {
 };
 
 struct ClientEndpoint {
-    karma::network::tests::LoopbackEnetEndpoint endpoint{};
+    karma::network::tests::LoopbackTransportEndpoint endpoint{};
     ClientCapture capture{};
 };
 
@@ -62,7 +62,7 @@ std::filesystem::path MakeTestConfigPath() {
     const auto nonce = static_cast<unsigned long long>(
         std::chrono::steady_clock::now().time_since_epoch().count());
     return std::filesystem::temp_directory_path() /
-           ("bz3-enet-disconnect-" + std::to_string(nonce) + ".json");
+           ("bz3-transport-disconnect-" + std::to_string(nonce) + ".json");
 }
 
 void InitEmptyConfig() {
@@ -84,7 +84,7 @@ std::optional<ServerFixture> CreateServerFixture() {
 }
 
 std::optional<ClientEndpoint> CreateClientEndpoint(uint16_t port) {
-    auto loopback_endpoint = karma::network::tests::CreateLoopbackClientEndpoint(port, 2);
+    auto loopback_endpoint = karma::network::tests::CreateLoopbackClientTransportEndpoint(port, 2);
     if (!loopback_endpoint.has_value()) {
         return std::nullopt;
     }
@@ -98,7 +98,7 @@ void DestroyClientEndpoint(ClientEndpoint* endpoint) {
     if (!endpoint) {
         return;
     }
-    karma::network::tests::DestroyLoopbackEndpoint(&endpoint->endpoint);
+    karma::network::tests::DestroyLoopbackTransportEndpoint(&endpoint->endpoint);
 }
 
 void PumpClient(ClientEndpoint* endpoint) {
@@ -106,7 +106,7 @@ void PumpClient(ClientEndpoint* endpoint) {
         return;
     }
 
-    karma::network::tests::PumpLoopbackEndpoint(&endpoint->endpoint);
+    karma::network::tests::PumpLoopbackTransportEndpoint(&endpoint->endpoint);
     endpoint->capture.connected = endpoint->capture.connected || endpoint->endpoint.connected;
     endpoint->capture.disconnected = endpoint->capture.disconnected || endpoint->endpoint.disconnected;
 }
@@ -129,7 +129,7 @@ bool SendPayload(ClientEndpoint* endpoint, const std::vector<std::byte>& payload
     if (!endpoint || payload.empty()) {
         return false;
     }
-    return karma::network::tests::SendLoopbackPayload(&endpoint->endpoint, payload);
+    return karma::network::tests::SendLoopbackTransportPayload(&endpoint->endpoint, payload);
 }
 
 size_t CountEvents(const std::vector<bz3::server::net::ServerInputEvent>& events,
@@ -207,13 +207,13 @@ TestResult TestDisconnectLifecycle() {
     InitEmptyConfig();
     auto fixture = CreateServerFixture();
     if (!fixture.has_value()) {
-        PrintSkip("unable to create ENet server fixture");
+        PrintSkip("unable to create transport server fixture");
         return TestResult::Skip;
     }
 
     auto client_a_opt = CreateClientEndpoint(fixture->port);
     if (!client_a_opt.has_value()) {
-        PrintSkip("unable to create first ENet client");
+        PrintSkip("unable to create first transport client");
         return TestResult::Skip;
     }
     ClientEndpoint client_a = std::move(*client_a_opt);
@@ -252,8 +252,8 @@ TestResult TestDisconnectLifecycle() {
     const uint32_t first_id = *first_id_opt;
 
     server_events.clear();
-    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_a.endpoint, 0));
-    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_a.endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&client_a.endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&client_a.endpoint, 0));
     if (!WaitUntil(std::chrono::milliseconds(1200), step_a, [&]() {
             return client_a.capture.disconnected
                    && CountEvents(
@@ -279,7 +279,7 @@ TestResult TestDisconnectLifecycle() {
     server_events.clear();
     auto client_b_opt = CreateClientEndpoint(fixture->port);
     if (!client_b_opt.has_value()) {
-        PrintSkip("unable to create second ENet client");
+        PrintSkip("unable to create second transport client");
         return TestResult::Skip;
     }
     ClientEndpoint client_b = std::move(*client_b_opt);
@@ -394,7 +394,7 @@ TestResult TestDisconnectLifecycle() {
         return TestResult::Fail;
     }
 
-    static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&client_b.endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&client_b.endpoint, 0));
     if (!WaitUntil(std::chrono::milliseconds(600), step_b, [&]() { return client_b.capture.disconnected; })) {
         DestroyClientEndpoint(&client_b);
         return FailTest("disconnect-test: timed out waiting for disconnect after explicit leave");
@@ -418,7 +418,7 @@ TestResult TestDisconnectLifecycle() {
         server_events.clear();
         auto churn_client_opt = CreateClientEndpoint(fixture->port);
         if (!churn_client_opt.has_value()) {
-            PrintSkip("unable to create churn ENet client");
+            PrintSkip("unable to create churn transport client");
             return TestResult::Skip;
         }
         ClientEndpoint churn_client = std::move(*churn_client_opt);
@@ -467,8 +467,8 @@ TestResult TestDisconnectLifecycle() {
             DestroyClientEndpoint(&churn_client);
             return FailTest("disconnect-test: failed sending churn leave");
         }
-        static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&churn_client.endpoint, 0));
-        static_cast<void>(karma::network::tests::DisconnectLoopbackEndpoint(&churn_client.endpoint, 0));
+        static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&churn_client.endpoint, 0));
+        static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&churn_client.endpoint, 0));
 
         if (!WaitUntil(std::chrono::milliseconds(1200), churn_step, [&]() {
                 return churn_client.capture.disconnected

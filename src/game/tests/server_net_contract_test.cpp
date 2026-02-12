@@ -392,59 +392,6 @@ bool TestScriptedSourceSkipsInvalidShotData() {
                   "invalid-shot scripted source expected ClientJoin as sole valid event");
 }
 
-bool TestServerTransportBackendBuiltinsAutoAndEnet() {
-    // Trigger default transport registration once before overriding "enet" for this test.
-    {
-        karma::network::ServerTransportConfig bootstrap_config{};
-        bootstrap_config.backend_name = "bootstrap-nonexistent-server-backend";
-        auto bootstrap_transport = karma::network::CreateServerTransport(bootstrap_config);
-        (void)bootstrap_transport;
-    }
-
-    std::vector<CapturedTransportConfig> captures{};
-    const std::string factory_backend_name = "contract-fake-enet";
-    if (!karma::network::RegisterServerTransportFactory(
-            "enet",
-            [&captures, &factory_backend_name](const karma::network::ServerTransportConfig& config) {
-                captures.push_back(CapturedTransportConfig{
-                    .backend = config.backend,
-                    .backend_name = config.backend_name,
-                    .listen_port = config.listen_port,
-                    .max_clients = config.max_clients,
-                    .channel_count = config.channel_count,
-                });
-                return std::make_unique<FakeServerTransport>(factory_backend_name);
-            })) {
-        return Fail("failed to register fake enet transport factory for builtin backend test");
-    }
-
-    if (!InitializeConfigForServerTransportBackend("auto", "backend-builtin-auto")) {
-        return Fail("failed to initialize config for builtin auto backend test");
-    }
-    auto auto_source = bz3::server::net::CreateServerTransportEventSource(0);
-    if (!auto_source) {
-        return Fail("CreateServerTransportEventSource returned null for backend=auto");
-    }
-
-    if (!InitializeConfigForServerTransportBackend("enet", "backend-builtin-enet")) {
-        return Fail("failed to initialize config for builtin enet backend test");
-    }
-    auto enet_source = bz3::server::net::CreateServerTransportEventSource(0);
-    if (!enet_source) {
-        return Fail("CreateServerTransportEventSource returned null for backend=enet");
-    }
-
-    return Expect(captures.size() == 2, "builtin backend test expected two factory captures") &&
-           Expect(captures[0].backend_name == "auto",
-                  "backend=auto should pass backend_name='auto' into server transport config") &&
-           Expect(captures[0].backend == karma::network::ServerTransportBackend::Auto,
-                  "backend=auto should parse to ServerTransportBackend::Auto") &&
-           Expect(captures[1].backend_name == "enet",
-                  "backend=enet should pass backend_name='enet' into server transport config") &&
-           Expect(captures[1].backend == karma::network::ServerTransportBackend::Enet,
-                  "backend=enet should parse to ServerTransportBackend::Enet");
-}
-
 bool TestServerTransportBackendCustomIdPassThrough() {
     std::vector<CapturedTransportConfig> captures{};
     const std::string factory_backend_name = "contract-fake-custom";
@@ -514,9 +461,6 @@ int main() {
         return 1;
     }
     if (!TestScriptedSourceSkipsInvalidShotData()) {
-        return 1;
-    }
-    if (!TestServerTransportBackendBuiltinsAutoAndEnet()) {
         return 1;
     }
     if (!TestServerTransportBackendCustomIdPassThrough()) {

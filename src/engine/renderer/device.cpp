@@ -7,7 +7,10 @@ namespace karma::renderer {
 
 GraphicsDevice::GraphicsDevice(karma::platform::Window& window,
                                renderer_backend::BackendKind preferred_backend)
-    : backend_(renderer_backend::CreateBackend(window, preferred_backend, &backend_kind_)) {
+{
+    renderer_backend::BackendKind selected_backend = renderer_backend::BackendKind::Auto;
+    backend_ = renderer_backend::CreateBackend(window, preferred_backend, &selected_backend);
+    backend_kind_ = selected_backend;
     if (backend_ && !backend_->isValid()) {
         spdlog::error("GraphicsDevice: backend failed to initialize");
         backend_.reset();

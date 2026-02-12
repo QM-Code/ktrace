@@ -95,6 +95,7 @@ struct DrawItem {
     MaterialId material = kInvalidMaterial;
     glm::mat4 transform{1.0f};
     LayerId layer = 0;
+    bool casts_shadow = true;
 };
 
 struct DebugLineItem {

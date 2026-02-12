@@ -184,6 +184,24 @@ int main(int argc, char** argv) {
         config.default_light.ambient = ReadRequiredColor("roamingMode.graphics.lighting.ambientColor");
         config.default_light.unlit =
             karma::config::ReadFloatConfig({"roamingMode.graphics.lighting.unlit"}, 0.0f);
+        config.default_light.shadow.enabled = karma::config::ReadBoolConfig(
+            {"roamingMode.graphics.lighting.shadows.enabled"},
+            config.default_light.shadow.enabled);
+        config.default_light.shadow.strength = karma::config::ReadFloatConfig(
+            {"roamingMode.graphics.lighting.shadows.strength"},
+            config.default_light.shadow.strength);
+        config.default_light.shadow.bias = karma::config::ReadFloatConfig(
+            {"roamingMode.graphics.lighting.shadows.bias"},
+            config.default_light.shadow.bias);
+        config.default_light.shadow.extent = karma::config::ReadFloatConfig(
+            {"roamingMode.graphics.lighting.shadows.extent"},
+            config.default_light.shadow.extent);
+        config.default_light.shadow.map_size = static_cast<int>(karma::config::ReadUInt16Config(
+            {"roamingMode.graphics.lighting.shadows.mapSize"},
+            static_cast<uint16_t>(config.default_light.shadow.map_size)));
+        config.default_light.shadow.pcf_radius = static_cast<int>(karma::config::ReadUInt16Config(
+            {"roamingMode.graphics.lighting.shadows.pcfRadius"},
+            static_cast<uint16_t>(config.default_light.shadow.pcf_radius)));
         config.render_backend = ResolveRenderBackendFromOptions(options);
         config.physics_backend = ResolvePhysicsBackendFromOptions(options);
         config.audio_backend = ResolveAudioBackendFromOptions(options);

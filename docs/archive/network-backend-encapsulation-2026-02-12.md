@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-network-backend-encapsulation`
-- Status: `completed (P1 medium-high; Slice 1 + Slice 2 + Slice 3 + Slice 4 + Slice 5 complete on 2026-02-11)`
-- Immediate next task: monitor guardrail enforcement in wrapper/CI flows and revisit backend-id compatibility assertions only when the documented deprecation trigger is approved.
+- Status: `completed (P1 medium-high; Slice 1 + Slice 2 + Slice 3 + Slice 4 + Slice 5 + Slice 6 complete through 2026-02-12)`
+- Immediate next task: monitor guardrail enforcement in wrapper/CI flows to keep `src/game/*` backend-token clean.
 - Strategic alignment: `shared unblocker` for `m-dev` parity + `KARMA-capability-ready` architecture by advancing engine-owned networking defaults and removing backend leakage from game paths without changing gameplay/protocol semantics.
 - Validation gate: docs-only slices run `./docs/scripts/lint-project-docs.sh`; code-touching slices must pass `./scripts/check-network-backend-encapsulation.sh`, `./bzbuild.py -c`, and `./scripts/test-server-net.sh <build-dir>` in both assigned engine-network-foundation build dirs.
 
@@ -48,7 +48,7 @@ Runtime transport ownership has mostly moved into engine contracts; this track f
 - Do not introduce a new runtime transport backend unless explicitly scoped by a follow-on slice.
 
 ## Current Candidate Cleanup Targets
-1. Remove direct `ENet` usage from game-side integration tests under `src/game/tests/enet_*` by moving backend-specific fixture behavior into engine test support and/or backend-agnostic contract tests.
+1. Remove direct `ENet` usage from game-side integration tests under `src/game/tests/transport_*` by moving backend-specific fixture behavior into engine test support and/or backend-agnostic contract tests.
 2. Remove direct `ENet` link wiring from `src/game/CMakeLists.txt` where game targets should only depend on engine contracts.
 3. Ensure game server/client runtime paths remain contract-only (`CreateServerTransport`/`CreateClientTransport`) with no backend includes/types.
 4. Keep backend selection config (`network.*TransportBackend`) game-consumable while backend implementation remains engine-internal.
@@ -83,10 +83,10 @@ Runtime transport ownership has mostly moved into engine contracts; this track f
   - `PumpLoopbackEndpointCapturePayloads(...)` for payload-capturing receive pumps.
   - `DisconnectLoopbackEndpoint(...)`, `GetLoopbackEndpointBoundPort(...)`, and `LoopbackEndpointHasPeer(...)` for backend-neutral fixture control/introspection.
 - Game-test migrations completed:
-  - `src/game/tests/enet_environment_probe_test.cpp`
-  - `src/game/tests/enet_loopback_integration_test.cpp`
-  - `src/game/tests/enet_multiclient_loopback_test.cpp`
-  - `src/game/tests/enet_disconnect_lifecycle_integration_test.cpp`
+  - `src/game/tests/transport_environment_probe_test.cpp`
+  - `src/game/tests/transport_loopback_integration_test.cpp`
+  - `src/game/tests/transport_multiclient_loopback_test.cpp`
+  - `src/game/tests/transport_disconnect_lifecycle_integration_test.cpp`
   - `src/game/tests/client_world_package_safety_integration_test.cpp`
 - Build wiring updates for migration-only scope:
   - Added `network_test_support` linkage + engine test-support include path for migrated game tests in `src/game/CMakeLists.txt`.
@@ -108,26 +108,26 @@ Runtime transport ownership has mostly moved into engine contracts; this track f
   - direct `target_link_libraries(... enet|enet_static)` in `src/game/CMakeLists.txt`
 - Wrapper integration:
   - `scripts/test-server-net.sh` now runs `scripts/check-network-backend-encapsulation.sh` before configure/build/test execution.
-- Backend-id compatibility decision (settled):
-  - keep explicit `"enet"` backend-id compatibility assertion coverage in `src/game/tests/server_net_contract_test.cpp` for now (`retain-with-rationale`).
-  - migration/deprecation trigger: remove explicit `"enet"` assertion coverage only after engine-network ownership formally deprecates/removes explicit `"enet"` selection behavior (enum alias and config/backend-id acceptance), with replacement coverage locked to backend-agnostic selection/registration contracts.
+- Backend-id compatibility decision (updated in Slice 6):
+  - explicit `"enet"` backend-id compatibility assertions were removed from `src/game/tests/server_net_contract_test.cpp` to keep `src/game/*` backend-token agnostic.
+  - builtin alias compatibility coverage was moved into engine-owned transport contract coverage (`src/engine/network/tests/server_transport_contract_test.cpp`).
 
 ### ENet Inventory Map
 | Path | Symbol/Use | Classification | Planned Destination/Action |
 |---|---|---|---|
 | `src/game/CMakeLists.txt` | Direct runtime linkage (`target_link_libraries(bz3|bz3-server ... enet_static/enet)`) | `remove` | Remove direct ENet linkage from game runtime targets; keep backend linkage engine-internal via `karma_engine_core`/`karma_engine_client` dependencies. |
 | `src/game/CMakeLists.txt` | Test linkage to `enet_static/enet` for `server_net_contract_test`, `enet_*` tests, `client_world_package_safety_integration_test` | `remove` | Move backend fixture ownership to engine test support and remove ENet link blocks from game CMake. |
-| `src/game/CMakeLists.txt` | ENet-specific test target names (`enet_environment_probe_test`, `enet_loopback_integration_test`, `enet_multiclient_loopback_test`, `enet_disconnect_lifecycle_integration_test`) and direct compile of `server/net/enet_event_source.cpp` | `migrate` | Rename/re-scope tests to contract intent (not backend name) and compile backend-neutral event-source entrypoints only. |
+| `src/game/CMakeLists.txt` | ENet-specific test target names (`transport_environment_probe_test`, `transport_loopback_integration_test`, `transport_multiclient_loopback_test`, `transport_disconnect_lifecycle_integration_test`) and direct compile of `server/net/enet_event_source.cpp` | `migrate` | Rename/re-scope tests to contract intent (not backend name) and compile backend-neutral event-source entrypoints only. |
 | `src/game/server/net/enet_event_source.hpp` | Backend-specific factory `CreateEnetServerEventSource` | `migrate` | Replace with backend-neutral factory contract (game-facing name must not expose ENet backend identity). |
 | `src/game/server/net/enet_event_source.cpp` | Backend-specific class/function naming (`EnetServerEventSource`, local `enet` variable), ENet-labeled traces | `migrate` | Convert to backend-neutral game-facing naming (or relocate to engine/network boundary) while preserving runtime behavior and protocol/gameplay semantics. |
 | `src/game/server/net/event_source.cpp` | Includes/calls ENet-specific factory and emits ENet-specific availability traces | `migrate` | Route through backend-neutral factory and neutral trace wording for game path. |
-| `src/game/tests/enet_environment_probe_test.cpp` | Raw ENet C API + types (`<enet.h>`, `enet_initialize`, `ENetHost`, `ENET_EVENT_TYPE_*`, etc.) | `migrate` | Move environment probe coverage under engine-owned network tests/fixtures; remove raw ENet API from game test tree. |
-| `src/game/tests/enet_loopback_integration_test.cpp` | Raw ENet client host/peer/event pump and packet send path (`<enet.h>`, `enet_host_*`, `enet_peer_*`, `ENet*`) | `migrate` | Replace raw ENet client harness with engine-owned loopback fixture/contract helpers; keep gameplay/protocol assertions intact. |
-| `src/game/tests/enet_multiclient_loopback_test.cpp` | Raw ENet multi-client fixture/control flow and packet I/O (`<enet.h>`, `ENet*`, `enet_*`) | `migrate` | Migrate to engine test support helpers and backend-neutral contracts. |
-| `src/game/tests/enet_disconnect_lifecycle_integration_test.cpp` | Raw ENet lifecycle/disconnect fixture (`<enet.h>`, `ENet*`, `enet_*`) | `migrate` | Migrate to engine-owned transport fixture API; retain disconnect lifecycle semantics/assertions. |
+| `src/game/tests/transport_environment_probe_test.cpp` | Raw ENet C API + types (`<enet.h>`, `enet_initialize`, `ENetHost`, `ENET_EVENT_TYPE_*`, etc.) | `migrate` | Move environment probe coverage under engine-owned network tests/fixtures; remove raw ENet API from game test tree. |
+| `src/game/tests/transport_loopback_integration_test.cpp` | Raw ENet client host/peer/event pump and packet send path (`<enet.h>`, `enet_host_*`, `enet_peer_*`, `ENet*`) | `migrate` | Replace raw ENet client harness with engine-owned loopback fixture/contract helpers; keep gameplay/protocol assertions intact. |
+| `src/game/tests/transport_multiclient_loopback_test.cpp` | Raw ENet multi-client fixture/control flow and packet I/O (`<enet.h>`, `ENet*`, `enet_*`) | `migrate` | Migrate to engine test support helpers and backend-neutral contracts. |
+| `src/game/tests/transport_disconnect_lifecycle_integration_test.cpp` | Raw ENet lifecycle/disconnect fixture (`<enet.h>`, `ENet*`, `enet_*`) | `migrate` | Migrate to engine-owned transport fixture API; retain disconnect lifecycle semantics/assertions. |
 | `src/game/tests/client_world_package_safety_integration_test.cpp` | Raw ENet server fixture and packet pump (`<enet.h>`, `ENetHost`, `ENetPeer`, `enet_*`) plus ENet-initialization helper | `migrate` | Move raw transport fixture behavior into engine-network test support with backend-neutral hooks for malformed/partial transfer scenarios. |
 | `src/game/tests/server_net_contract_test.cpp` | ENet-specific factory include/calls (`server/net/enet_event_source.hpp`, `CreateEnetServerEventSource`) | `migrate` | Switch to backend-neutral event-source entrypoint naming and remove ENet-specific include dependency from game contract test. |
-| `src/game/tests/server_net_contract_test.cpp` | Backend-id compatibility assertions for `"enet"` and `ServerTransportBackend::Enet` | `retain-with-rationale` | Keep explicit backend-id compatibility assertions while explicit `"enet"` backend-id selection remains supported; migrate only when engine-network ownership formally deprecates/removes explicit `"enet"` selection behavior (enum alias + config/backend-id acceptance). |
+| `src/game/tests/server_net_contract_test.cpp` | Backend-id compatibility assertions for `"enet"` and `ServerTransportBackend::Enet` | `migrated (Slice 6)` | Removed backend-specific assertions from game test tree; moved builtin alias compatibility coverage to engine transport contract tests. |
 
 ## Validation
 From `m-rewrite/`:
@@ -186,7 +186,7 @@ From `m-rewrite/`:
      - docs updates in this file + `docs/projects/ASSIGNMENTS.md`.
    - Status: `Completed (2026-02-11)`.
 3. Slice 3 (game test fixture migration):
-   - eliminate raw ENet C API usage from game tests (`src/game/tests/enet_*`, raw fixture paths in `client_world_package_safety_integration_test.cpp`),
+   - eliminate raw ENet C API usage from game tests (`src/game/tests/transport_*`, raw fixture paths in `client_world_package_safety_integration_test.cpp`),
    - move backend fixture mechanics into engine-owned test support (`src/engine/network/tests/*`) and keep game tests protocol/gameplay assertion focused.
    - Acceptance gates:
      - both `./bzbuild.py -c` configurations above pass,
@@ -207,7 +207,18 @@ From `m-rewrite/`:
    - Acceptance gates:
      - docs lint passes,
      - selected guardrail check runs in CI/local wrapper path and is documented.
-   - Status: `Completed (2026-02-11; guardrail script added and integrated into test-server-net wrapper; backend-id compatibility assertion policy retained with explicit deprecation trigger).`
+   - Status: `Completed (2026-02-11; guardrail script added and integrated into test-server-net wrapper).`
+6. Slice 6 (game backend-token eradication + compatibility coverage migration):
+   - rename ENet-labeled game integration tests/targets to transport-neutral names,
+   - remove remaining `enet`/`ENet` tokens from `src/game/*` test/debug paths,
+   - move explicit `"enet"` builtin backend-id compatibility assertions from game tests to engine-owned transport contract tests,
+   - tighten guardrail checks to fail on any `enet` token or `*enet*` file path under `src/game/*`.
+   - Acceptance gates:
+     - `rg -n -i "enet" src/game` returns no matches,
+     - both `./bzbuild.py -c` configurations above pass,
+     - both `./scripts/test-server-net.sh <build-dir>` wrappers pass,
+     - docs updates in this file + `docs/projects/ASSIGNMENTS.md`.
+   - Status: `Completed (2026-02-12; game tree backend-token clean, compatibility coverage moved engine-side, wrapper/guardrails updated).`
 
 ## Current Status
 - `2026-02-11`: Project created at medium-high priority to finish ENet encapsulation and remove backend leakage from game-side code/tests/build wiring.
@@ -217,10 +228,10 @@ From `m-rewrite/`:
 - `2026-02-11`: Slice 4 (game CMake decoupling + target hygiene) completed; direct game-side `enet_static/enet` target link wiring was removed from `src/game/CMakeLists.txt` while preserving Slice 3 test behavior and runtime semantics; both required `bzbuild.py -c` and wrapper gates passed, and `rg -n "target_link_libraries\\(.*(enet_static|enet)\\b" src/game/CMakeLists.txt` returned no matches.
 - `2026-02-11`: Slice 5 (closure + guardrails) completed; added `scripts/check-network-backend-encapsulation.sh`, integrated it into `scripts/test-server-net.sh`, validated guardrail/build/wrapper/docs gates, and settled backend-id compatibility policy as retain-with-rationale until explicit `"enet"` selection deprecation/removal is approved.
 - `2026-02-11`: Strategic track alignment confirmed: this project is a shared unblocker for `m-dev` parity and KARMA-capability-ready architecture by tightening engine-owned networking defaults without protocol/gameplay changes.
+- `2026-02-12`: Slice 6 completed; ENet-labeled game test files/targets were renamed to transport-neutral names, remaining backend-specific token mentions were removed from `src/game/*`, explicit `"enet"` builtin backend-id assertions were migrated from `src/game/tests/server_net_contract_test.cpp` to `src/engine/network/tests/server_transport_contract_test.cpp`, and guardrails now fail on any `enet` token/path under `src/game/*`.
+- `2026-02-12`: CI now calls `./scripts/check-network-backend-encapsulation.sh` as a standalone pre-test gate in `.github/workflows/core-test-suite.yml`; wrapper integration in `scripts/test-server-net.sh` remains for defense in depth.
 
 ## Open Questions
-- Which legacy game-side ENet tests should be retired vs rewritten as backend-agnostic contract/integration tests?
-- Should CI call `scripts/check-network-backend-encapsulation.sh` directly as a dedicated pre-test gate in addition to wrapper integration?
 - Which future backend should be first candidate after encapsulation completeness (`SteamNetworkingSockets`, QUIC, or none until product need)?
 
 ## Handoff Checklist

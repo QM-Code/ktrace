@@ -38,6 +38,14 @@ check_no_matches \
   "no direct enet/enet_static target_link_libraries in src/game/CMakeLists.txt" \
   "rg -n --color=never --pcre2 --multiline '(?s)target_link_libraries\\([^\\)]*\\b(enet_static|enet)\\b' src/game/CMakeLists.txt"
 
+check_no_matches \
+  "no file path containing enet under src/game/*" \
+  "find src/game -type f -iname '*enet*' -print | grep -q ."
+
+check_no_matches \
+  "no backend-name token enet under src/game/*" \
+  "rg -n --color=never -i 'enet' src/game"
+
 if [[ ${fail} -ne 0 ]]; then
   exit 1
 fi

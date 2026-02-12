@@ -40,6 +40,41 @@ bool Expect(bool condition, const std::string& message) {
     return true;
 }
 
+class FakeServerTransport final : public karma::network::ServerTransport {
+ public:
+    explicit FakeServerTransport(std::string backend_name)
+        : backend_name_(std::move(backend_name)) {}
+
+    bool isReady() const override { return true; }
+
+    const char* backendName() const override { return backend_name_.c_str(); }
+
+    size_t poll(const karma::network::ServerTransportPollOptions&,
+                std::vector<karma::network::ServerTransportEvent>* out_events) override {
+        if (out_events) {
+            out_events->clear();
+        }
+        return 0;
+    }
+
+    bool sendReliable(karma::network::PeerToken, const std::vector<std::byte>&) override {
+        return true;
+    }
+
+    void disconnect(karma::network::PeerToken, uint32_t) override {}
+
+ private:
+    std::string backend_name_{};
+};
+
+struct CapturedTransportConfig {
+    karma::network::ServerTransportBackend backend = karma::network::ServerTransportBackend::Auto;
+    std::string backend_name{};
+    uint16_t listen_port = 0;
+    size_t max_clients = 0;
+    size_t channel_count = 0;
+};
+
 std::vector<ServerTransportEvent> NormalizeEvents(std::vector<ServerTransportEvent> staged_events) {
     std::vector<ServerTransportEvent> out_events{};
     karma::network::detail::NormalizePumpEventsPerKey(&out_events,
@@ -874,6 +909,62 @@ bool TestUnregisteredBackendWarnsAndFails() {
                   "unregistered server backend should not emit error-level log events");
 }
 
+bool TestBuiltinBackendIdsAutoAndEnetResolveToRegisteredFactories() {
+    // Trigger default registration before replacing the built-in ENet factory for deterministic checks.
+    {
+        karma::network::ServerTransportConfig bootstrap_config{};
+        bootstrap_config.backend_name = "bootstrap-nonexistent-server-backend";
+        auto bootstrap_transport = karma::network::CreateServerTransport(bootstrap_config);
+        (void)bootstrap_transport;
+    }
+
+    std::vector<CapturedTransportConfig> captures{};
+    const std::string factory_backend_name = "contract-fake-enet";
+    if (!karma::network::RegisterServerTransportFactory(
+            "enet",
+            [&captures, &factory_backend_name](const karma::network::ServerTransportConfig& config) {
+                captures.push_back(CapturedTransportConfig{
+                    .backend = config.backend,
+                    .backend_name = config.backend_name,
+                    .listen_port = config.listen_port,
+                    .max_clients = config.max_clients,
+                    .channel_count = config.channel_count,
+                });
+                return std::make_unique<FakeServerTransport>(factory_backend_name);
+            })) {
+        return Fail("failed to register fake ENet transport factory for builtin backend alias test");
+    }
+
+    karma::network::ServerTransportConfig auto_config{};
+    auto_config.backend_name = "auto";
+    auto auto_transport = karma::network::CreateServerTransport(auto_config);
+    if (!auto_transport) {
+        return Fail("CreateServerTransport returned null for backend_name=auto");
+    }
+
+    karma::network::ServerTransportConfig enet_config{};
+    enet_config.backend_name = "enet";
+    enet_config.backend = karma::network::ServerTransportBackend::Enet;
+    auto enet_transport = karma::network::CreateServerTransport(enet_config);
+    if (!enet_transport) {
+        return Fail("CreateServerTransport returned null for backend_name=enet");
+    }
+
+    return Expect(captures.size() == 2, "builtin backend alias test expected two factory captures") &&
+           Expect(std::string(auto_transport->backendName()) == factory_backend_name,
+                  "backend_name=auto should resolve through ENet built-in alias factory") &&
+           Expect(std::string(enet_transport->backendName()) == factory_backend_name,
+                  "backend_name=enet should resolve through ENet built-in alias factory") &&
+           Expect(captures[0].backend_name == "auto",
+                  "backend_name=auto should preserve config.backend_name during factory handoff") &&
+           Expect(captures[0].backend == karma::network::ServerTransportBackend::Auto,
+                  "backend_name=auto should preserve config.backend enum") &&
+           Expect(captures[1].backend_name == "enet",
+                  "backend_name=enet should preserve config.backend_name during factory handoff") &&
+           Expect(captures[1].backend == karma::network::ServerTransportBackend::Enet,
+                  "backend_name=enet should preserve config.backend enum");
+}
+
 } // namespace
 
 int main() {
@@ -893,6 +984,9 @@ int main() {
         return 1;
     }
     if (!TestLiveLoopbackMultiPeerFairnessUnderReconnectChurn()) {
+        return 1;
+    }
+    if (!TestBuiltinBackendIdsAutoAndEnetResolveToRegisteredFactories()) {
         return 1;
     }
     if (!TestUnregisteredBackendWarnsAndFails()) {

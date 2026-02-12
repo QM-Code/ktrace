@@ -29,7 +29,7 @@ Non-goals:
 - Engine code in `m-rewrite/src/engine/` remains game-agnostic.
 - Runtime rewrite data/config lives at `m-rewrite/data/`.
 - Backend-specific complexity stays behind engine interfaces, not in game code.
-- KARMA-REPO feature parity is a capability target, not a source-layout target; equivalent features may be distributed across multiple engine subsystems/files in `m-rewrite`.
+- Feature parity targets are capability/behavior targets, not source-layout targets; equivalent behavior may be distributed across multiple engine subsystems/files in `m-rewrite`.
 - Platform/render/physics/audio backend APIs are engine-internal; game code must never directly depend on backend implementations.
 - UI backend remains the intentional exception: game teams may explicitly build against chosen `imgui` or `rmlui` frontend.
 
@@ -61,9 +61,9 @@ Non-goals:
 - Build-time backend capability flags are in place for render/ui/physics/audio permutations.
 
 5. Renderer parity direction is established
-- Current `m-rewrite` Diligent implementation is intentionally smaller than KARMA-REPO's Diligent backend.
+- Current `m-rewrite` renderer implementation is intentionally narrower than the full rewrite capability envelope.
 - This is expected during rewrite sequencing and does not indicate an architectural blocker.
-- Planned parity is for behavior/features (materials, textures, passes, UI integration, etc.), not for duplicating KARMA-REPO file splits.
+- Planned parity is for behavior/features (materials, textures, passes, UI integration, etc.), not for duplicating any prior file split.
 - As of 2026-02-10, renderer capability integration is the highest-priority execution track.
 
 6. Scheduler contract first-slice spec is codified
@@ -103,23 +103,31 @@ Non-goals:
 ## Not Completed Yet
 1. Real physics integrations
 - Current `jolt` and `physx` backends are still stubs.
+- Stub closure criteria:
+  - satisfy Stage-3 + Stage-4 closeout requirements in sections `0B` and `Stage 3/4`,
+  - pass required physics contract/parity tests listed in those sections,
+  - keep game-facing API backend-agnostic (no backend object/type leakage).
 
 2. Real audio integrations
 - Current `sdl3audio` and `miniaudio` backends are still stubs.
+- Stub closure criteria:
+  - satisfy Stage-5 + Stage-6 closeout requirements in sections `0C` and `Stage 5/6`,
+  - pass required audio contract/parity tests listed in those sections,
+  - keep game-facing API backend-agnostic (no backend object/type leakage).
 
 3. Content mount abstraction
 - In progress: mount semantics and network world package flow are now implemented (including hash-based cache hint wiring).
 - Remaining work is cache/revision hardening, archive safety constraints, and incremental transfer.
 - Current detailed status and execution plan: `docs/projects/content-mount.md`.
 
-4. Renderer feature expansion to KARMA-REPO capability envelope
-- Advanced renderer capabilities present in KARMA-REPO (multi-pass/shadow/environment/UI depth) are only partially represented in `m-rewrite`.
+4. Renderer feature expansion to rewrite capability envelope
+- Advanced renderer capabilities (multi-pass/shadow/environment/UI depth) are only partially represented in `m-rewrite`.
 - Expansion must happen behind stable engine contracts and preserve BGFX/Diligent parity.
 
 ---
 
 ## Next Execution Order
-1. Expand renderer capability toward KARMA-REPO feature envelope using `m-rewrite` subsystem boundaries (not file mirroring).
+1. Expand renderer capability toward the rewrite-owned feature envelope using `m-rewrite` subsystem boundaries (not file mirroring).
 2. Continue physics backend capability closure under existing engine contracts.
 3. Continue audio backend capability closure after renderer priority milestones.
 4. Continue content mount abstraction hardening after renderer priority milestones.
@@ -1154,10 +1162,26 @@ Validation gate for this slice:
 - Replace argv-based engine helper usage with a host-provided data/config override struct or service call.
 - Preserve existing resolution precedence and behavior while moving ownership to host code.
 
-## 4) Renderer Feature Parity (KARMA-REPO Capability Envelope)
+## 4) Renderer Feature Capability Envelope (Rewrite-Owned)
 
 ## Objective
-Achieve renderer feature parity with KARMA-REPO's practical capability set while preserving `m-rewrite` architecture decisions and subsystem boundaries.
+Achieve renderer feature parity with the rewrite-owned capability envelope while preserving `m-rewrite` architecture decisions and subsystem boundaries.
+
+## Capability targets (authoritative)
+- Material shading contract completeness:
+  - engine-owned material semantics are consumed consistently in BGFX and Diligent.
+- Shadowing pipeline completeness:
+  - directional shadow pass + sampling path remains bounded, deterministic, and backend-parity aligned.
+- Environment/lighting completeness:
+  - environment/sky/IBL contracts are explicit and consumed consistently across backends.
+- Material texture-set lifecycle completeness:
+  - beyond albedo, texture-set ingestion/sampling/fallback behavior is contract-owned and parity-tested.
+- Renderer/UI coupling boundary completeness:
+  - renderer-side UI draw/depth integration behavior is explicit, bounded, and does not violate UI ownership boundaries.
+- Renderer observability/guardrail completeness:
+  - direct/fallback readiness semantics and asset-integrity/packaging guardrails are deterministic and test-backed.
+- Platform presentation-path completeness:
+  - backend presentation path behavior (for example Linux X11/Wayland) is tracked and stabilized behind backend layers.
 
 ## Rules
 - Do not port by file shape; port by capability and behavior.
@@ -1165,7 +1189,7 @@ Achieve renderer feature parity with KARMA-REPO's practical capability set while
 - Keep engine/game boundaries strict while expanding renderer contracts.
 
 ## Acceptance criteria
-- Missing renderer features are tracked as explicit capabilities rather than "missing KARMA files".
+- Missing renderer features are tracked as explicit capabilities from the list above.
 - BGFX and Diligent remain behaviorally aligned as capabilities are added.
 - Features integrate through engine-owned contracts, not ad-hoc game/backend coupling.
 
@@ -1174,7 +1198,7 @@ Achieve renderer feature parity with KARMA-REPO's practical capability set while
 ## Delegation Readiness Checklist
 Ready for broad multi-agent parallelization when all are true:
 1. UI project file and this project file are current.
-2. Physics/audio backends are real (not stubs) behind stable engine contracts.
+2. Physics/audio backends satisfy their stub-closure criteria (sections `0B`/`0C` + Stage 3-6 closeouts) behind stable engine contracts.
 3. Fixed-step simulation remains stable and trace-disciplined.
 4. Content mount abstraction exists and preserves current filesystem behavior.
 5. Backend selection semantics are consistent across render/ui/physics/audio.

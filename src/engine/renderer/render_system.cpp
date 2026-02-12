@@ -109,6 +109,7 @@ void RenderSystem::renderFrame() {
             item.material = render.material;
             item.transform = transform.world;
             item.layer = render.layer;
+            item.casts_shadow = render.casts_shadow;
             queues_[item.layer].push_back(item);
         }
         KARMA_TRACE_CHANGED("ecs.world",

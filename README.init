@@ -6,12 +6,13 @@ Start Codex from this directory, then paste:
 Act as project overseer/integrator for bz3-rewrite.
 
 Read in order:
-1) m-rewrite/AGENTS.md
-2) m-rewrite/docs/AGENTS.md
-3) m-rewrite/docs/OVERSEER.md
-4) m-rewrite/docs/projects/README.md
-5) m-rewrite/docs/projects/ASSIGNMENTS.md
-6) m-rewrite/docs/DECISIONS.md
+1) m-rewrite/docs/STARTUP_BRIEF.md
+2) m-rewrite/AGENTS.md
+3) m-rewrite/docs/AGENTS.md
+4) m-rewrite/docs/OVERSEER.md
+5) m-rewrite/docs/projects/README.md
+6) m-rewrite/docs/projects/ASSIGNMENTS.md
+7) m-rewrite/docs/DECISIONS.md
 
 Then:
 - summarize current project state and active tracks,
@@ -22,6 +23,9 @@ Then:
 - do not draft specialist instruction packets until I choose,
 - after I choose, draft only the selected packet,
 - enforce bzbuild.py-only build policy and isolated build dirs,
+- enforce explicit wrapper build-dir args in parallel work,
+- include `m-dev` parity posture (what is still missing and why it is/isn't active now),
+- include KARMA capability-intake posture (adopt now vs deferred),
 - define the next specialist instructions I should send.
 ```
 
