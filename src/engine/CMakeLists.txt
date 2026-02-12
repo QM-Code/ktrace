@@ -236,6 +236,15 @@ if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
     endif()
 endif()
 
+add_executable(renderer_shadow_sandbox
+    ${PROJECT_SOURCE_DIR}/src/engine/renderer/tests/renderer_shadow_sandbox.cpp
+)
+target_link_libraries(renderer_shadow_sandbox PRIVATE karma_engine_client)
+target_include_directories(renderer_shadow_sandbox PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
+set_target_properties(renderer_shadow_sandbox PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/engine
+)
+
 if(BUILD_TESTING)
     add_library(network_test_support STATIC
         ${PROJECT_SOURCE_DIR}/src/engine/network/tests/loopback_endpoint_alloc.cpp

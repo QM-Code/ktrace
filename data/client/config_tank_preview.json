@@ -102,7 +102,15 @@
           0.2,
           0.2
         ],
-        "unlit": 0.0
+        "unlit": 0.0,
+        "shadows": {
+          "enabled": true,
+          "strength": 0.95,
+          "bias": 0.0012,
+          "extent": 24.0,
+          "mapSize": 512,
+          "pcfRadius": 1
+        }
       }
     }
   },

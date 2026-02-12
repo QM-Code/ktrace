@@ -99,7 +99,7 @@ inline ResolvedDirectionalShadowSemantics ResolveDirectionalShadowSemantics(cons
     semantics.strength = ClampFinite(light.shadow.strength, 0.65f, 0.0f, 1.0f);
     semantics.bias = ClampFinite(light.shadow.bias, 0.0015f, 0.0f, 0.02f);
     semantics.extent = ClampFinite(light.shadow.extent, 24.0f, 2.0f, 512.0f);
-    semantics.map_size = ClampRange(light.shadow.map_size, 256, 64, 512);
+    semantics.map_size = ClampRange(light.shadow.map_size, 256, 64, 2048);
     semantics.pcf_radius = ClampRange(light.shadow.pcf_radius, 1, 0, 2);
     semantics.triangle_budget = 4096;
     return semantics;
@@ -118,7 +118,7 @@ inline bool ValidateResolvedDirectionalShadowSemantics(const ResolvedDirectional
     if (semantics.extent < 2.0f || semantics.extent > 512.0f) {
         return false;
     }
-    if (semantics.map_size < 64 || semantics.map_size > 512) {
+    if (semantics.map_size < 64 || semantics.map_size > 2048) {
         return false;
     }
     if (semantics.pcf_radius < 0 || semantics.pcf_radius > 2) {
@@ -198,9 +198,9 @@ inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalS
         return map;
     }
 
-    const float half_span_x = std::max(0.5f * (max_x - min_x), 1.0f);
-    const float half_span_y = std::max(0.5f * (max_y - min_y), 1.0f);
-    const float resolved_extent = std::max(semantics.extent, std::max(half_span_x, half_span_y) + 1.0f);
+    // Keep world-space texel density stable by honoring configured extent instead of auto-expanding
+    // to the full caster spread each frame.
+    const float resolved_extent = semantics.extent;
     const float depth_padding = std::max(1.0f, resolved_extent * 0.1f);
     // Expand depth coverage beyond caster-only bounds so receiver points can still project
     // into the same shadow volume in roaming scenes.

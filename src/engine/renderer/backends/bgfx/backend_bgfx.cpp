@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -29,6 +30,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -833,6 +835,20 @@ bgfx::TextureHandle createTextureFromData(const renderer::MeshData::TextureData&
     return texture;
 }
 
+std::vector<float> BuildShadowDepthUploadData(const detail::DirectionalShadowMap& map) {
+    const std::size_t expected =
+        static_cast<std::size_t>(map.size) * static_cast<std::size_t>(map.size);
+    std::vector<float> pixels(expected, 1.0f);
+    if (map.depth.size() != expected) {
+        return pixels;
+    }
+    for (std::size_t i = 0; i < expected; ++i) {
+        const float value = map.depth[i];
+        pixels[i] = std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : 1.0f;
+    }
+    return pixels;
+}
+
 uint32_t PackColorRgba8(const glm::vec4& color) {
     const auto to_u8 = [](float value) -> uint32_t {
         const float scaled = std::clamp(value, 0.0f, 1.0f) * 255.0f;
@@ -908,9 +924,16 @@ class BgfxBackend final : public Backend {
         u_ambient_color_ = bgfx::createUniform("u_ambientColor", bgfx::UniformType::Vec4);
         u_unlit_ = bgfx::createUniform("u_unlit", bgfx::UniformType::Vec4);
         u_texture_mode_ = bgfx::createUniform("u_textureMode", bgfx::UniformType::Vec4);
+        u_shadow_params0_ = bgfx::createUniform("u_shadowParams0", bgfx::UniformType::Vec4);
+        u_shadow_params1_ = bgfx::createUniform("u_shadowParams1", bgfx::UniformType::Vec4);
+        u_shadow_params2_ = bgfx::createUniform("u_shadowParams2", bgfx::UniformType::Vec4);
+        u_shadow_axis_right_ = bgfx::createUniform("u_shadowAxisRight", bgfx::UniformType::Vec4);
+        u_shadow_axis_up_ = bgfx::createUniform("u_shadowAxisUp", bgfx::UniformType::Vec4);
+        u_shadow_axis_forward_ = bgfx::createUniform("u_shadowAxisForward", bgfx::UniformType::Vec4);
         s_tex_ = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
         s_normal_ = bgfx::createUniform("s_normal", bgfx::UniformType::Sampler);
         s_occlusion_ = bgfx::createUniform("s_occlusion", bgfx::UniformType::Sampler);
+        s_shadow_ = bgfx::createUniform("s_shadow", bgfx::UniformType::Sampler);
         white_tex_ = createWhiteTexture();
         const bool uniform_contract_ready =
             bgfx::isValid(program_) &&
@@ -972,9 +995,17 @@ class BgfxBackend final : public Backend {
         if (bgfx::isValid(u_ambient_color_)) bgfx::destroy(u_ambient_color_);
         if (bgfx::isValid(u_unlit_)) bgfx::destroy(u_unlit_);
         if (bgfx::isValid(u_texture_mode_)) bgfx::destroy(u_texture_mode_);
+        if (bgfx::isValid(u_shadow_params0_)) bgfx::destroy(u_shadow_params0_);
+        if (bgfx::isValid(u_shadow_params1_)) bgfx::destroy(u_shadow_params1_);
+        if (bgfx::isValid(u_shadow_params2_)) bgfx::destroy(u_shadow_params2_);
+        if (bgfx::isValid(u_shadow_axis_right_)) bgfx::destroy(u_shadow_axis_right_);
+        if (bgfx::isValid(u_shadow_axis_up_)) bgfx::destroy(u_shadow_axis_up_);
+        if (bgfx::isValid(u_shadow_axis_forward_)) bgfx::destroy(u_shadow_axis_forward_);
         if (bgfx::isValid(s_tex_)) bgfx::destroy(s_tex_);
         if (bgfx::isValid(s_normal_)) bgfx::destroy(s_normal_);
         if (bgfx::isValid(s_occlusion_)) bgfx::destroy(s_occlusion_);
+        if (bgfx::isValid(s_shadow_)) bgfx::destroy(s_shadow_);
+        if (bgfx::isValid(shadow_tex_)) bgfx::destroy(shadow_tex_);
         if (bgfx::isValid(white_tex_)) bgfx::destroy(white_tex_);
         bgfx::shutdown();
     }
@@ -1191,10 +1222,18 @@ class BgfxBackend final : public Backend {
             Mesh* mesh = nullptr;
             Material* material = nullptr;
         };
+        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
+            detail::ResolveDirectionalShadowSemantics(light_);
+        const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
+            detail::ResolveEnvironmentLightingSemantics(environment_);
+        const float caster_focus_radius = std::max(8.0f, shadow_semantics.extent * 2.5f);
+        const float caster_focus_radius_sq = caster_focus_radius * caster_focus_radius;
         std::vector<RenderableDraw> renderables{};
         renderables.reserve(draw_items_.size());
-        std::vector<detail::DirectionalShadowCaster> shadow_casters{};
-        shadow_casters.reserve(draw_items_.size());
+        std::vector<detail::DirectionalShadowCaster> all_shadow_casters{};
+        all_shadow_casters.reserve(draw_items_.size());
+        std::vector<detail::DirectionalShadowCaster> focused_shadow_casters{};
+        focused_shadow_casters.reserve(draw_items_.size());
         for (const auto& item : draw_items_) {
             if (item.layer != layer) {
                 continue;
@@ -1218,19 +1257,59 @@ class BgfxBackend final : public Backend {
                 caster.positions = &mesh_it->second.shadow_positions;
                 caster.indices = &mesh_it->second.shadow_indices;
                 caster.sample_center = mesh_it->second.shadow_center;
-                caster.casts_shadow = !mat_it->second.semantics.alpha_blend;
-                shadow_casters.push_back(caster);
+                caster.casts_shadow = item.casts_shadow && !mat_it->second.semantics.alpha_blend;
+                all_shadow_casters.push_back(caster);
+                const glm::vec4 world_center4 = item.transform * glm::vec4(mesh_it->second.shadow_center, 1.0f);
+                const glm::vec3 world_center(world_center4.x, world_center4.y, world_center4.z);
+                const glm::vec3 delta = world_center - camera_.target;
+                const float dist_sq = glm::dot(delta, delta);
+                if (std::isfinite(world_center.x) &&
+                    std::isfinite(world_center.y) &&
+                    std::isfinite(world_center.z) &&
+                    std::isfinite(dist_sq) &&
+                    dist_sq <= caster_focus_radius_sq) {
+                    focused_shadow_casters.push_back(caster);
+                }
             }
         }
 
-        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
-            detail::ResolveDirectionalShadowSemantics(light_);
-        const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
-            detail::ResolveEnvironmentLightingSemantics(environment_);
+        const std::vector<detail::DirectionalShadowCaster>& shadow_casters =
+            focused_shadow_casters.empty() ? all_shadow_casters : focused_shadow_casters;
         const detail::DirectionalShadowMap shadow_map = detail::BuildDirectionalShadowMap(
             shadow_semantics,
             light_.direction,
             shadow_casters);
+        updateShadowTexture(shadow_map);
+        const float inv_depth_range = shadow_map.depth_range > 1e-6f
+            ? (1.0f / shadow_map.depth_range)
+            : 1.0f;
+        const float shadow_params0[4] = {
+            shadow_tex_ready_ ? 1.0f : 0.0f,
+            shadow_map.strength,
+            shadow_map.bias,
+            shadow_map.size > 0 ? (1.0f / static_cast<float>(shadow_map.size)) : 0.0f,
+        };
+        const float shadow_params1[4] = {
+            shadow_map.extent,
+            shadow_map.center_x,
+            shadow_map.center_y,
+            shadow_map.min_depth,
+        };
+        const float shadow_params2[4] = {
+            inv_depth_range,
+            static_cast<float>(shadow_map.pcf_radius),
+            0.0f,
+            0.0f,
+        };
+        const float shadow_axis_right[4] = {
+            shadow_map.axis_right.x, shadow_map.axis_right.y, shadow_map.axis_right.z, 0.0f,
+        };
+        const float shadow_axis_up[4] = {
+            shadow_map.axis_up.x, shadow_map.axis_up.y, shadow_map.axis_up.z, 0.0f,
+        };
+        const float shadow_axis_forward[4] = {
+            shadow_map.axis_forward.x, shadow_map.axis_forward.y, shadow_map.axis_forward.z, 0.0f,
+        };
         std::size_t direct_sampler_draws = 0u;
         std::size_t fallback_sampler_draws = 0u;
         std::size_t direct_contract_draws = 0u;
@@ -1245,23 +1324,14 @@ class BgfxBackend final : public Backend {
             bgfx::setIndexBuffer(renderable.mesh->ibh);
             bgfx::setTransform(&item.transform[0][0]);
 
-            float shadow_factor = 1.0f;
-            if (!semantics.alpha_blend && shadow_map.ready) {
-                const float visibility = detail::ComputeDirectionalShadowVisibilityForReceiver(
-                    shadow_map,
-                    item.transform,
-                    &renderable.mesh->shadow_positions,
-                    &renderable.mesh->shadow_indices,
-                    renderable.mesh->shadow_center);
-                shadow_factor = detail::ComputeDirectionalShadowFactor(shadow_map, visibility);
-            }
             const detail::ResolvedMaterialLighting lighting =
-                detail::ResolveMaterialLighting(semantics, light_, environment_semantics, shadow_factor);
+                detail::ResolveMaterialLighting(semantics, light_, environment_semantics, 1.0f);
             if (!detail::ValidateResolvedMaterialLighting(lighting)) {
                 continue;
             }
 
-            const float light_dir[4] = {light_.direction.x, light_.direction.y, light_.direction.z, 0.0f};
+            const glm::vec3 lighting_direction = -light_.direction;
+            const float light_dir[4] = {lighting_direction.x, lighting_direction.y, lighting_direction.z, 0.0f};
             const float material_color[4] = {
                 lighting.color.r,
                 lighting.color.g,
@@ -1283,6 +1353,12 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_light_color_, light_color);
             bgfx::setUniform(u_ambient_color_, ambient_color);
             bgfx::setUniform(u_unlit_, unlit);
+            bgfx::setUniform(u_shadow_params0_, shadow_params0);
+            bgfx::setUniform(u_shadow_params1_, shadow_params1);
+            bgfx::setUniform(u_shadow_params2_, shadow_params2);
+            bgfx::setUniform(u_shadow_axis_right_, shadow_axis_right);
+            bgfx::setUniform(u_shadow_axis_up_, shadow_axis_up);
+            bgfx::setUniform(u_shadow_axis_forward_, shadow_axis_forward);
 
             const bool use_direct_sampler_path =
                 supports_direct_multi_sampler_inputs_ &&
@@ -1335,6 +1411,13 @@ class BgfxBackend final : public Backend {
                     bgfx::setTexture(2, s_occlusion_, occlusion_texture);
                 }
             }
+            if (bgfx::isValid(s_shadow_)) {
+                const bgfx::TextureHandle shadow_texture =
+                    shadow_tex_ready_ ? shadow_tex_ : white_tex_;
+                if (bgfx::isValid(shadow_texture)) {
+                    bgfx::setTexture(3, s_shadow_, shadow_texture);
+                }
+            }
             if (bgfx::isValid(u_texture_mode_)) {
                 const float texture_mode[4] = {
                     (use_direct_sampler_path && renderable.material->shader_uses_normal_input) ? 1.0f : 0.0f,
@@ -1353,6 +1436,28 @@ class BgfxBackend final : public Backend {
             }
             bgfx::setState(state);
             bgfx::submit(0, program_);
+        }
+        if (shadow_map.ready) {
+            std::size_t covered = 0u;
+            for (float value : shadow_map.depth) {
+                if (std::isfinite(value)) {
+                    ++covered;
+                }
+            }
+            KARMA_TRACE_CHANGED(
+                "render.bgfx",
+                std::to_string(layer) + ":" +
+                    std::to_string(shadow_map.ready ? 1 : 0) + ":" +
+                    std::to_string(covered) + ":" +
+                    std::to_string(shadow_map.size) + ":" +
+                    std::to_string(shadow_tex_ready_ ? 1 : 0),
+                "shadow map layer={} mapReady={} covered={} size={} extent={:.1f} uploaded={}",
+                layer,
+                shadow_map.ready ? 1 : 0,
+                covered,
+                shadow_map.size,
+                shadow_map.extent,
+                shadow_tex_ready_ ? 1 : 0);
         }
         KARMA_TRACE_CHANGED(
             "render.bgfx",
@@ -1442,6 +1547,12 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_light_color_, zeros);
             bgfx::setUniform(u_ambient_color_, zeros);
             bgfx::setUniform(u_unlit_, unlit);
+            bgfx::setUniform(u_shadow_params0_, zeros);
+            bgfx::setUniform(u_shadow_params1_, zeros);
+            bgfx::setUniform(u_shadow_params2_, zeros);
+            bgfx::setUniform(u_shadow_axis_right_, zeros);
+            bgfx::setUniform(u_shadow_axis_up_, zeros);
+            bgfx::setUniform(u_shadow_axis_forward_, zeros);
             if (bgfx::isValid(u_texture_mode_)) {
                 const float texture_mode[4] = {0.0f, 0.0f, 0.0f, 0.0f};
                 bgfx::setUniform(u_texture_mode_, texture_mode);
@@ -1453,6 +1564,9 @@ class BgfxBackend final : public Backend {
                 }
                 if (bgfx::isValid(s_occlusion_)) {
                     bgfx::setTexture(2, s_occlusion_, white_tex_);
+                }
+                if (bgfx::isValid(s_shadow_)) {
+                    bgfx::setTexture(3, s_shadow_, white_tex_);
                 }
             }
 
@@ -1488,6 +1602,45 @@ class BgfxBackend final : public Backend {
     }
 
  private:
+    void updateShadowTexture(const detail::DirectionalShadowMap& map) {
+        shadow_tex_ready_ = false;
+        if (!map.ready || map.size <= 0 || map.depth.empty()) {
+            return;
+        }
+        const uint16_t size = static_cast<uint16_t>(map.size);
+        if (size == 0u) {
+            return;
+        }
+
+        if (!bgfx::isValid(shadow_tex_) || shadow_tex_size_ != size) {
+            if (bgfx::isValid(shadow_tex_)) {
+                bgfx::destroy(shadow_tex_);
+                shadow_tex_ = BGFX_INVALID_HANDLE;
+            }
+            shadow_tex_ = bgfx::createTexture2D(
+                size,
+                size,
+                false,
+                1,
+                bgfx::TextureFormat::R32F,
+                BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+                nullptr);
+            shadow_tex_size_ = bgfx::isValid(shadow_tex_) ? size : 0u;
+        }
+        if (!bgfx::isValid(shadow_tex_)) {
+            return;
+        }
+
+        std::vector<float> upload = BuildShadowDepthUploadData(map);
+        if (upload.empty()) {
+            return;
+        }
+        const bgfx::Memory* mem =
+            bgfx::copy(upload.data(), static_cast<uint32_t>(upload.size() * sizeof(float)));
+        bgfx::updateTexture2D(shadow_tex_, 0, 0, 0, 0, size, size, mem);
+        shadow_tex_ready_ = true;
+    }
+
     BgfxCallback callback_{};
     bgfx::ProgramHandle program_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_color_ = BGFX_INVALID_HANDLE;
@@ -1496,10 +1649,20 @@ class BgfxBackend final : public Backend {
     bgfx::UniformHandle u_ambient_color_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_unlit_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_texture_mode_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_params0_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_params1_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_params2_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_axis_right_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_axis_up_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_axis_forward_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_tex_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_normal_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_occlusion_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle s_shadow_ = BGFX_INVALID_HANDLE;
     bgfx::TextureHandle white_tex_ = BGFX_INVALID_HANDLE;
+    bgfx::TextureHandle shadow_tex_ = BGFX_INVALID_HANDLE;
+    uint16_t shadow_tex_size_ = 0u;
+    bool shadow_tex_ready_ = false;
     bgfx::VertexLayout layout_{};
 
     std::unordered_map<renderer::MeshId, Mesh> meshes_;

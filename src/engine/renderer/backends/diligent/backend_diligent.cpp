@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -463,10 +464,18 @@ class DiligentBackend final : public Backend {
             Mesh* mesh = nullptr;
             Material* material = nullptr;
         };
+        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
+            detail::ResolveDirectionalShadowSemantics(light_);
+        const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
+            detail::ResolveEnvironmentLightingSemantics(environment_);
+        const float caster_focus_radius = std::max(8.0f, shadow_semantics.extent * 2.5f);
+        const float caster_focus_radius_sq = caster_focus_radius * caster_focus_radius;
         std::vector<RenderableDraw> renderables{};
         renderables.reserve(draw_items_.size());
-        std::vector<detail::DirectionalShadowCaster> shadow_casters{};
-        shadow_casters.reserve(draw_items_.size());
+        std::vector<detail::DirectionalShadowCaster> all_shadow_casters{};
+        all_shadow_casters.reserve(draw_items_.size());
+        std::vector<detail::DirectionalShadowCaster> focused_shadow_casters{};
+        focused_shadow_casters.reserve(draw_items_.size());
         for (const auto& item : draw_items_) {
             if (item.layer != layer) {
                 continue;
@@ -487,17 +496,33 @@ class DiligentBackend final : public Backend {
                 caster.positions = &mesh_it->second.shadow_positions;
                 caster.indices = &mesh_it->second.shadow_indices;
                 caster.sample_center = mesh_it->second.shadow_center;
-                caster.casts_shadow = !mat_it->second.semantics.alpha_blend;
-                shadow_casters.push_back(caster);
+                caster.casts_shadow = item.casts_shadow && !mat_it->second.semantics.alpha_blend;
+                all_shadow_casters.push_back(caster);
+                const glm::vec4 world_center4 = item.transform * glm::vec4(mesh_it->second.shadow_center, 1.0f);
+                const glm::vec3 world_center(world_center4.x, world_center4.y, world_center4.z);
+                const glm::vec3 delta = world_center - camera_.target;
+                const float dist_sq = glm::dot(delta, delta);
+                if (std::isfinite(world_center.x) &&
+                    std::isfinite(world_center.y) &&
+                    std::isfinite(world_center.z) &&
+                    std::isfinite(dist_sq) &&
+                    dist_sq <= caster_focus_radius_sq) {
+                    focused_shadow_casters.push_back(caster);
+                }
             }
         }
 
-        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
-            detail::ResolveDirectionalShadowSemantics(light_);
-        const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
-            detail::ResolveEnvironmentLightingSemantics(environment_);
+        const std::vector<detail::DirectionalShadowCaster>& shadow_casters =
+            focused_shadow_casters.empty() ? all_shadow_casters : focused_shadow_casters;
         const detail::DirectionalShadowMap shadow_map =
             detail::BuildDirectionalShadowMap(shadow_semantics, light_.direction, shadow_casters);
+        std::size_t shadow_samples = 0u;
+        float shadow_visibility_min = 1.0f;
+        float shadow_visibility_max = 0.0f;
+        float shadow_visibility_sum = 0.0f;
+        float shadow_factor_min = 1.0f;
+        float shadow_factor_max = 0.0f;
+        float shadow_factor_sum = 0.0f;
         std::size_t direct_sampler_draws = 0u;
         std::size_t fallback_sampler_draws = 0u;
         std::size_t direct_contract_draws = 0u;
@@ -531,6 +556,13 @@ class DiligentBackend final : public Backend {
                     &mesh.shadow_indices,
                     mesh.shadow_center);
                 shadow_factor = detail::ComputeDirectionalShadowFactor(shadow_map, visibility);
+                ++shadow_samples;
+                shadow_visibility_min = std::min(shadow_visibility_min, visibility);
+                shadow_visibility_max = std::max(shadow_visibility_max, visibility);
+                shadow_visibility_sum += visibility;
+                shadow_factor_min = std::min(shadow_factor_min, shadow_factor);
+                shadow_factor_max = std::max(shadow_factor_max, shadow_factor);
+                shadow_factor_sum += shadow_factor;
             }
             const detail::ResolvedMaterialLighting lighting =
                 detail::ResolveMaterialLighting(semantics, light_, environment_semantics, shadow_factor);
@@ -538,7 +570,8 @@ class DiligentBackend final : public Backend {
                 continue;
             }
             constants.u_color = lighting.color;
-            constants.u_lightDir = glm::vec4(light_.direction, 0.0f);
+            const glm::vec3 lighting_direction = -light_.direction;
+            constants.u_lightDir = glm::vec4(lighting_direction, 0.0f);
             constants.u_lightColor = lighting.light_color;
             constants.u_ambientColor = lighting.ambient_color;
             constants.u_unlit = glm::vec4(light_.unlit, 0.0f, 0.0f, 0.0f);
@@ -608,6 +641,33 @@ class DiligentBackend final : public Backend {
             draw.NumIndices = mesh.num_indices;
             draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
             context_->DrawIndexed(draw);
+        }
+        if (shadow_samples > 0u) {
+            const float visibility_avg = shadow_visibility_sum / static_cast<float>(shadow_samples);
+            const float factor_avg = shadow_factor_sum / static_cast<float>(shadow_samples);
+            KARMA_TRACE_CHANGED(
+                "render.diligent",
+                std::to_string(layer) + ":" +
+                    std::to_string(shadow_map.ready ? 1 : 0) + ":" +
+                    std::to_string(shadow_samples) + ":" +
+                    std::to_string(static_cast<int>(shadow_visibility_min * 1000.0f)) + ":" +
+                    std::to_string(static_cast<int>(visibility_avg * 1000.0f)) + ":" +
+                    std::to_string(static_cast<int>(shadow_visibility_max * 1000.0f)) + ":" +
+                    std::to_string(static_cast<int>(shadow_factor_min * 1000.0f)) + ":" +
+                    std::to_string(static_cast<int>(factor_avg * 1000.0f)) + ":" +
+                    std::to_string(static_cast<int>(shadow_factor_max * 1000.0f)),
+                "shadow summary layer={} mapReady={} samples={} visibility(min={:.3f} avg={:.3f} max={:.3f}) factor(min={:.3f} avg={:.3f} max={:.3f}) extent={:.1f} map={}",
+                layer,
+                shadow_map.ready ? 1 : 0,
+                shadow_samples,
+                shadow_visibility_min,
+                visibility_avg,
+                shadow_visibility_max,
+                shadow_factor_min,
+                factor_avg,
+                shadow_factor_max,
+                shadow_map.extent,
+                shadow_map.size);
         }
         KARMA_TRACE_CHANGED(
             "render.diligent",
