@@ -30,6 +30,7 @@ This is the delegation entrypoint for rewrite work.
 - `physics-backend.md`
 - `platform-backend-policy.md`
 - `renderer-parity.md`
+- `renderer-shadow-hardening.md`
 - `server-network.md`
 - `testing-ci-docs.md`
 - `ui-integration.md`
@@ -38,6 +39,7 @@ This is the delegation entrypoint for rewrite work.
 - `engine-network-foundation.md`: priority/ready, move generic transport/session boilerplate into engine-owned contracts while keeping game protocol semantics game-owned.
 - `core-engine-infrastructure.md`: in progress, backbone planning and dependency sequencing.
 - `renderer-parity.md`: priority/in progress, complete queued P0 integrity/signature continuity then execute merged P1 visual-quality slices (scene shadows + stable distance texture quality) under backend-parity guardrails.
+- `renderer-shadow-hardening.md`: priority/in progress, sandbox-first directional-shadow stabilization plus KARMA capability intake (bias controls, stable fitting, cascades) to close remaining alignment/blockiness/distance-dropout defects before VQ3 acceptance.
 - `engine-defaults-architecture.md`: in progress, architecture baseline is now codified in `docs/architecture/ENGINE_DEFAULTS_MODEL.md`; next convert scheduling and component-catalog guidance into implementation slices.
 - `engine-game-boundary-hygiene.md`: queued (P2 low-medium; ready to assign), capture and execute bounded extraction of game-side boilerplate into engine-owned scaffolding contracts without moving gameplay/protocol semantics.
 - `server-network.md`: queued, continue runtime/protocol hardening after the engine-network-foundation first slice lands.

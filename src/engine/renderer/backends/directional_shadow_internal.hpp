@@ -3,6 +3,7 @@
 #include "karma/renderer/types.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -44,6 +45,11 @@ struct DirectionalShadowMap {
     glm::vec3 axis_up{0.0f, 1.0f, 0.0f};
     glm::vec3 axis_forward{0.0f, 0.0f, -1.0f};
     std::vector<float> depth{};
+};
+
+struct DirectionalShadowView {
+    renderer::CameraData camera{};
+    float aspect_ratio = 16.0f / 9.0f;
 };
 
 inline bool IsFiniteVec3(const glm::vec3& value) {
@@ -93,14 +99,112 @@ inline bool BuildLightBasis(const glm::vec3& light_direction,
     return IsFiniteVec3(out_right) && IsFiniteVec3(out_up) && IsFiniteVec3(out_forward);
 }
 
+inline bool BuildShadowViewBounds(const DirectionalShadowView& view,
+                                  const float max_distance,
+                                  const glm::vec3& axis_right,
+                                  const glm::vec3& axis_up,
+                                  const glm::vec3& axis_forward,
+                                  float& out_min_x,
+                                  float& out_max_x,
+                                  float& out_min_y,
+                                  float& out_max_y,
+                                  float& out_min_z,
+                                  float& out_max_z,
+                                  float& out_center_x,
+                                  float& out_center_y) {
+    const renderer::CameraData& camera = view.camera;
+    if (!IsFiniteVec3(camera.position) || !IsFiniteVec3(camera.target)) {
+        return false;
+    }
+    glm::vec3 forward = camera.target - camera.position;
+    const float forward_len = glm::length(forward);
+    if (!std::isfinite(forward_len) || forward_len <= 1e-6f) {
+        return false;
+    }
+    forward /= forward_len;
+    glm::vec3 up{0.0f, 1.0f, 0.0f};
+    if (std::fabs(glm::dot(forward, up)) >= 0.95f) {
+        up = glm::vec3(0.0f, 0.0f, 1.0f);
+    }
+    glm::vec3 right = glm::cross(forward, up);
+    const float right_len = glm::length(right);
+    if (!std::isfinite(right_len) || right_len <= 1e-6f) {
+        return false;
+    }
+    right /= right_len;
+    up = glm::normalize(glm::cross(right, forward));
+    if (!IsFiniteVec3(up)) {
+        return false;
+    }
+
+    const float aspect = ClampFinite(view.aspect_ratio, 16.0f / 9.0f, 0.25f, 8.0f);
+    const float fov_y_degrees = ClampFinite(camera.fov_y_degrees, 60.0f, 20.0f, 120.0f);
+    const float tan_half_fov = std::tan(glm::radians(fov_y_degrees) * 0.5f);
+    if (!std::isfinite(tan_half_fov) || tan_half_fov <= 0.0f) {
+        return false;
+    }
+
+    const float near_d = ClampFinite(camera.near_clip, 0.1f, 0.05f, 10.0f);
+    float far_d = std::max(near_d + 1.0f, max_distance);
+    if (std::isfinite(camera.far_clip) && camera.far_clip > (near_d + 0.1f)) {
+        far_d = std::min(far_d, camera.far_clip);
+    }
+    if (far_d <= near_d + 0.01f) {
+        far_d = near_d + 1.0f;
+    }
+
+    const float near_h = tan_half_fov * near_d;
+    const float near_w = near_h * aspect;
+    const float far_h = tan_half_fov * far_d;
+    const float far_w = far_h * aspect;
+
+    const glm::vec3 near_center = camera.position + (forward * near_d);
+    const glm::vec3 far_center = camera.position + (forward * far_d);
+    const std::array<glm::vec3, 8> corners{
+        near_center + (up * near_h) - (right * near_w),
+        near_center + (up * near_h) + (right * near_w),
+        near_center - (up * near_h) - (right * near_w),
+        near_center - (up * near_h) + (right * near_w),
+        far_center + (up * far_h) - (right * far_w),
+        far_center + (up * far_h) + (right * far_w),
+        far_center - (up * far_h) - (right * far_w),
+        far_center - (up * far_h) + (right * far_w),
+    };
+
+    out_min_x = std::numeric_limits<float>::max();
+    out_max_x = std::numeric_limits<float>::lowest();
+    out_min_y = std::numeric_limits<float>::max();
+    out_max_y = std::numeric_limits<float>::lowest();
+    out_min_z = std::numeric_limits<float>::max();
+    out_max_z = std::numeric_limits<float>::lowest();
+    for (const glm::vec3& corner : corners) {
+        const float lx = glm::dot(corner, axis_right);
+        const float ly = glm::dot(corner, axis_up);
+        const float lz = glm::dot(corner, axis_forward);
+        if (!std::isfinite(lx) || !std::isfinite(ly) || !std::isfinite(lz)) {
+            return false;
+        }
+        out_min_x = std::min(out_min_x, lx);
+        out_max_x = std::max(out_max_x, lx);
+        out_min_y = std::min(out_min_y, ly);
+        out_max_y = std::max(out_max_y, ly);
+        out_min_z = std::min(out_min_z, lz);
+        out_max_z = std::max(out_max_z, lz);
+    }
+
+    out_center_x = 0.5f * (out_min_x + out_max_x);
+    out_center_y = 0.5f * (out_min_y + out_max_y);
+    return std::isfinite(out_center_x) && std::isfinite(out_center_y);
+}
+
 inline ResolvedDirectionalShadowSemantics ResolveDirectionalShadowSemantics(const renderer::DirectionalLightData& light) {
     ResolvedDirectionalShadowSemantics semantics{};
     semantics.enabled = light.shadow.enabled;
     semantics.strength = ClampFinite(light.shadow.strength, 0.65f, 0.0f, 1.0f);
-    semantics.bias = ClampFinite(light.shadow.bias, 0.0015f, 0.0f, 0.02f);
+    semantics.bias = ClampFinite(light.shadow.bias, 0.0008f, 0.0f, 0.02f);
     semantics.extent = ClampFinite(light.shadow.extent, 24.0f, 2.0f, 512.0f);
     semantics.map_size = ClampRange(light.shadow.map_size, 256, 64, 2048);
-    semantics.pcf_radius = ClampRange(light.shadow.pcf_radius, 1, 0, 2);
+    semantics.pcf_radius = ClampRange(light.shadow.pcf_radius, 1, 0, 4);
     semantics.triangle_budget = 4096;
     return semantics;
 }
@@ -121,7 +225,7 @@ inline bool ValidateResolvedDirectionalShadowSemantics(const ResolvedDirectional
     if (semantics.map_size < 64 || semantics.map_size > 2048) {
         return false;
     }
-    if (semantics.pcf_radius < 0 || semantics.pcf_radius > 2) {
+    if (semantics.pcf_radius < 0 || semantics.pcf_radius > 4) {
         return false;
     }
     if (semantics.triangle_budget < 1 || semantics.triangle_budget > 65536) {
@@ -150,7 +254,8 @@ inline float EdgeFunction(float ax, float ay, float bx, float by, float px, floa
 
 inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalShadowSemantics& semantics,
                                                       const glm::vec3& light_direction,
-                                                      const std::vector<DirectionalShadowCaster>& casters) {
+                                                      const std::vector<DirectionalShadowCaster>& casters,
+                                                      const DirectionalShadowView* view = nullptr) {
     DirectionalShadowMap map{};
     if (!semantics.enabled || !ValidateResolvedDirectionalShadowSemantics(semantics) || casters.empty()) {
         return map;
@@ -198,15 +303,103 @@ inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalS
         return map;
     }
 
-    // Keep world-space texel density stable by honoring configured extent instead of auto-expanding
-    // to the full caster spread each frame.
-    const float resolved_extent = semantics.extent;
+    float center_x = 0.5f * (min_x + max_x);
+    float center_y = 0.5f * (min_y + max_y);
+    bool view_bounds_valid = false;
+    float view_min_x = 0.0f;
+    float view_max_x = 0.0f;
+    float view_min_y = 0.0f;
+    float view_max_y = 0.0f;
+    float view_min_z = 0.0f;
+    float view_max_z = 0.0f;
+    float view_center_x = 0.0f;
+    float view_center_y = 0.0f;
+    if (view) {
+        view_bounds_valid = BuildShadowViewBounds(
+            *view,
+            semantics.extent,
+            axis_right,
+            axis_up,
+            axis_forward,
+            view_min_x,
+            view_max_x,
+            view_min_y,
+            view_max_y,
+            view_min_z,
+            view_max_z,
+            view_center_x,
+            view_center_y);
+    }
+    if (view_bounds_valid) {
+        min_x = view_min_x;
+        max_x = view_max_x;
+        min_y = view_min_y;
+        max_y = view_max_y;
+        center_x = view_center_x;
+        center_y = view_center_y;
+    }
+
+    // Keep configured extent as a quality floor, but expand to cover the current view footprint
+    // so visible receivers do not silently fall outside the shadow map.
+    float resolved_extent = semantics.extent;
+    if (view_bounds_valid) {
+        const float view_half_x = 0.5f * std::fabs(view_max_x - view_min_x);
+        const float view_half_y = 0.5f * std::fabs(view_max_y - view_min_y);
+        const float required_half_extent = std::max(view_half_x, view_half_y);
+        if (std::isfinite(required_half_extent) && required_half_extent > 0.0f) {
+            resolved_extent = std::max(resolved_extent, required_half_extent * 1.05f);
+        }
+    }
+    resolved_extent = std::clamp(resolved_extent, 2.0f, 1024.0f);
+    const float texel_world = (2.0f * resolved_extent) / static_cast<float>(semantics.map_size);
+    if (std::isfinite(texel_world) && texel_world > 1e-6f) {
+        center_x = std::floor((center_x / texel_world) + 0.5f) * texel_world;
+        center_y = std::floor((center_y / texel_world) + 0.5f) * texel_world;
+    }
+
+    float depth_min = min_z;
+    float depth_max = max_z;
+    if (view_bounds_valid) {
+        const float z_margin_xy = std::max(2.0f, resolved_extent * 0.2f);
+        float caster_depth_min = std::numeric_limits<float>::max();
+        float caster_depth_max = std::numeric_limits<float>::lowest();
+        std::size_t caster_depth_samples = 0u;
+        for (const DirectionalShadowCaster& caster : casters) {
+            if (!caster.positions || caster.positions->empty()) {
+                continue;
+            }
+            const glm::vec3 center_world = TransformPoint(caster.transform, caster.sample_center);
+            if (!IsFiniteVec3(center_world)) {
+                continue;
+            }
+            const float lx = glm::dot(center_world, axis_right);
+            const float ly = glm::dot(center_world, axis_up);
+            const float lz = glm::dot(center_world, axis_forward);
+            if (!std::isfinite(lx) || !std::isfinite(ly) || !std::isfinite(lz)) {
+                continue;
+            }
+            if (std::fabs(lx - center_x) > (resolved_extent + z_margin_xy) ||
+                std::fabs(ly - center_y) > (resolved_extent + z_margin_xy)) {
+                continue;
+            }
+            caster_depth_min = std::min(caster_depth_min, lz);
+            caster_depth_max = std::max(caster_depth_max, lz);
+            ++caster_depth_samples;
+        }
+        depth_min = view_min_z;
+        depth_max = view_max_z;
+        if (caster_depth_samples > 0u) {
+            depth_min = std::min(depth_min, caster_depth_min);
+            depth_max = std::max(depth_max, caster_depth_max);
+        }
+    }
+
     const float depth_padding = std::max(1.0f, resolved_extent * 0.1f);
     // Expand depth coverage beyond caster-only bounds so receiver points can still project
     // into the same shadow volume in roaming scenes.
     const float receiver_depth_extension = std::max(2.0f, resolved_extent * 2.0f);
-    const float resolved_min_depth = min_z - depth_padding;
-    const float resolved_max_depth = max_z + depth_padding + receiver_depth_extension;
+    const float resolved_min_depth = depth_min - depth_padding;
+    const float resolved_max_depth = depth_max + depth_padding + receiver_depth_extension;
     const float resolved_depth_range = std::max(resolved_max_depth - resolved_min_depth, 0.01f);
 
     map.ready = true;
@@ -215,8 +408,8 @@ inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalS
     map.bias = semantics.bias;
     map.strength = semantics.strength;
     map.extent = resolved_extent;
-    map.center_x = 0.5f * (min_x + max_x);
-    map.center_y = 0.5f * (min_y + max_y);
+    map.center_x = center_x;
+    map.center_y = center_y;
     map.min_depth = resolved_min_depth;
     map.depth_range = resolved_depth_range;
     map.axis_right = axis_right;
@@ -355,7 +548,7 @@ inline float SampleDirectionalShadowVisibility(const DirectionalShadowMap& map, 
     const float inv_texel = 1.0f / texel;
     const int radius = std::max(0, map.pcf_radius);
     const float effective_bias =
-        std::clamp(map.bias + (static_cast<float>(radius) * (0.25f * inv_texel)), 0.0f, 0.03f);
+        std::clamp(map.bias + (static_cast<float>(radius) * (0.10f * inv_texel)), 0.0f, 0.02f);
     float lit_sum = 0.0f;
     float weight_sum = 0.0f;
 

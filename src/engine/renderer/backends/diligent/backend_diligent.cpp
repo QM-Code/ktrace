@@ -31,7 +31,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -468,14 +467,10 @@ class DiligentBackend final : public Backend {
             detail::ResolveDirectionalShadowSemantics(light_);
         const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
             detail::ResolveEnvironmentLightingSemantics(environment_);
-        const float caster_focus_radius = std::max(8.0f, shadow_semantics.extent * 2.5f);
-        const float caster_focus_radius_sq = caster_focus_radius * caster_focus_radius;
         std::vector<RenderableDraw> renderables{};
         renderables.reserve(draw_items_.size());
-        std::vector<detail::DirectionalShadowCaster> all_shadow_casters{};
-        all_shadow_casters.reserve(draw_items_.size());
-        std::vector<detail::DirectionalShadowCaster> focused_shadow_casters{};
-        focused_shadow_casters.reserve(draw_items_.size());
+        std::vector<detail::DirectionalShadowCaster> shadow_casters{};
+        shadow_casters.reserve(draw_items_.size());
         for (const auto& item : draw_items_) {
             if (item.layer != layer) {
                 continue;
@@ -497,25 +492,17 @@ class DiligentBackend final : public Backend {
                 caster.indices = &mesh_it->second.shadow_indices;
                 caster.sample_center = mesh_it->second.shadow_center;
                 caster.casts_shadow = item.casts_shadow && !mat_it->second.semantics.alpha_blend;
-                all_shadow_casters.push_back(caster);
-                const glm::vec4 world_center4 = item.transform * glm::vec4(mesh_it->second.shadow_center, 1.0f);
-                const glm::vec3 world_center(world_center4.x, world_center4.y, world_center4.z);
-                const glm::vec3 delta = world_center - camera_.target;
-                const float dist_sq = glm::dot(delta, delta);
-                if (std::isfinite(world_center.x) &&
-                    std::isfinite(world_center.y) &&
-                    std::isfinite(world_center.z) &&
-                    std::isfinite(dist_sq) &&
-                    dist_sq <= caster_focus_radius_sq) {
-                    focused_shadow_casters.push_back(caster);
-                }
+                shadow_casters.push_back(caster);
             }
         }
 
-        const std::vector<detail::DirectionalShadowCaster>& shadow_casters =
-            focused_shadow_casters.empty() ? all_shadow_casters : focused_shadow_casters;
+        const float aspect = (height_ > 0) ? (static_cast<float>(width_) / static_cast<float>(height_)) : 1.0f;
+        const detail::DirectionalShadowView shadow_view{
+            camera_,
+            aspect,
+        };
         const detail::DirectionalShadowMap shadow_map =
-            detail::BuildDirectionalShadowMap(shadow_semantics, light_.direction, shadow_casters);
+            detail::BuildDirectionalShadowMap(shadow_semantics, light_.direction, shadow_casters, &shadow_view);
         std::size_t shadow_samples = 0u;
         float shadow_visibility_min = 1.0f;
         float shadow_visibility_max = 0.0f;

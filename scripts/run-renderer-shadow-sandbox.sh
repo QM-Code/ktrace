@@ -31,8 +31,8 @@ run_backend() {
     --duration-sec "${DURATION_SEC}"
     --ground-tiles "${GROUND_TILES}"
     --ground-extent "${GROUND_EXTENT}"
-    --shadow-map-size 512
-    --shadow-pcf 1
+    --shadow-map-size 1024
+    --shadow-pcf 2
     --shadow-strength 0.85
     --trace "${trace_channels}"
     --verbose

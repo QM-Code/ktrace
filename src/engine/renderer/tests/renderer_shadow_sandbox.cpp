@@ -39,9 +39,9 @@ struct SandboxOptions {
     glm::vec3 sun_direction = glm::normalize(glm::vec3(0.35f, -1.0f, -0.25f));
     float shadow_strength = 0.85f;
     float shadow_extent = 22.0f;
-    int shadow_map_size = 512;
-    int shadow_pcf_radius = 1;
-    float shadow_bias = 0.0015f;
+    int shadow_map_size = 1024;
+    int shadow_pcf_radius = 2;
+    float shadow_bias = 0.0008f;
     bool verbose = false;
     std::string trace_channels{};
     std::string preferred_video_driver{};
@@ -79,11 +79,11 @@ void PrintUsage(const char* argv0) {
         << "  --ground-tiles <N>            Ground draw subdivisions per axis (default 1)\n"
         << "  --ground-extent <meters>      Half-extent of ground area (default 20)\n"
         << "  --sun-dir <x,y,z>             Directional light vector (default 0.35,-1,-0.25)\n"
-        << "  --shadow-map-size <64..2048>  Directional shadow map size (default 512)\n"
+        << "  --shadow-map-size <64..2048>  Directional shadow map size (default 1024)\n"
         << "  --shadow-strength <0..1>      Shadow strength (default 0.85)\n"
         << "  --shadow-extent <2..512>      Shadow projection extent (default 22)\n"
-        << "  --shadow-bias <0..0.02>       Shadow bias (default 0.0015)\n"
-        << "  --shadow-pcf <0..2>           PCF radius (default 1)\n"
+        << "  --shadow-bias <0..0.02>       Shadow bias (default 0.0008)\n"
+        << "  --shadow-pcf <0..4>           PCF radius (default 2)\n"
         << "  --video-driver <name>         SDL video driver override (e.g. wayland, x11)\n"
         << "  -v, --verbose                 Enable debug logging\n"
         << "  -t, --trace <channels>        Enable KARMA trace channels\n"
@@ -184,7 +184,7 @@ SandboxOptions ParseOptions(int argc, char** argv) {
                 std::stof(require_value("--shadow-bias")), 0.0f, 0.02f);
         } else if (arg == "--shadow-pcf") {
             options.shadow_pcf_radius =
-                std::clamp(std::stoi(require_value("--shadow-pcf")), 0, 2);
+                std::clamp(std::stoi(require_value("--shadow-pcf")), 0, 4);
         } else if (arg == "--video-driver") {
             options.preferred_video_driver = require_value("--video-driver");
         } else if (arg == "-v" || arg == "--verbose") {

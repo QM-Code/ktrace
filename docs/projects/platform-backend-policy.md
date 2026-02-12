@@ -117,7 +117,7 @@ From `m-rewrite/`:
 | `src/engine/platform/backends/window_glfw_stub.cpp` | `Removed in Slice 2 (2026-02-11)` | Implementation unit removed with dormant GLFW backend. |
 | `include/karma/platform/*` | `Keep` | No GLFW/SDL2 references found; this is the seam to preserve. |
 | `docs/DECISIONS.md` (platform breadth deferred decision) | `Keep` | Historical decision log remains accurate as architecture context. |
-| `docs/KARMA_ALIGNMENT_AUDIT_2026-02-10.md` (stale rewrite GLFW/SDL2 stub statement) | `Updated in Slice 2 (2026-02-11)` | Now reflects SDL3-only active backend state for rewrite. |
+| `docs/archive/KARMA_ALIGNMENT_AUDIT_2026-02-10.md` (stale rewrite GLFW/SDL2 stub statement) | `Updated in Slice 2 (2026-02-11)` | Archived historical audit; content was updated to reflect SDL3-only active backend state for rewrite before archival. |
 | `docs/projects/platform-backend-policy.md` (policy guardrails mentioning GLFW/SDL2) | `Keep (policy lines only)` | Explicitly disallowing GLFW/SDL2 implementation is an intentional constraint, not dormant backend wiring. |
 | `docs/projects/ASSIGNMENTS.md` (platform row task text) | `Updated in Slice 2 handoff` | Assignment now advances to Slice 3 seam guardrails. |
 
@@ -229,7 +229,7 @@ From `m-rewrite/`:
    - `src/engine/platform/backends/window_glfw_stub.hpp`
    - `src/engine/platform/backends/window_glfw_stub.cpp`
 5. [x] Cleaned stale docs references describing active GLFW/SDL2 rewrite stubs:
-   - updated `docs/KARMA_ALIGNMENT_AUDIT_2026-02-10.md`,
+   - updated `docs/archive/KARMA_ALIGNMENT_AUDIT_2026-02-10.md`,
    - retained intentional policy/decision-history references.
 6. [x] Re-scanned and validated post-cleanup:
    - `rg -n -i "glfw|sdl2|sdl 2|sdl-2" docs CMakeLists.txt src/engine/CMakeLists.txt include/karma/platform src/engine/platform`

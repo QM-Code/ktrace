@@ -29,14 +29,14 @@ float sampleShadowVisibility(vec3 worldPos, float ndotl) {
     float centerY = u_shadowParams1.z;
     float minDepth = u_shadowParams1.w;
     float invDepthRange = max(u_shadowParams2.x, 0.0001);
-    float radius = clamp(u_shadowParams2.y, 0.0, 2.0);
+    float radius = clamp(u_shadowParams2.y, 0.0, 4.0);
     float invMapSize = max(u_shadowParams0.w, 0.0);
     // Add slope-aware bias to reduce self-shadow checkerboarding on grazing angles.
     float slope = clamp(1.0 - ndotl, 0.0, 1.0);
     float bias = clamp(
-        u_shadowParams0.z + (u_shadowParams0.w * (0.25 + (1.50 * slope))),
+        u_shadowParams0.z + (u_shadowParams0.w * (0.08 + (0.35 * slope))),
         0.0,
-        0.05);
+        0.02);
 
     float lx = dot(worldPos, u_shadowAxisRight.xyz);
     float ly = dot(worldPos, u_shadowAxisUp.xyz);
@@ -51,15 +51,16 @@ float sampleShadowVisibility(vec3 worldPos, float ndotl) {
 
     float lit = 0.0;
     float count = 0.0;
-    for (int oy = -2; oy <= 2; ++oy) {
-        for (int ox = -2; ox <= 2; ++ox) {
+    for (int oy = -4; oy <= 4; ++oy) {
+        for (int ox = -4; ox <= 4; ++ox) {
             if (abs(float(ox)) > radius || abs(float(oy)) > radius) {
                 continue;
             }
             vec2 uv = vec2(u, v) + vec2(float(ox), float(oy)) * invMapSize;
             float mapDepth = texture2D(s_shadow, uv).r;
-            lit += step(depth - bias, mapDepth);
-            count += 1.0;
+            float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
+            lit += step(depth - bias, mapDepth) * w;
+            count += w;
         }
     }
     if (count < 0.5) {
