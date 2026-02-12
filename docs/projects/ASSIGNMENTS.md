@@ -3,7 +3,7 @@
 Use this board for active delegation only.
 
 Update rules:
-- One row per project file listed in `docs/projects/README.md`.
+- One row per active project file in `docs/projects/` (exclude `README.md`, `AGENTS.md`, `PROJECT_TEMPLATE.md`, `ASSIGNMENTS.md`).
 - Update `Owner`, `Status`, `Next Task`, and `Last Update` in every handoff.
 - Keep each `Next Task` as one concrete action.
 

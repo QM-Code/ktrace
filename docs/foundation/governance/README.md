@@ -1,7 +1,5 @@
 # Governance Docs
 
-Canonical long-lived governance/process documents:
-- `overseer-playbook.md`
-- `handoff-template.md`
-- `testing-ci-governance.md`
-- `engine-backend-testing.md`
+This directory contains long-lived governance/process references maintained by agents.
+
+If you are a human operator, use workspace root `README.md` and run through the overseer agent.

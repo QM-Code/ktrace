@@ -13,8 +13,8 @@ Read in order:
 3) m-rewrite/docs/foundation/policy/execution-policy.md
 4) m-rewrite/docs/foundation/governance/overseer-playbook.md
 5) m-rewrite/docs/foundation/policy/decisions-log.md
-6) m-rewrite/docs/foundation/architecture/README.md
-7) m-rewrite/docs/projects/README.md
+6) m-rewrite/docs/foundation/AGENTS.md
+7) m-rewrite/docs/projects/AGENTS.md
 8) m-rewrite/docs/projects/ASSIGNMENTS.md
 
 Then:

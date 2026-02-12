@@ -10,7 +10,7 @@ Canonical long-lived docs are under `docs/foundation/`:
 - architecture contracts/models: `docs/foundation/architecture/*`
 
 Active execution tracking stays in:
-- `docs/projects/README.md`
+- `docs/projects/AGENTS.md`
 - `docs/projects/ASSIGNMENTS.md`
 - `docs/projects/<project>.md`
 

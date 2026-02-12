@@ -27,12 +27,14 @@ while IFS= read -r file; do
   check_contains "$file" '^- Validation gate:' 'Validation gate field'
 done < <(find "$PROJECT_DIR" -maxdepth 1 -type f -name '*.md' \
   ! -name 'README.md' \
+  ! -name 'AGENTS.md' \
   ! -name 'PROJECT_TEMPLATE.md' \
   ! -name 'ASSIGNMENTS.md' | sort)
 
 echo "[lint] Checking assignment board coverage"
 project_count=$(find "$PROJECT_DIR" -maxdepth 1 -type f -name '*.md' \
   ! -name 'README.md' \
+  ! -name 'AGENTS.md' \
   ! -name 'PROJECT_TEMPLATE.md' \
   ! -name 'ASSIGNMENTS.md' | wc -l)
 assignment_rows=$(rg -c '^\| `[^`]+\.md` \|' "$PROJECT_DIR/ASSIGNMENTS.md" || true)
@@ -55,7 +57,6 @@ retired_patterns=(
   'docs/projects/server_network_track.md'
   'docs/projects/testing_ci_docs_track.md'
   'docs/projects/ui_overlay_track.md'
-  'docs/projects/AGENTS.md'
 )
 
 echo "[lint] Checking for retired path references in active docs"

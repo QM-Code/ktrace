@@ -15,7 +15,7 @@ Overseer-only coordination workflow lives in `docs/foundation/governance/oversee
 - `AGENTS.md`: rewrite invariants and architecture ownership.
 - `docs/foundation/policy/execution-policy.md` (this file): execution mechanics and validation policy.
 - `docs/foundation/governance/overseer-playbook.md`: overseer startup/rotation/checkpoint protocol.
-- `docs/projects/README.md` + `docs/projects/*.md`: project scopes and project-specific validation.
+- `docs/projects/AGENTS.md` + `docs/projects/*.md`: project scopes and project-specific validation.
 - `docs/foundation/policy/decisions-log.md`: durable decisions and rationale.
 
 ## Execution Root (Required)
@@ -111,7 +111,7 @@ Trace quick reference:
 - input/events: `input.events`
 
 ## Delegation Workflow (All Specialists)
-1. Pick one project doc from `docs/projects/README.md`.
+1. Pick one active project doc listed in `docs/projects/ASSIGNMENTS.md`.
 2. Confirm owned paths and non-goals from that project doc.
 3. Implement within project boundaries.
 4. Run required validation for touched scope and project gates.

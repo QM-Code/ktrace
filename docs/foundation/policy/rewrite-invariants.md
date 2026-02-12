@@ -68,7 +68,7 @@ Repository roles:
 1. `docs/BOOTSTRAP.md` (startup entrypoint)
 2. `AGENTS.md`
 3. `docs/foundation/policy/execution-policy.md`
-4. `docs/projects/README.md`
+4. `docs/projects/AGENTS.md`
 5. `docs/projects/ASSIGNMENTS.md`
 6. Relevant `docs/projects/<project>.md`
 7. `docs/foundation/policy/decisions-log.md`

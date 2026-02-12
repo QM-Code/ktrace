@@ -10,7 +10,7 @@ Execution root:
 Read in order:
 1) AGENTS.md
 2) docs/foundation/policy/execution-policy.md
-3) docs/projects/README.md
+3) docs/projects/AGENTS.md
 4) docs/projects/ASSIGNMENTS.md
 5) docs/projects/<project>.md
 

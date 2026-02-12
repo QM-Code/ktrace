@@ -1,6 +1,5 @@
 # Architecture Docs
 
-Canonical long-lived architecture documents:
-- `engine-defaults-model.md`
-- `core-engine-contracts.md`
-- `engine-defaults-program.md`
+This directory contains long-lived architecture references maintained by agents.
+
+If you are a human operator, use workspace root `README.md` and run through the overseer agent.
