@@ -19,33 +19,29 @@ This is the delegation entrypoint for rewrite work.
 5. Start from its `Project Snapshot` section.
 
 ## Project Files
-- `audio-backend.md`
 - `content-mount.md`
 - `core-engine-infrastructure.md`
 - `engine-defaults-architecture.md`
 - `engine-backend-testing.md`
 - `engine-game-boundary-hygiene.md`
-- `engine-network-foundation.md`
 - `gameplay-netcode.md`
 - `physics-backend.md`
-- `platform-backend-policy.md`
 - `renderer-parity.md`
 - `renderer-shadow-hardening.md`
-- `server-network.md`
 - `testing-ci-docs.md`
 - `ui-integration.md`
 
 ## Current Focus Board
-- `engine-network-foundation.md`: priority/ready, move generic transport/session boilerplate into engine-owned contracts while keeping game protocol semantics game-owned.
+- `engine-network-foundation`: archived closeout snapshot at `docs/archive/engine-network-foundation-completed-2026-02-12.md`; reopen only by creating a new active project doc if concrete transport contract regressions appear.
 - `core-engine-infrastructure.md`: in progress, backbone planning and dependency sequencing.
 - `renderer-parity.md`: priority/in progress, complete queued P0 integrity/signature continuity then execute merged P1 visual-quality slices (scene shadows + stable distance texture quality) under backend-parity guardrails.
 - `renderer-shadow-hardening.md`: priority/in progress, sandbox-first directional-shadow stabilization plus KARMA capability intake (bias controls, stable fitting, cascades) to close remaining alignment/blockiness/distance-dropout defects before VQ3 acceptance.
 - `engine-defaults-architecture.md`: in progress, architecture baseline is now codified in `docs/architecture/ENGINE_DEFAULTS_MODEL.md`; next convert scheduling and component-catalog guidance into implementation slices.
 - `engine-game-boundary-hygiene.md`: queued (P2 low-medium; ready to assign), capture and execute bounded extraction of game-side boilerplate into engine-owned scaffolding contracts without moving gameplay/protocol semantics.
-- `server-network.md`: queued, continue runtime/protocol hardening after the engine-network-foundation first slice lands.
+- `server-network`: archived closeout snapshot at `docs/archive/server-network-completed-2026-02-12.md`; reopen only by creating a new active project doc if concrete regressions appear.
 - `physics-backend.md`: queued, continue backend parity while aligning to architecture/defaults decisions.
-- `platform-backend-policy.md`: queued (P2 medium; ready to assign), execute Slice 1 SDL3-only policy inventory/removal plan while preserving thin engine-owned platform seam and future adapter contract boundary.
-- `audio-backend.md`: queued, continue backend parity while aligning to architecture/defaults decisions.
+- `platform-backend-policy`: archived closeout snapshot at `docs/archive/platform-backend-policy-completed-2026-02-12.md`; reopen only by creating a new active project doc if a concrete second-backend blocker is accepted.
+- `audio-backend`: archived closeout snapshot at `docs/archive/audio-backend-completed-2026-02-12.md`; reopen only by creating a new active project doc if new audio capability/parity work is explicitly prioritized.
 - `content-mount.md`: queued, continue after top-priority renderer/network milestones unless it blocks runtime stability.
 - `ui-integration.md`: queued, continue after top-priority renderer/network milestones unless it blocks validation.
 - `gameplay-netcode.md`: queued, continue prediction/reconciliation after engine-network-foundation boundary is established.

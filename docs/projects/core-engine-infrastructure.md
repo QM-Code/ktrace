@@ -1209,7 +1209,7 @@ Ready for broad multi-agent parallelization when all are true:
 ## References
 - UI integration project: `docs/projects/ui-integration.md`
 - Gameplay netcode project: `docs/projects/gameplay-netcode.md`
-- Server network project: `docs/projects/server-network.md`
+- Server network closeout snapshot: `docs/archive/server-network-completed-2026-02-12.md`
 - Engine backend testing project: `docs/projects/engine-backend-testing.md`
 - Delegation guidance: `docs/AGENTS.md`
 - Root rewrite guide: `AGENTS.md`

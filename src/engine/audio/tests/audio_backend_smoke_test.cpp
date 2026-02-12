@@ -501,6 +501,80 @@ bool RunListenerAndPositionalSemanticsChecks(BackendKind backend) {
     return true;
 }
 
+bool RunNonFiniteGainPitchChecks(BackendKind backend) {
+    karma::audio::AudioSystem audio;
+    audio.setBackend(backend);
+    audio.init();
+    if (!audio.isInitialized()) {
+        std::cerr << "backend " << BackendKindName(backend)
+                  << " failed to initialize in non-finite gain/pitch check\n";
+        return false;
+    }
+
+    karma::audio_backend::PlayRequest valid{};
+    valid.asset_path = "audio/test/finite-gain-pitch";
+    valid.gain = 0.2f;
+    valid.pitch = 1.0f;
+    valid.loop = true;
+    valid.world_position.reset();
+
+    const auto baseline_voice = audio.startVoice(valid);
+    if (baseline_voice == karma::audio_backend::kInvalidVoiceId) {
+        std::cerr << "backend " << BackendKindName(backend)
+                  << " failed to start baseline voice in non-finite gain/pitch check\n";
+        audio.shutdown();
+        return false;
+    }
+
+    karma::audio_backend::PlayRequest invalid_gain = valid;
+    invalid_gain.asset_path = "audio/test/invalid-gain";
+    invalid_gain.loop = false;
+    invalid_gain.gain = std::numeric_limits<float>::quiet_NaN();
+    if (audio.startVoice(invalid_gain) != karma::audio_backend::kInvalidVoiceId) {
+        std::cerr << "backend " << BackendKindName(backend)
+                  << " accepted non-finite gain request\n";
+        audio.shutdown();
+        return false;
+    }
+    audio.playOneShot(invalid_gain);
+
+    karma::audio_backend::PlayRequest invalid_pitch = valid;
+    invalid_pitch.asset_path = "audio/test/invalid-pitch";
+    invalid_pitch.loop = false;
+    invalid_pitch.pitch = std::numeric_limits<float>::infinity();
+    if (audio.startVoice(invalid_pitch) != karma::audio_backend::kInvalidVoiceId) {
+        std::cerr << "backend " << BackendKindName(backend)
+                  << " accepted non-finite pitch request\n";
+        audio.shutdown();
+        return false;
+    }
+    audio.playOneShot(invalid_pitch);
+
+    karma::audio_backend::PlayRequest followup_valid = valid;
+    followup_valid.asset_path = "audio/test/followup-finite-gain-pitch";
+    const auto followup_voice = audio.startVoice(followup_valid);
+    if (followup_voice == karma::audio_backend::kInvalidVoiceId) {
+        std::cerr << "backend " << BackendKindName(backend)
+                  << " failed to start follow-up finite voice after invalid gain/pitch requests\n";
+        audio.shutdown();
+        return false;
+    }
+    if (followup_voice != baseline_voice + 1) {
+        std::cerr << "backend " << BackendKindName(backend)
+                  << " non-finite gain/pitch requests changed voice allocation state\n";
+        audio.shutdown();
+        return false;
+    }
+
+    audio.beginFrame(1.0f / 60.0f);
+    audio.update(1.0f / 60.0f);
+    audio.endFrame();
+    audio.stopVoice(baseline_voice);
+    audio.stopVoice(followup_voice);
+    audio.shutdown();
+    return true;
+}
+
 bool ParseRequestedBackends(int argc, char** argv, std::vector<BackendKind>& out_backends) {
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
@@ -567,6 +641,9 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         if (!RunListenerAndPositionalSemanticsChecks(backend)) {
+            return EXIT_FAILURE;
+        }
+        if (!RunNonFiniteGainPitchChecks(backend)) {
             return EXIT_FAILURE;
         }
         if (!RunBackendSmoke(backend)) {

@@ -12,9 +12,14 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/common/stb_image_impl.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/world_archive.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/world_content.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/app/backend_resolution.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/app/bootstrap_scaffold.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/app/cli_parse_scaffold.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_server_app.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/network/client_reconnect_policy.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/client_transport.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/server_transport.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/network/transport_config_mapping.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/audio/backend_factory.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/audio/audio_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/audio/backends/backend_sdl3audio_stub.cpp
@@ -26,6 +31,8 @@ set(ENGINE_CORE_SOURCES
 )
 
 set(ENGINE_CLIENT_SOURCES
+    ${PROJECT_SOURCE_DIR}/src/engine/app/backend_resolution_client.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/app/cli_client_backend_options.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_app.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/input/input_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend.cpp

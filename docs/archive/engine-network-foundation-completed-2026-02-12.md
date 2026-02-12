@@ -1,9 +1,9 @@
 # Engine Network Foundation
 
 ## Project Snapshot
-- Current owner: `specialist-engine-network-foundation`
-- Status: `priority/in progress (slices 1-28 accepted; slice 29 queued)`
-- Immediate next task: launch fresh specialist session for slice 29 (timeout-race test-harness remaining-duplication cleanup only; no transport runtime changes).
+- Current owner: `unassigned`
+- Status: `completed (slices 1-29 accepted; closeout accepted)`
+- Immediate next task: none; reopen only for concrete transport contract regressions requiring a new bounded slice.
 - Validation gate: `./scripts/test-server-net.sh <assigned-build-dir>` must pass after `./bzbuild.py -c` in both assigned build dirs.
 
 ## Mission
@@ -34,7 +34,6 @@ Network protocol semantics and gameplay rules can continue evolving in game trac
   - `m-rewrite/src/game/net/protocol.hpp`
   - `m-rewrite/src/game/net/protocol_codec.cpp`
   - `m-rewrite/src/game/protos/messages.proto`
-  - `docs/projects/server-network.md`
   - `docs/projects/gameplay-netcode.md`
 
 Current first-slice boundary (`2026-02-10`):
@@ -488,6 +487,18 @@ From `m-rewrite/`:
   - Required validation rerun by specialist and overseer passed in both assigned build dirs (`bzbuild.py -c` + `test-server-net.sh`, `9/9` in both wrapper runs).
   - Risks/deferrals:
     - live timeout-race coverage remains scheduler/load sensitive because ENet timeout/reconnect progression is runtime timing-dependent; this slice reduces harness drift only and does not change runtime behavior.
+- `2026-02-12`: Landed twenty-ninth vertical slice (accepted; closeout):
+  - Reduced remaining timeout-race harness duplication in `src/engine/network/tests/client_transport_contract_test.cpp` by:
+    - introducing a shared local reconnect-phase polling helper used by both reconnect readiness and reconnect delivery phases,
+    - introducing a shared local bounded-probe option builder for reconnect phases.
+  - Scope remained test-harness-only (no transport runtime behavior changes, no protocol/schema changes).
+  - Required validation:
+    - `./bzbuild.py -c build-sdl3-bgfx-jolt-rmlui-miniaudio` -> success,
+    - `./bzbuild.py -c build-sdl3-bgfx-physx-rmlui-miniaudio` -> success,
+    - `./scripts/test-server-net.sh build-sdl3-bgfx-jolt-rmlui-miniaudio` -> PASS (`9/9`),
+    - `./scripts/test-server-net.sh build-sdl3-bgfx-physx-rmlui-miniaudio` -> transient `client_transport_contract_test` timeout-race/reconnect flakes observed on immediate retries, then PASS (`9/9`) in same session retry window.
+  - Residual risk/deferral:
+    - `client_transport_contract_test` live reconnect/timeout race coverage remains scheduler/load sensitive in high-contention runs; slice 29 reduced harness duplication only and does not change runtime ENet behavior.
 
 ## Open Questions
 - No new open questions in this slice.

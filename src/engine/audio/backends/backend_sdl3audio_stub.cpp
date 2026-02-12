@@ -365,6 +365,11 @@ class Sdl3AudioBackend final : public Backend {
                         "AudioBackend[sdl3audio]: rejected voice with non-finite world_position");
             return kInvalidVoiceId;
         }
+        if (!std::isfinite(request.gain) || !std::isfinite(request.pitch)) {
+            KARMA_TRACE("audio.sdl3audio",
+                        "AudioBackend[sdl3audio]: rejected voice with non-finite gain/pitch");
+            return kInvalidVoiceId;
+        }
 
         VoiceState voice{};
         voice.gain = ClampGain(request.gain);

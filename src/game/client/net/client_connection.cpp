@@ -1,6 +1,8 @@
 #include "client/net/client_connection.hpp"
 
+#include "karma/network/client_reconnect_policy.hpp"
 #include "karma/network/client_transport.hpp"
+#include "karma/network/transport_config_mapping.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_store.hpp"
 #include "karma/common/data_path_resolver.hpp"
@@ -1443,24 +1445,19 @@ bool ClientConnection::start() {
         return false;
     }
 
-    karma::network::ClientTransportConfig transport_config{};
-    const std::string backend_name =
-        karma::config::ReadStringConfig({"network.ClientTransportBackend"}, std::string("auto"));
-    transport_config.backend_name = backend_name;
-    const auto parsed_backend = karma::network::ParseClientTransportBackend(backend_name);
-    if (parsed_backend.has_value()) {
-        transport_config.backend = *parsed_backend;
-    } else {
+    bool custom_backend = false;
+    karma::network::ClientTransportConfig transport_config =
+        karma::network::ResolveClientTransportConfigFromConfig(&custom_backend);
+    if (custom_backend) {
         KARMA_TRACE("net.client",
                     "ClientConnection: using custom client transport backend='{}'",
-                    backend_name);
+                    transport_config.backend_name);
     }
 
     transport_ = karma::network::CreateClientTransport(transport_config);
     if (!transport_ || !transport_->isReady()) {
-        const std::string configured_backend = transport_config.backend_name.empty()
-            ? std::string(karma::network::ClientTransportBackendName(transport_config.backend))
-            : transport_config.backend_name;
+        const std::string configured_backend =
+            karma::network::EffectiveClientTransportBackendName(transport_config);
         spdlog::error("ClientConnection: failed to create client transport backend={}",
                       configured_backend);
         closeTransport();
@@ -1474,30 +1471,15 @@ bool ClientConnection::start() {
 
     const uint32_t timeout_ms = static_cast<uint32_t>(
         karma::config::ReadUInt16Config({"network.ConnectTimeoutMs"}, static_cast<uint16_t>(2000)));
-    const uint32_t reconnect_max_attempts = static_cast<uint32_t>(karma::config::ReadUInt16Config(
-        {"network.ClientReconnectMaxAttempts", "network.ReconnectMaxAttempts"},
-        static_cast<uint16_t>(0)));
-    const uint32_t reconnect_backoff_initial_ms = static_cast<uint32_t>(
-        karma::config::ReadUInt16Config({"network.ClientReconnectBackoffInitialMs",
-                                         "network.ReconnectBackoffInitialMs"},
-                                        static_cast<uint16_t>(250)));
-    const uint32_t reconnect_backoff_max_ms = static_cast<uint32_t>(
-        karma::config::ReadUInt16Config({"network.ClientReconnectBackoffMaxMs",
-                                         "network.ReconnectBackoffMaxMs"},
-                                        static_cast<uint16_t>(2000)));
-    const uint32_t reconnect_timeout_ms = static_cast<uint32_t>(
-        karma::config::ReadUInt16Config({"network.ClientReconnectTimeoutMs",
-                                         "network.ReconnectTimeoutMs"},
-                                        static_cast<uint16_t>(1000)));
+    const karma::network::ClientReconnectPolicy reconnect_policy =
+        karma::network::ReadClientReconnectPolicyFromConfig();
+    karma::network::ClientTransportConnectOptions connect_options{
+        .host = host_,
+        .port = port_,
+        .timeout_ms = timeout_ms};
+    karma::network::ApplyReconnectPolicyToConnectOptions(reconnect_policy, &connect_options);
 
-    if (!transport_->connect(karma::network::ClientTransportConnectOptions{
-            .host = host_,
-            .port = port_,
-            .timeout_ms = timeout_ms,
-            .reconnect_max_attempts = reconnect_max_attempts,
-            .reconnect_backoff_initial_ms = reconnect_backoff_initial_ms,
-            .reconnect_backoff_max_ms = reconnect_backoff_max_ms,
-            .reconnect_timeout_ms = reconnect_timeout_ms})) {
+    if (!transport_->connect(connect_options)) {
         spdlog::error("ClientConnection: connection timed out to {}:{}", host_, port_);
         closeTransport();
         return false;

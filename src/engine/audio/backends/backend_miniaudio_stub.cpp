@@ -430,6 +430,11 @@ class MiniaudioBackend final : public Backend {
                         "AudioBackend[miniaudio]: rejected voice with non-finite world_position");
             return kInvalidVoiceId;
         }
+        if (!std::isfinite(request.gain) || !std::isfinite(request.pitch)) {
+            KARMA_TRACE("audio.miniaudio",
+                        "AudioBackend[miniaudio]: rejected voice with non-finite gain/pitch");
+            return kInvalidVoiceId;
+        }
 
         VoiceState voice{};
         voice.gain = ClampGain(request.gain);

@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `codex`
-- Status: `in progress` (invalid positional request no-op behavior is now parity-asserted for both controllable and fire-and-forget paths, validated in isolated audio builds)
-- Immediate next task: lock backend parity for non-finite `gain`/`pitch` handling with one deterministic assertion-backed rule.
+- Status: `completed` (archived closeout snapshot; non-finite `gain`/`pitch` deterministic rejection parity landed)
+- Immediate next task: `none` (reference-only; reopen via a new active project doc if new audio parity/capability scope is approved).
 - Validation gate: `./scripts/test-engine-backends.sh`
 
 ## Mission
@@ -136,10 +136,18 @@ From `m-rewrite/`:
   - `build-sdl3-bgfx-jolt-imgui-miniaudio`: `audio_backend_smoke_miniaudio` PASS
 - Wrapper validation passed in assigned build dir:
   - `./scripts/test-engine-backends.sh build-sdl3-bgfx-jolt-imgui-sdl3audio` PASS (2/2)
+- `2026-02-12`: Closeout slice completed for non-finite `gain`/`pitch` handling:
+  - SDL3audio and miniaudio backend `AddVoice` paths now reject non-finite `gain` or `pitch` deterministically (`kInvalidVoiceId`) before clamping/mixing.
+  - smoke test now asserts rejection + side-effect-free voice allocation semantics for invalid `gain`/`pitch` requests across both backends.
+  - isolated audio validation passed:
+    - `./bzbuild.py -c --test-audio build-sdl3-bgfx-jolt-imgui-sdl3audio`
+    - `./bzbuild.py -c --test-audio build-sdl3-bgfx-jolt-imgui-miniaudio`
+  - wrapper closeout passed with explicit build dirs:
+    - `./scripts/test-engine-backends.sh build-sdl3-bgfx-jolt-imgui-sdl3audio` (`2/2`)
+    - `./scripts/test-engine-backends.sh build-sdl3-bgfx-jolt-imgui-miniaudio` (`2/2`)
 - This project should prioritize backend correctness and headless-safe determinism over feature expansion.
 
 ## Open Questions
-- Should non-finite `gain`/`pitch` be rejected explicitly or sanitized to bounded finite defaults in both backends?
 - Should server-side audio remain strictly opt-in in all deployment profiles?
 - If a future engine contract needs speaker-layout-specific behavior (rear/LFE semantics), should we introduce an explicit engine routing mode switch while preserving current default behavior?
 

@@ -51,8 +51,8 @@ git -C ../KARMA-REPO fetch --all --prune
   - If fetch fails, mark KARMA state stale explicitly.
 
 ## Current Priority Override
-- Renderer parity and engine-network foundation are co-equal P0 tracks.
-- Prioritize these ahead of non-blocking audio/content-mount/UI follow-up.
+- Renderer parity and renderer-shadow-hardening are co-equal P0 tracks.
+- Prioritize these ahead of non-blocking audio/content-mount/UI and queued backend follow-up.
 - Convert KARMA feature intent into rewrite-owned contracts/docs.
 
 ## KARMA Intake Loop (Required)

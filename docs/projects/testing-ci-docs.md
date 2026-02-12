@@ -10,7 +10,8 @@
 Own quality gates, test wrappers, CI workflows, and cross-track documentation consistency.
 
 ## Primary Specs
-- `docs/projects/server-network.md`
+- `docs/archive/server-network-completed-2026-02-12.md` (reference-only closeout snapshot)
+- `docs/archive/engine-network-foundation-completed-2026-02-12.md` (reference-only closeout snapshot)
 - `docs/projects/engine-backend-testing.md`
 - `docs/projects/core-engine-infrastructure.md` (references + delegation readiness)
 
@@ -20,7 +21,6 @@ This project is support infrastructure and can run in parallel with implementati
 ## Owned Paths
 - `m-rewrite/scripts/test-*.sh`
 - `m-rewrite/.github/workflows/*`
-- `docs/projects/server-network.md`
 - `docs/projects/engine-backend-testing.md`
 - `docs/projects/*`
 
@@ -43,14 +43,14 @@ All commands below are run from `m-rewrite/`.
 | Local delegated closeout | `./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio` then `./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio` then `./scripts/run-renderer-vq2-evidence.sh` | `run-renderer-vq2-evidence.sh` is a standalone evidence runner (logs + timeout exit code + child-process cleanup reporting); not integrated into other wrappers. |
 | CI baseline (current) | `.github/workflows/core-test-suite.yml` wrapper gates (`./scripts/test-engine-backends.sh`, `./scripts/test-server-net.sh`) | No dedicated renderer VQ evidence CI wrapper yet; renderer evidence remains an explicit specialist closeout artifact. |
 
-### Server/Net Track (`docs/projects/engine-network-foundation.md`, `docs/projects/server-network.md`)
+### Server/Net Track (`docs/archive/engine-network-foundation-completed-2026-02-12.md`, `docs/archive/server-network-completed-2026-02-12.md`)
 | Context | Required local/CI flow | Guard/wrapper posture |
 |---|---|---|
 | Local delegated closeout | `./bzbuild.py -c <assigned-server-net-build-dir>` then `./scripts/test-server-net.sh <assigned-server-net-build-dir>` | `./scripts/test-server-net.sh` runs `./scripts/check-network-backend-encapsulation.sh` as a pre-check before configure/build/test. |
 | Optional standalone guard invocation | `./scripts/check-network-backend-encapsulation.sh` | Supported for fast isolation/debug; functionally redundant if `test-server-net.sh` already ran in the same tree state. |
 | CI baseline (current) | `.github/workflows/core-test-suite.yml` runs `./scripts/test-server-net.sh` (default `build-dev`) | Guard pre-check is enforced in CI via wrapper integration. |
 
-### Platform Seam Track (`docs/projects/platform-backend-policy.md`)
+### Platform Seam Track (`docs/archive/platform-backend-policy-completed-2026-02-12.md`)
 | Context | Required local/CI flow | Guard/wrapper posture |
 |---|---|---|
 | Local delegated closeout | `./scripts/check-platform-seam.sh` then `./bzbuild.py -c build-sdl3-bgfx-jolt-rmlui-sdl3audio` | `check-platform-seam.sh` is currently standalone (not integrated into `test-engine-backends.sh`). |
@@ -92,6 +92,10 @@ All commands below are run from `m-rewrite/`.
 - Source-of-truth validation flows now explicitly cover renderer evidence, server/net wrapper + guard integration, and platform seam standalone guard usage.
 - Guard command posture is now explicit and drift-checkable (standalone vs wrapper-integrated).
 - Build isolation and `bzbuild.py` policy wording is now centralized in this file.
+
+## Known Residual Risk
+- `2026-02-12`: `client_transport_contract_test` (live reconnect/timeout-race coverage) remains scheduler/load-sensitive in some runs, most visibly under `./scripts/test-server-net.sh build-sdl3-bgfx-physx-rmlui-miniaudio`; immediate reruns can hit different timeout-race assertions before clearing.
+- Current posture: treat this as known timing flake in runtime stress coverage (not a protocol/runtime contract change), keep explicit wrapper evidence in closeouts, and rerun immediately when this single-test failure appears in an otherwise clean server-net gate.
 
 ## Open Questions
 - Should `check-platform-seam.sh` be integrated into an existing wrapper and CI path, or kept as explicit standalone enforcement?

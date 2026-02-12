@@ -1,10 +1,10 @@
 # Server Network
 
 ## Project Snapshot
-- Current owner: `codex`
-- Status: `in progress` (disconnect integration harness now covers rapid reconnect/leave ordering churn)
-- Immediate next task: add one cross-peer reconnect race edge case (new join while prior disconnect drains).
-- Validation gate: `./scripts/test-server-net.sh`
+- Current owner: `unassigned`
+- Status: `completed` (closeout slice accepted; disconnect lifecycle integration harness now covers cross-peer reconnect race while prior disconnect drains)
+- Immediate next task: none; reopen only for concrete protocol/runtime regression follow-up.
+- Validation gate: `./scripts/test-server-net.sh <build-dir>`
 
 ## Mission
 Own server-side networking/event-source/runtime behavior for join/spawn/shot/leave flows and keep protocol contracts stable.
@@ -47,7 +47,8 @@ Own server-side networking/event-source/runtime behavior for join/spawn/shot/lea
 5. `transport_disconnect_lifecycle_integration_test`
 - disconnect/explicit-leave lifecycle correctness and stale-id suppression,
 - validates no duplicate leave emission across explicit leave + transport disconnect,
-- validates rapid reconnect/leave churn ordering (`join` precedes single `leave` per churn client id).
+- validates rapid reconnect/leave churn ordering (`join` precedes single `leave` per churn client id),
+- validates overlap race handling where a new client join remains isolated while prior client disconnect leave drains.
 
 6. `transport_environment_probe_test`
 - validates transport loopback environment preconditions used by loopback integration tests.
@@ -59,22 +60,8 @@ Own server-side networking/event-source/runtime behavior for join/spawn/shot/lea
 From `m-rewrite/`:
 
 ```bash
-./scripts/test-server-net.sh
-```
-
-Equivalent explicit commands:
-
-```bash
-cmake --build build-dev --target \
-  transport_environment_probe_test \
-  server_net_contract_test \
-  server_runtime_event_rules_test \
-  transport_loopback_integration_test \
-  transport_multiclient_loopback_test \
-  transport_disconnect_lifecycle_integration_test \
-  client_world_package_safety_integration_test
-
-ctest --test-dir build-dev -R "server_net_contract_test|server_runtime_event_rules_test|transport_environment_probe_test|transport_loopback_integration_test|transport_multiclient_loopback_test|transport_disconnect_lifecycle_integration_test|client_world_package_safety_integration_test" --output-on-failure
+./bzbuild.py -c <build-dir>
+./scripts/test-server-net.sh <build-dir>
 ```
 
 ## Result Interpretation Rules
@@ -86,7 +73,7 @@ ctest --test-dir build-dev -R "server_net_contract_test|server_runtime_event_rul
 From `m-rewrite/`:
 
 ```bash
-./scripts/test-server-net.sh
+./scripts/test-server-net.sh <build-dir>
 ```
 
 ## Trace Channels
@@ -104,7 +91,21 @@ Full legacy material preserved at:
 - [x] Assigned build + wrapper validation commands run, with results recorded.
 - [x] Trace signal quality preserved.
 
-## Status/Handoff Notes (2026-02-10)
+## Status/Handoff Notes
+- 2026-02-12 closeout slice accepted:
+  - file: `m-rewrite/src/game/tests/transport_disconnect_lifecycle_integration_test.cpp`
+  - added overlap-race edge case where `drain-new` joins while `drain-old` disconnect leave drains, and asserts:
+    - `drain-new` receives a distinct client id from `drain-old`,
+    - exactly one `ClientLeave` for `drain-old`,
+    - exactly one `ClientJoin` for `drain-new`,
+    - no leaked `ClientLeave` onto `drain-new` during prior disconnect drain.
+  - protocol/schema scope intentionally unchanged:
+    - no edits to `messages.proto`, `protocol.hpp`, `protocol_codec.*`
+  - validation run in isolated build profile:
+    - `cd m-rewrite && ./bzbuild.py -c build-sdl3-bgfx-physx-rmlui-miniaudio`
+    - Result: success (`[100%] Built target transport_disconnect_lifecycle_integration_test`)
+    - `cd m-rewrite && ./scripts/test-server-net.sh build-sdl3-bgfx-physx-rmlui-miniaudio`
+    - Result: PASS (9/9), including `transport_disconnect_lifecycle_integration_test`.
 - Added one reconnect/leave ordering edge slice in runtime integration harness:
   - file: `m-rewrite/src/game/tests/transport_disconnect_lifecycle_integration_test.cpp`
   - new churn phase runs rapid leave + double-disconnect + reconnect cycles and asserts:

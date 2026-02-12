@@ -50,7 +50,7 @@ git -C ../KARMA-REPO fetch --all --prune
   - KARMA capability intake under rewrite-owned contracts.
 - Co-equal top priorities:
   - `docs/projects/renderer-parity.md`
-  - `docs/projects/engine-network-foundation.md`
+  - `docs/projects/renderer-shadow-hardening.md`
 
 ## Non-Negotiable Execution Guards
 - Use `./bzbuild.py <build-dir>` for delegated configure/build/test workflows.

@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-platform-backend-policy`
-- Status: `in progress (P2 medium; Slice 1-4 complete; admission contract active)`
-- Immediate next task: keep this track queued unless a concrete second-backend proposal packet meets entry criteria.
+- Status: `completed` (archived closeout snapshot; Slice 1-4 complete with admission contract active)
+- Immediate next task: `none` (reference-only; reopen via a new active project doc if a concrete second-backend blocker is accepted).
 - Strategic alignment track: `shared unblocker (architecture hygiene)`
 - Validation gate: docs lint must pass for every slice; code-touching slices must also pass assigned `bzbuild.py` and wrapper gates.
 
@@ -104,6 +104,10 @@ From `m-rewrite/`:
 - `2026-02-11`: Slice 4 (future reintroduction contract) completed:
   - codified formal second-backend admission contract, conformance gate matrix, stage-based promotion checklist, and speculative-work rejection criteria,
   - kept SDL3 as only active backend and did not add dormant backend implementation code.
+- `2026-02-12`: Project closed and archived:
+  - active delegation ownership moved out of `docs/projects/`,
+  - archive snapshot path set to `docs/archive/platform-backend-policy-completed-2026-02-12.md`,
+  - reopen rule locked to explicit new project doc creation when admission entry criteria are met.
 
 ## Slice 1 Inventory (GLFW/SDL2 References)
 | Path / Reference | Decision | Rationale |

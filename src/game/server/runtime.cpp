@@ -4,21 +4,19 @@
 #include "server/server_game.hpp"
 #include "server/runtime_event_rules.hpp"
 
+#include "karma/app/backend_resolution.hpp"
+#include "karma/app/bootstrap_scaffold.hpp"
 #include "karma/app/engine_server_app.hpp"
-#include "karma/audio/backend.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/config_validation.hpp"
 #include "karma/common/logging.hpp"
-#include "karma/physics/backend.hpp"
 
 #include <spdlog/spdlog.h>
 
 #include <atomic>
-#include <algorithm>
 #include <cstddef>
 #include <csignal>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -34,71 +32,12 @@ void OnSignal(int signum) {
     g_running.store(false);
 }
 
-karma::physics_backend::BackendKind ResolvePhysicsBackendFromOptions(const CLIOptions& options) {
-    const std::string configured = options.backend_physics_explicit
-        ? options.backend_physics
-        : karma::config::ReadStringConfig("physics.backend", "auto");
-    const auto parsed = karma::physics_backend::ParseBackendKind(configured);
-    if (!parsed) {
-        const char* source =
-            options.backend_physics_explicit ? "--backend-physics" : "config 'physics.backend'";
-        throw std::runtime_error(std::string("Invalid value for ") + source + ": '" + configured +
-                                 "' (expected: auto|jolt|physx)");
-    }
-    if (*parsed != karma::physics_backend::BackendKind::Auto) {
-        const auto compiled = karma::physics_backend::CompiledBackends();
-        const bool supported = std::any_of(
-            compiled.begin(),
-            compiled.end(),
-            [parsed](karma::physics_backend::BackendKind kind) { return kind == *parsed; });
-        if (!supported) {
-            throw std::runtime_error(
-                std::string("Configured physics backend '") + configured + "' is not compiled into this binary.");
-        }
-    }
-    return *parsed;
-}
-
-karma::audio_backend::BackendKind ResolveAudioBackendFromOptions(const CLIOptions& options) {
-    const std::string configured = options.backend_audio_explicit
-        ? options.backend_audio
-        : karma::config::ReadStringConfig("audio.backend", "auto");
-    const auto parsed = karma::audio_backend::ParseBackendKind(configured);
-    if (!parsed) {
-        const char* source =
-            options.backend_audio_explicit ? "--backend-audio" : "config 'audio.backend'";
-        throw std::runtime_error(std::string("Invalid value for ") + source + ": '" + configured +
-                                 "' (expected: auto|sdl3audio|miniaudio)");
-    }
-    if (*parsed != karma::audio_backend::BackendKind::Auto) {
-        const auto compiled = karma::audio_backend::CompiledBackends();
-        const bool supported = std::any_of(
-            compiled.begin(),
-            compiled.end(),
-            [parsed](karma::audio_backend::BackendKind kind) { return kind == *parsed; });
-        if (!supported) {
-            throw std::runtime_error(
-                std::string("Configured audio backend '") + configured + "' is not compiled into this binary.");
-        }
-    }
-    return *parsed;
-}
-
 } // namespace
 
 int RunRuntime(const CLIOptions& options) {
     const auto issues = karma::config::ValidateRequiredKeys(karma::config::ServerRequiredKeys());
-    if (!issues.empty()) {
-        for (const auto& issue : issues) {
-            if (options.strict_config) {
-                spdlog::error("config validation: {}: {}", issue.path, issue.message);
-            } else {
-                spdlog::warn("config validation: {}: {}", issue.path, issue.message);
-            }
-        }
-        if (options.strict_config) {
-            return 1;
-        }
+    if (!karma::app::ReportRequiredConfigIssues(issues, options.strict_config)) {
+        return 1;
     }
 
     const auto world_context = domain::LoadWorldSessionContext(options);
@@ -137,8 +76,10 @@ int RunRuntime(const CLIOptions& options) {
     engineConfig.max_substeps =
         static_cast<int>(karma::config::ReadUInt16Config({"simulation.maxSubsteps"},
                                                           static_cast<uint16_t>(engineConfig.max_substeps)));
-    engineConfig.physics_backend = ResolvePhysicsBackendFromOptions(options);
-    engineConfig.audio_backend = ResolveAudioBackendFromOptions(options);
+    engineConfig.physics_backend =
+        karma::app::ResolvePhysicsBackendFromOption(options.backend_physics, options.backend_physics_explicit);
+    engineConfig.audio_backend =
+        karma::app::ResolveAudioBackendFromOption(options.backend_audio, options.backend_audio_explicit);
     engineConfig.enable_audio = options.backend_audio_explicit
         || karma::config::ReadBoolConfig({"audio.serverEnabled"}, false);
     ServerGame game{world_context->world_name};

@@ -1,6 +1,7 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/network/server_transport.hpp"
+#include "karma/network/transport_config_mapping.hpp"
 #include "karma/common/world_archive.hpp"
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/logging.hpp"
@@ -288,28 +289,22 @@ std::optional<std::vector<std::byte>> BuildWorldDeltaArchive(
 class TransportServerEventSource final : public ServerEventSource {
  public:
     explicit TransportServerEventSource(uint16_t port) : port_(port) {
-        karma::network::ServerTransportConfig transport_config{};
-        transport_config.listen_port = port_;
-        transport_config.max_clients = kMaxClients;
-        transport_config.channel_count = kNumChannels;
-
-        const std::string backend_name =
-            karma::config::ReadStringConfig({"network.ServerTransportBackend"}, std::string("auto"));
-        transport_config.backend_name = backend_name;
-        const auto parsed_backend = karma::network::ParseServerTransportBackend(backend_name);
-        if (parsed_backend.has_value()) {
-            transport_config.backend = *parsed_backend;
-        } else {
+        bool custom_backend = false;
+        karma::network::ServerTransportConfig transport_config =
+            karma::network::ResolveServerTransportConfigFromConfig(port_,
+                                                                   kMaxClients,
+                                                                   kNumChannels,
+                                                                   &custom_backend);
+        if (custom_backend) {
             KARMA_TRACE("net.server",
                         "ServerEventSource: using custom server transport backend='{}'",
-                        backend_name);
+                        transport_config.backend_name);
         }
 
         transport_ = karma::network::CreateServerTransport(transport_config);
         if (!transport_ || !transport_->isReady()) {
-            const std::string configured_backend = transport_config.backend_name.empty()
-                ? std::string(karma::network::ServerTransportBackendName(transport_config.backend))
-                : transport_config.backend_name;
+            const std::string configured_backend =
+                karma::network::EffectiveServerTransportBackendName(transport_config);
             spdlog::error("ServerEventSource: failed to create server transport backend={} port={}",
                           configured_backend,
                           port_);

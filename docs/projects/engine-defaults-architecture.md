@@ -22,7 +22,7 @@ This is an architecture-documentation track that aligns multiple implementation 
 - It should not prescribe backend-specific implementation details.
 - Coordinate before changing:
   - `docs/projects/physics-backend.md`
-  - `docs/projects/audio-backend.md`
+  - `docs/archive/audio-backend-completed-2026-02-12.md` (reference-only closeout snapshot)
   - `docs/projects/core-engine-infrastructure.md`
 
 ## Non-Goals
@@ -93,6 +93,7 @@ From repository root:
   - override/extension limits,
   - validation/failure expectations,
   - required tests and wrapper-gate expectations aligned to `core-engine-infrastructure.md`.
+- `2026-02-12`: `audio-backend` track archived at `docs/archive/audio-backend-completed-2026-02-12.md` after non-finite `gain`/`pitch` deterministic rejection parity closeout; this architecture track now treats that snapshot as reference-only unless a new active audio project doc is created.
 - `2026-02-10`: Validation run: `./docs/scripts/lint-project-docs.sh` passed (`[lint] OK`).
 - `2026-02-11`: Codified stable-first implementation sequencing in `docs/projects/core-engine-infrastructure.md` with staged entry/implementation/exit criteria across scheduler/component/physics/audio contracts, explicit wrapper-gate closeout rules, and parallelization constraints.
 - `2026-02-11`: Added stage-1 scheduler implementation kickoff packet in `docs/projects/core-engine-infrastructure.md` with:

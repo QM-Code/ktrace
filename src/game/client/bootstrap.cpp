@@ -1,54 +1,39 @@
 #include "client/bootstrap.hpp"
 
+#include "karma/app/backend_resolution.hpp"
+#include "karma/app/bootstrap_scaffold.hpp"
 #include "karma/common/config_store.hpp"
-#include "karma/common/data_dir_override.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
 #include "karma/common/config_validation.hpp"
+#include "karma/common/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
+#include <filesystem>
 #include <stdexcept>
 #include <vector>
 
 namespace bz3::client {
 namespace {
-
-const char* CompiledPlatformBackendName() {
-#if defined(KARMA_WINDOW_BACKEND_SDL3)
-    return "sdl3";
-#elif defined(KARMA_WINDOW_BACKEND_SDL2)
-    return "sdl2";
-#elif defined(KARMA_WINDOW_BACKEND_GLFW)
-    return "glfw";
-#else
-    return "unknown";
-#endif
-}
-
 }
 
 void ConfigureLogging(const CLIOptions& options) {
-    karma::logging::ConfigureLogPatterns(options.timestamp_logging);
-    spdlog::set_level(options.verbose ? spdlog::level::debug : spdlog::level::info);
-    if (options.trace_explicit) {
-        karma::logging::EnableTraceChannels(options.trace_channels);
-    }
+    karma::app::ConfigureLoggingFromOptions(options.timestamp_logging,
+                                            options.verbose,
+                                            options.trace_explicit,
+                                            options.trace_channels);
 }
 
 void ConfigureDataAndConfig(int argc, char** argv) {
-    karma::data::DataPathSpec spec;
-    spec.appName = "bz3";
-    spec.dataDirEnvVar = "BZ3_DATA_DIR";
-    spec.requiredDataMarker = "common/config.json";
-    karma::data::SetDataPathSpec(spec);
-
-    const auto dataDirResult = karma::data::ApplyDataDirOverrideFromArgs(argc, argv);
-    const std::vector<karma::config::ConfigFileSpec> configSpecs = {
+    karma::app::BootstrapConfigSpec spec{};
+    spec.app_name = "bz3";
+    spec.data_dir_env_var = "BZ3_DATA_DIR";
+    spec.required_data_marker = "common/config.json";
+    spec.default_user_config_relative = std::filesystem::path("config.json");
+    spec.config_specs = {
         {"common/config.json", "data/common/config.json", spdlog::level::err, true, true},
         {"client/config.json", "data/client/config.json", spdlog::level::debug, false, true}
     };
-    karma::config::ConfigStore::Initialize(configSpecs, dataDirResult.userConfigPath);
+    karma::app::ConfigureDataAndConfigFromSpec(spec, argc, argv);
 }
 
 void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
@@ -59,11 +44,8 @@ void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
         KARMA_TRACE("config", "Applied CLI language override: {}", options.language);
     }
     if (options.backend_platform_explicit) {
-        const std::string compiled = CompiledPlatformBackendName();
-        if (options.backend_platform != compiled) {
-            throw std::runtime_error("Requested CLI platform backend '" + options.backend_platform +
-                                     "' but this build only supports '" + compiled + "'.");
-        }
+        karma::app::ValidatePlatformBackendFromOption(options.backend_platform,
+                                                      options.backend_platform_explicit);
         KARMA_TRACE("engine.app", "CLI option --backend-platform set: '{}'", options.backend_platform);
     }
     if (options.backend_render_explicit) {
@@ -80,17 +62,8 @@ void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
     }
 
     const auto issues = karma::config::ValidateRequiredKeys(karma::config::ClientRequiredKeys());
-    if (!issues.empty()) {
-        for (const auto& issue : issues) {
-            if (options.strict_config) {
-                spdlog::error("config validation: {}: {}", issue.path, issue.message);
-            } else {
-                spdlog::warn("config validation: {}: {}", issue.path, issue.message);
-            }
-        }
-        if (options.strict_config) {
-            throw std::runtime_error("Client required config validation failed.");
-        }
+    if (!karma::app::ReportRequiredConfigIssues(issues, options.strict_config)) {
+        throw std::runtime_error("Client required config validation failed.");
     }
 
     if (options.name_explicit) {

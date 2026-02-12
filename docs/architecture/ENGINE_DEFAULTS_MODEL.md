@@ -205,7 +205,7 @@ The facade should map to core primitives and stay backend-neutral.
 When this model changes, update:
 - `docs/projects/engine-defaults-architecture.md` (status, open questions, next tasks),
 - `docs/projects/core-engine-infrastructure.md` (implementation sequencing impact),
-- `docs/projects/physics-backend.md` and `docs/projects/audio-backend.md` (contract implications),
+- `docs/projects/physics-backend.md` and `docs/archive/audio-backend-completed-2026-02-12.md` (contract implications; audio snapshot is reference-only unless reopened),
 - `docs/projects/ASSIGNMENTS.md` (owner/status/next task).
 
 ## Open Questions

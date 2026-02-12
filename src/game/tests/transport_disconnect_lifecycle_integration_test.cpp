@@ -507,6 +507,129 @@ TestResult TestDisconnectLifecycle() {
         DestroyClientEndpoint(&churn_client);
     }
 
+    server_events.clear();
+    auto draining_client_opt = CreateClientEndpoint(fixture->port);
+    if (!draining_client_opt.has_value()) {
+        PrintSkip("unable to create draining transport client");
+        return TestResult::Skip;
+    }
+    ClientEndpoint draining_client = std::move(*draining_client_opt);
+    const auto draining_step = [&]() {
+        auto polled = fixture->source->poll();
+        server_events.insert(server_events.end(), polled.begin(), polled.end());
+        PumpClient(&draining_client);
+    };
+    if (!WaitUntil(std::chrono::milliseconds(1200),
+                   draining_step,
+                   [&]() { return draining_client.capture.connected; })) {
+        DestroyClientEndpoint(&draining_client);
+        return FailTest("disconnect-test: timed out waiting for draining client connect");
+    }
+
+    if (!SendPayload(&draining_client,
+                     bz3::net::EncodeClientJoinRequest(
+                         "drain-old", bz3::net::kProtocolVersion, "", "", "", "", "", 0))) {
+        DestroyClientEndpoint(&draining_client);
+        return FailTest("disconnect-test: failed sending drain-old join");
+    }
+    if (!WaitUntil(std::chrono::milliseconds(1200), draining_step, [&]() {
+            return FindJoinedClientId(server_events, "drain-old").has_value();
+        })) {
+        DestroyClientEndpoint(&draining_client);
+        return FailTest("disconnect-test: timed out waiting for drain-old ClientJoin");
+    }
+    const auto draining_id_opt = FindJoinedClientId(server_events, "drain-old");
+    if (!draining_id_opt.has_value()) {
+        DestroyClientEndpoint(&draining_client);
+        return FailTest("disconnect-test: missing drain-old client id after join");
+    }
+    const uint32_t draining_id = *draining_id_opt;
+
+    server_events.clear();
+    static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&draining_client.endpoint, 0));
+    static_cast<void>(karma::network::tests::DisconnectLoopbackTransportEndpoint(&draining_client.endpoint, 0));
+
+    auto takeover_client_opt = CreateClientEndpoint(fixture->port);
+    if (!takeover_client_opt.has_value()) {
+        DestroyClientEndpoint(&draining_client);
+        PrintSkip("unable to create takeover transport client");
+        return TestResult::Skip;
+    }
+    ClientEndpoint takeover_client = std::move(*takeover_client_opt);
+    const auto overlap_step = [&]() {
+        auto polled = fixture->source->poll();
+        server_events.insert(server_events.end(), polled.begin(), polled.end());
+        PumpClient(&draining_client);
+        PumpClient(&takeover_client);
+    };
+    if (!WaitUntil(std::chrono::milliseconds(1200),
+                   overlap_step,
+                   [&]() { return takeover_client.capture.connected; })) {
+        DestroyClientEndpoint(&takeover_client);
+        DestroyClientEndpoint(&draining_client);
+        return FailTest("disconnect-test: timed out waiting for takeover client connect");
+    }
+    if (!SendPayload(&takeover_client,
+                     bz3::net::EncodeClientJoinRequest(
+                         "drain-new", bz3::net::kProtocolVersion, "", "", "", "", "", 0))) {
+        DestroyClientEndpoint(&takeover_client);
+        DestroyClientEndpoint(&draining_client);
+        return FailTest("disconnect-test: failed sending drain-new join");
+    }
+    if (!WaitUntil(std::chrono::milliseconds(1200), overlap_step, [&]() {
+            return FindJoinedClientId(server_events, "drain-new").has_value()
+                   && CountEvents(
+                          server_events, bz3::server::net::ServerInputEvent::Type::ClientLeave, draining_id)
+                          >= 1;
+        })) {
+        DestroyClientEndpoint(&takeover_client);
+        DestroyClientEndpoint(&draining_client);
+        return FailTest("disconnect-test: timed out waiting for overlap join/leave race coverage");
+    }
+
+    const auto takeover_id_opt = FindJoinedClientId(server_events, "drain-new");
+    if (!takeover_id_opt.has_value()) {
+        DestroyClientEndpoint(&takeover_client);
+        DestroyClientEndpoint(&draining_client);
+        return FailTest("disconnect-test: missing drain-new client id after overlap join");
+    }
+    const uint32_t takeover_id = *takeover_id_opt;
+    if (!Expect(takeover_id != draining_id,
+                "disconnect-test: overlap join reused prior draining client id")) {
+        DestroyClientEndpoint(&takeover_client);
+        DestroyClientEndpoint(&draining_client);
+        return TestResult::Fail;
+    }
+
+    for (int i = 0; i < 80; ++i) {
+        overlap_step();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (!Expect(
+            CountEvents(server_events, bz3::server::net::ServerInputEvent::Type::ClientLeave, draining_id) == 1,
+            "disconnect-test: overlap drain emitted duplicate leave for prior client")) {
+        DestroyClientEndpoint(&takeover_client);
+        DestroyClientEndpoint(&draining_client);
+        return TestResult::Fail;
+    }
+    if (!Expect(
+            CountEvents(server_events, bz3::server::net::ServerInputEvent::Type::ClientJoin, takeover_id) == 1,
+            "disconnect-test: overlap join emitted duplicate join for takeover client")) {
+        DestroyClientEndpoint(&takeover_client);
+        DestroyClientEndpoint(&draining_client);
+        return TestResult::Fail;
+    }
+    if (!Expect(
+            CountEvents(server_events, bz3::server::net::ServerInputEvent::Type::ClientLeave, takeover_id) == 0,
+            "disconnect-test: overlap drain leaked leave event onto takeover client")) {
+        DestroyClientEndpoint(&takeover_client);
+        DestroyClientEndpoint(&draining_client);
+        return TestResult::Fail;
+    }
+
+    DestroyClientEndpoint(&takeover_client);
+    DestroyClientEndpoint(&draining_client);
+
     return TestResult::Pass;
 }
 

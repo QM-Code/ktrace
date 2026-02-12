@@ -8,7 +8,7 @@
 
 ## Project Linkage
 - Physics project: `docs/projects/physics-backend.md`
-- Audio project: `docs/projects/audio-backend.md`
+- Audio project (reference-only closeout snapshot): `docs/archive/audio-backend-completed-2026-02-12.md`
 - Governance project: `docs/projects/testing-ci-docs.md`
 
 ## Purpose

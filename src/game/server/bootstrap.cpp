@@ -1,9 +1,6 @@
 #include "server/bootstrap.hpp"
 
-#include "karma/common/config_store.hpp"
-#include "karma/common/data_dir_override.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/app/bootstrap_scaffold.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -13,27 +10,23 @@
 namespace bz3::server {
 
 void ConfigureLogging(const CLIOptions& options) {
-    karma::logging::ConfigureLogPatterns(options.timestamp_logging);
-    spdlog::set_level(options.verbose ? spdlog::level::debug : spdlog::level::info);
-    if (options.trace_explicit) {
-        karma::logging::EnableTraceChannels(options.trace_channels);
-    }
+    karma::app::ConfigureLoggingFromOptions(options.timestamp_logging,
+                                            options.verbose,
+                                            options.trace_explicit,
+                                            options.trace_channels);
 }
 
 void ConfigureDataAndConfig(int argc, char** argv) {
-    karma::data::DataPathSpec spec;
-    spec.appName = "bz3";
-    spec.dataDirEnvVar = "BZ3_DATA_DIR";
-    spec.requiredDataMarker = "common/config.json";
-    karma::data::SetDataPathSpec(spec);
-
-    const auto dataDirResult =
-        karma::data::ApplyDataDirOverrideFromArgs(argc, argv, std::filesystem::path("server/config.json"));
-    const std::vector<karma::config::ConfigFileSpec> configSpecs = {
+    karma::app::BootstrapConfigSpec spec{};
+    spec.app_name = "bz3";
+    spec.data_dir_env_var = "BZ3_DATA_DIR";
+    spec.required_data_marker = "common/config.json";
+    spec.default_user_config_relative = std::filesystem::path("server/config.json");
+    spec.config_specs = {
         {"common/config.json", "data/common/config.json", spdlog::level::err, true, true},
         {"server/config.json", "data/server/config.json", spdlog::level::err, true, true}
     };
-    karma::config::ConfigStore::Initialize(configSpecs, dataDirResult.userConfigPath);
+    karma::app::ConfigureDataAndConfigFromSpec(spec, argc, argv);
 }
 
 } // namespace bz3::server

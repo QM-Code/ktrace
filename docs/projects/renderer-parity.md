@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-renderer-parity`
-- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 corrective debug/fix remains in progress with acceptance blocked on operator visual+perf confirmation; VQ4 queued)`
-- Immediate next task: run operator VQ3 re-check on corrected BGFX+Diligent builds (`t=6s`, `t=16s`) and confirm both localized ground cast shadows and no hitching regressions before any acceptance decision; keep VQ4 untouched/queued.
+- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 active implementation moved to renderer-shadow-hardening track; VQ4 queued)`
+- Immediate next task: treat `docs/projects/renderer-shadow-hardening.md` as the active execution source-of-truth for VQ3 shadow stabilization/intake; keep this file synchronized with accepted outcomes and keep VQ4 untouched/queued until VQ3 is accepted.
 - Validation gate: both assigned renderer build dirs via `./bzbuild.py` plus both client runs listed in this file; run docs lint whenever this project doc or assignment board is updated.
 
 ## Mission
@@ -79,6 +79,7 @@ timeout 20s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --backend-render dil
 5. Update status and parity notes.
 
 ## Current Status
+- `2026-02-12`: active shadow stabilization/investigation work (sandbox bring-up, KARMA commit-mined shadow intake findings, and staged hardening plan) has been moved to `docs/projects/renderer-shadow-hardening.md`; this file remains the parity ledger and VQ rubric host, and must be synced whenever shadow-hardening slices are accepted.
 - `2026-02-11`: merged former `renderer-visual-quality.md` into this project as VQ1-VQ4 follow-up slices so renderer execution remains under one track/owner.
 - `2026-02-11`: VQ1 diagnostics baseline accepted as shared unblocker for measurable renderer quality outcomes (deterministic repro recipe + explicit VQ2/VQ3 thresholds) while preserving backend-parity boundaries.
 - `2026-02-11`: VQ2 texture minification quality slice started: shared RGBA8 mip-chain generation/upload path and anisotropic/trilinear material sampler policy are now wired for BGFX + Diligent under shared renderer contract helpers; VQ3/VQ4 remain untouched.
@@ -293,7 +294,7 @@ VQ3 closeout decision (`2026-02-11`, current state):
 24. R25 BGFX source-absent integrity signature-model hardening slice: codify canonical asymmetric-signature verification contract inputs/validation boundaries for signed-envelope metadata (without introducing external trust-store rotation tooling yet), preserving deterministic disable reasons and accepted R1/R2/R3/R4/R5/R6/R7/R8/R9/R10/R11/R12/R13/R14/R15/R16/R17/R18/R19/R20/R21/R22/R23/R24 behavior. `Accepted 2026-02-11` (canonical verification-input boundary checks + deterministic `...verification_inputs_invalid` propagation).
 25. VQ1 visual-quality diagnostics baseline slice: capture deterministic repro settings and concrete acceptance thresholds for distant texture aliasing/grain and obvious shadow caster/receiver visibility in roaming scenes. `Accepted 2026-02-11` (deterministic repro recipe + phased camera-path scoring rubric + explicit VQ2/VQ3 thresholds).
 26. VQ2 texture minification quality slice: add mip-chain generation/upload plus trilinear/anisotropic sampler policy across BGFX + Diligent material texture paths (including fallback/composite paths) with parity guardrails. `Accepted 2026-02-11` (manual worksheet TA scores: BGFX `0/0`, Diligent `0/0`, parity deltas `0/0`, all VQ2 rules passed).
-27. VQ3 visible directional shadowing slice: evolve bounded directional shadow path toward backend-parity projected shadow-map pass with per-pixel depth sampling (bias + bounded PCF), preserving deterministic fallback policy and contract boundaries. `In progress 2026-02-11` (operator baseline failure recorded; rejection-correction follow-up restored light-direction contract, reduced chunk/tessellation pressure, and re-established localized-ground diagnostics on BGFX/Diligent; acceptance still blocked on operator-visible ground-shadow and hitching confirmation + SV worksheet scoring at `t=6s` and `t=16s`).
+27. VQ3 visible directional shadowing slice: evolve bounded directional shadow path toward backend-parity projected shadow-map pass with per-pixel depth sampling (bias + bounded PCF), preserving deterministic fallback policy and contract boundaries. `In progress 2026-02-12` (active implementation + KARMA-intake execution moved to `docs/projects/renderer-shadow-hardening.md`; mirror only accepted outcomes back into this parity ledger, including final VQ3 worksheet closeout).
 28. VQ4 visual regression guardrail slice: add deterministic visual-quality assertions/metrics and align wrapper/testing docs with new renderer quality expectations. `Queued 2026-02-11`
 
 ## Active Specialist Packet (R2)
