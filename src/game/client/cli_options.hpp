@@ -35,6 +35,9 @@ struct CLIOptions {
     bool trace_explicit = false;
     std::string trace_channels;
     bool timestamp_logging = false;
+
+    std::string community_list_active;
+    bool community_list_active_explicit = false;
 };
 
 CLIOptions ParseCLIOptions(int argc, char** argv);

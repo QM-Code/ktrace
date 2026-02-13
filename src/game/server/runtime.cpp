@@ -93,6 +93,18 @@ int RunRuntime(const CLIOptions& options) {
     community_heartbeat.configureFromConfig(karma::config::ConfigStore::Merged(),
                                             listen_port,
                                             community_override);
+    if (community_heartbeat.enabled()) {
+        spdlog::info("Community heartbeat enabled: target='{}' advertise='{}' interval={}s max_players={}",
+                     community_heartbeat.communityUrl(),
+                     community_heartbeat.serverAddress(),
+                     community_heartbeat.intervalSeconds(),
+                     community_heartbeat.maxPlayers());
+    } else {
+        spdlog::info("Community heartbeat disabled: target='{}' advertise='{}' interval={}s",
+                     community_heartbeat.communityUrl(),
+                     community_heartbeat.serverAddress(),
+                     community_heartbeat.intervalSeconds());
+    }
     ServerGame game{world_context->world_name};
     std::unique_ptr<net::ServerEventSource> event_source = net::CreateServerEventSource(options);
     uint32_t next_global_shot_id = 1;

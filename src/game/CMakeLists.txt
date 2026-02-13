@@ -15,6 +15,7 @@ target_include_directories(bz3_proto PUBLIC
 add_executable(bz3
     ${PROJECT_SOURCE_DIR}/src/game/client/bootstrap.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/cli_options.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/community_server_list.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/net/client_connection.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/main.cpp
     ${PROJECT_SOURCE_DIR}/src/game/game.cpp
@@ -102,6 +103,20 @@ if(BUILD_TESTING)
     )
     add_test(NAME server_runtime_event_rules_test
              COMMAND server_runtime_event_rules_test)
+
+    add_executable(community_heartbeat_integration_test
+        ${PROJECT_SOURCE_DIR}/src/game/tests/community_heartbeat_integration_test.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/server/cli_options.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/server/community_heartbeat.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/server/heartbeat_client.cpp
+    )
+    target_include_directories(community_heartbeat_integration_test PRIVATE
+        ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/src/game
+    )
+    target_link_libraries(community_heartbeat_integration_test PRIVATE karma_engine_core)
+    add_test(NAME community_heartbeat_integration_test
+             COMMAND community_heartbeat_integration_test)
 
     add_executable(transport_loopback_integration_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/transport_loopback_integration_test.cpp

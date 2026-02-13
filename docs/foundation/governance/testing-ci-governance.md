@@ -16,6 +16,10 @@ This document defines long-lived governance for validation wrappers, guard scrip
    - `./scripts/test-server-net.sh <build-dir>`
    - includes network-backend seam guard (`./scripts/check-network-backend-encapsulation.sh`) as part of wrapper execution.
 3. Additional standalone guards/evidence scripts remain explicit unless integrated into wrappers.
+4. Webserver unit + string gate (manual trigger until CI integration lands):
+   - `python3 ./src/webserver/tests/validate_strings.py --all`
+   - `python3 -m unittest discover -s src/webserver/tests/unit -p "test_*.py"`
+   - trigger rules are defined in `docs/foundation/governance/community-webserver-testing.md`.
 
 ## Server/Network Gate Interpretation
 - Treat `server_*` test failures as actionable contract/runtime regressions.
@@ -25,6 +29,7 @@ This document defines long-lived governance for validation wrappers, guard scrip
 
 ## CI Baseline Contract
 - `.github/workflows/core-test-suite.yml` should continue to invoke wrapper gates.
+- Webserver unit/string gate is currently not wired into CI workflows; treat it as required manual validation on documented triggers until CI wiring is added.
 - If a new guard becomes required for acceptance, either:
   - integrate it into an existing wrapper, or
   - document explicit standalone invocation + CI posture in the same change.
@@ -45,4 +50,5 @@ When changing wrappers/guards/CI:
 
 ## Related Docs
 - `docs/foundation/governance/engine-backend-testing.md`
+- `docs/foundation/governance/community-webserver-testing.md`
 - `docs/foundation/policy/execution-policy.md`

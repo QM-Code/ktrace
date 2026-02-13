@@ -9,10 +9,19 @@
 
 #include <chrono>
 #include <string>
+#include <utility>
 
 namespace bz3::server {
 
-CommunityHeartbeat::CommunityHeartbeat() : client_(std::make_unique<HeartbeatClient>()) {}
+CommunityHeartbeat::CommunityHeartbeat()
+    : CommunityHeartbeat(std::make_unique<HeartbeatClient>()) {}
+
+CommunityHeartbeat::CommunityHeartbeat(std::unique_ptr<IHeartbeatClient> client)
+    : client_(std::move(client)) {
+    if (!client_) {
+        client_ = std::make_unique<HeartbeatClient>();
+    }
+}
 
 CommunityHeartbeat::~CommunityHeartbeat() = default;
 
@@ -97,7 +106,7 @@ void CommunityHeartbeat::configureFromConfig(const karma::json::Value& merged_co
     next_heartbeat_time_ = std::chrono::steady_clock::time_point{};
 }
 
-void CommunityHeartbeat::update(const ServerGame& game) {
+void CommunityHeartbeat::update(size_t connected_client_count) {
     if (!enabled_ || interval_seconds_ <= 0 || community_url_.empty()) {
         return;
     }
@@ -110,9 +119,29 @@ void CommunityHeartbeat::update(const ServerGame& game) {
         return;
     }
 
-    const int player_count = static_cast<int>(game.connectedClientCount());
+    const int player_count = static_cast<int>(connected_client_count);
     client_->requestHeartbeat(community_url_, server_address_, player_count, max_players_);
     next_heartbeat_time_ = now + std::chrono::seconds(interval_seconds_);
+}
+
+bool CommunityHeartbeat::enabled() const {
+    return enabled_;
+}
+
+int CommunityHeartbeat::intervalSeconds() const {
+    return interval_seconds_;
+}
+
+const std::string& CommunityHeartbeat::communityUrl() const {
+    return community_url_;
+}
+
+const std::string& CommunityHeartbeat::serverAddress() const {
+    return server_address_;
+}
+
+int CommunityHeartbeat::maxPlayers() const {
+    return max_players_;
 }
 
 } // namespace bz3::server

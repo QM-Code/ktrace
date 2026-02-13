@@ -8,7 +8,17 @@
 
 namespace bz3::server {
 
-class HeartbeatClient {
+class IHeartbeatClient {
+ public:
+    virtual ~IHeartbeatClient() = default;
+
+    virtual void requestHeartbeat(const std::string& community_url,
+                                  const std::string& server_address,
+                                  int players,
+                                  int max_players) = 0;
+};
+
+class HeartbeatClient final : public IHeartbeatClient {
  public:
     HeartbeatClient();
     ~HeartbeatClient();
@@ -16,7 +26,7 @@ class HeartbeatClient {
     void requestHeartbeat(const std::string& community_url,
                           const std::string& server_address,
                           int players,
-                          int max_players);
+                          int max_players) override;
 
  private:
     struct Request {

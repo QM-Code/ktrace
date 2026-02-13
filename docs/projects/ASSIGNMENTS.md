@@ -20,6 +20,7 @@ Strategic tracking:
 | `renderer-parity.md` | `specialist-renderer-parity` | `priority/in progress` | Keep parity ledger synced with accepted `renderer-shadow-hardening` outcomes and leave VQ4 queued until VQ3 acceptance. | `2026-02-12` |
 | `renderer-shadow-hardening.md` | `codex` | `priority/in progress` | Capture deterministic baseline evidence (sandbox + bz3), then execute alignment/blockiness hardening slices with parity gates. | `2026-02-12` |
 | `ui-integration.md` | `codex` | `in progress` | Execute one bounded console focus-release parity follow-up slice without backend leakage. | `2026-02-12` |
+| `webserver-unit-tests.md` | `unassigned` | `paused` | Resume only when webserver handler internals change; next slice is users/user_profile/server_edit mutation-flow tests. | `2026-02-13` |
 
 ## Active Specialist Roster
 - `specialist-renderer-parity` -> `docs/projects/renderer-parity.md`

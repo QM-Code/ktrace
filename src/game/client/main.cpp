@@ -1,5 +1,6 @@
 #include "client/bootstrap.hpp"
 #include "client/cli_options.hpp"
+#include "client/community_server_list.hpp"
 
 #include "karma/app/backend_resolution.hpp"
 #include "karma/app/engine_app.hpp"
@@ -66,6 +67,17 @@ int main(int argc, char** argv) {
     try {
         const bz3::client::CLIOptions options = bz3::client::ParseCLIOptions(argc, argv);
         bz3::client::ConfigureLogging(options);
+        if (options.community_list_active_explicit) {
+            bz3::client::CommunityActiveList list{};
+            std::string error{};
+            if (!bz3::client::FetchCommunityActiveList(options.community_list_active, &list, &error)) {
+                spdlog::error("bz3: failed to fetch active community servers: {}", error);
+                return 1;
+            }
+            bz3::client::PrintCommunityActiveList(list);
+            return 0;
+        }
+
         bz3::client::ConfigureDataAndConfig(argc, argv);
         bz3::client::ApplyRuntimeOptionOverrides(options);
 

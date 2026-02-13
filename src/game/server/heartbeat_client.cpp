@@ -38,10 +38,11 @@ std::string UrlEncode(CURL* curl_handle, const std::string& value) {
     return encoded;
 }
 
-bool PerformGet(const std::string& url,
-                long* status_out,
-                std::string* error_out,
-                std::string* body_out) {
+bool PerformPost(const std::string& url,
+                 const std::string& post_body,
+                 long* status_out,
+                 std::string* error_out,
+                 std::string* body_out) {
     if (!status_out || !error_out || !body_out) {
         return false;
     }
@@ -63,6 +64,9 @@ bool PerformGet(const std::string& url,
     curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 5L);
     curl_easy_setopt(curl_handle, CURLOPT_ERRORBUFFER, error_buffer);
+    curl_easy_setopt(curl_handle, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, post_body.c_str());
+    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, static_cast<long>(post_body.size()));
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, AppendResponse);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, body_out);
 
@@ -183,14 +187,15 @@ void HeartbeatClient::workerProc() {
             continue;
         }
 
-        const std::string url = base_url + "/api/heartbeat?server=" + encoded_server
+        const std::string url = base_url + "/api/heartbeat";
+        const std::string body = "server=" + encoded_server
             + "&players=" + encoded_players
             + "&max=" + encoded_max_players;
 
         long status = 0;
         std::string error{};
-        std::string body{};
-        if (!PerformGet(url, &status, &error, &body)) {
+        std::string response_body{};
+        if (!PerformPost(url, body, &status, &error, &response_body)) {
             std::string reason{};
             if (!error.empty()) {
                 reason = error;

@@ -49,6 +49,15 @@ std::vector<karma::app::CliRegisteredOption> BuildGameCliOptions(CLIOptions& opt
         [&opts]() {
             opts.dev_quick_start = true;
         }));
+    options.push_back(karma::app::DefineStringOption(
+        "",
+        "--community-list-active",
+        "<host:port>",
+        "Fetch and print active servers from community API",
+        [&opts](const std::string& value) {
+            opts.community_list_active = value;
+            opts.community_list_active_explicit = true;
+        }));
     return options;
 }
 

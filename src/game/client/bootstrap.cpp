@@ -71,6 +71,9 @@ void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
     if (options.dev_quick_start) {
         KARMA_TRACE("engine.app", "CLI option --dev-quick-start parsed (not wired yet)");
     }
+    if (options.community_list_active_explicit) {
+        KARMA_TRACE("engine.app", "CLI option --community-list-active set: '{}'", options.community_list_active);
+    }
 }
 
 } // namespace bz3::client
