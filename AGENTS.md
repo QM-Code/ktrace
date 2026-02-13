@@ -18,3 +18,4 @@ Workspace guardrails:
 - Treat `m-rewrite/` as the only active codebase for edits/builds/git operations.
 - Use `./bzbuild.py <build-dir>` for delegated configure/build/test flows.
 - In parallel work, use isolated build dirs and explicit wrapper build-dir args.
+- Local `./vcpkg` bootstrap is mandatory before delegated build/test work.

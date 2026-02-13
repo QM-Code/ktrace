@@ -23,6 +23,7 @@ Then:
 - after selection, draft only the selected packet,
 - enforce `bzbuild.py`-only build policy and isolated build dirs,
 - enforce explicit wrapper build-dir args in parallel work.
+- enforce mandatory local `./vcpkg` bootstrap before delegated build/test work (no external vcpkg fallback).
 
 For cross-repo integration mode (`m-rewrite` + `m-dev` + `KARMA-REPO`), use:
 - `docs/rewrite-overseer/BOOTSTRAP.md`

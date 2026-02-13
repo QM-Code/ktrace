@@ -33,6 +33,7 @@ Constraints:
 - Preserve engine/game and backend exposure boundaries from AGENTS.md.
 - Treat `KARMA-REPO` as capability reference only (never structure/layout template).
 - Use bzbuild.py only. Do not run raw cmake -S/-B directly.
+- Treat missing/unbootstrapped local `./vcpkg` as a hard blocker and resolve/bootstrap before build/test execution.
 - Use only assigned build dirs:
   - <dir A>
   - <dir B>

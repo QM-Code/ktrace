@@ -65,6 +65,68 @@ def run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     subprocess.run(cmd, check=True, env=env)
 
 
+def read_cached_toolchain(build_dir: str) -> str:
+    cache_path = os.path.join(build_dir, "CMakeCache.txt")
+    if not os.path.isfile(cache_path):
+        return ""
+
+    try:
+        with open(cache_path, "r", encoding="utf-8") as cache:
+            for line in cache:
+                if line.startswith("CMAKE_TOOLCHAIN_FILE:"):
+                    _, value = line.split("=", 1)
+                    return value.strip()
+    except OSError:
+        return ""
+
+    return ""
+
+
+def is_local_vcpkg_bootstrapped(vcpkg_root: str) -> bool:
+    candidates = [
+        os.path.join(vcpkg_root, "vcpkg"),
+        os.path.join(vcpkg_root, "vcpkg.exe"),
+        os.path.join(vcpkg_root, "vcpkg.bat"),
+    ]
+    return any(os.path.isfile(path) for path in candidates)
+
+
+def ensure_local_vcpkg(repo_root: str) -> tuple[str, str]:
+    local_vcpkg_root = os.path.join(repo_root, "vcpkg")
+    local_toolchain = os.path.join(local_vcpkg_root, "scripts", "buildsystems", "vcpkg.cmake")
+
+    if not os.path.isdir(local_vcpkg_root):
+        print(
+            "Error: local vcpkg is mandatory for builds, but ./vcpkg is missing.\n"
+            "Bootstrap once from repo root:\n"
+            "  git clone https://github.com/microsoft/vcpkg.git vcpkg\n"
+            "  ./vcpkg/bootstrap-vcpkg.sh -disableMetrics",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    if not os.path.isfile(local_toolchain):
+        print(
+            "Error: local vcpkg exists but toolchain file is missing.\n"
+            "Expected:\n"
+            "  ./vcpkg/scripts/buildsystems/vcpkg.cmake\n"
+            "Re-bootstrap local vcpkg and retry.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    if not is_local_vcpkg_bootstrapped(local_vcpkg_root):
+        print(
+            "Error: local ./vcpkg is present but not bootstrapped.\n"
+            "Run:\n"
+            "  ./vcpkg/bootstrap-vcpkg.sh -disableMetrics",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    return os.path.abspath(local_vcpkg_root), os.path.abspath(local_toolchain)
+
+
 def parse_named_build_dir(build_dir: str) -> dict[str, object]:
     if build_dir == "build-dev":
         return {
@@ -223,17 +285,38 @@ def main() -> int:
         cmake_args.append("-DFETCHCONTENT_UPDATES_DISCONNECTED=ON")
 
     env = os.environ.copy()
-    vcpkg_root = env.get("VCPKG_ROOT")
-    if not vcpkg_root:
-        candidate = os.path.join(os.path.dirname(__file__), "..", "m-dev", "vcpkg")
-        if os.path.isdir(candidate):
-            vcpkg_root = os.path.abspath(candidate)
-            env["VCPKG_ROOT"] = vcpkg_root
+    repo_root = os.path.abspath(os.path.dirname(__file__))
+    local_vcpkg_root, local_toolchain = ensure_local_vcpkg(repo_root)
 
-    if vcpkg_root:
-        toolchain = os.path.join(vcpkg_root, "scripts", "buildsystems", "vcpkg.cmake")
-        if os.path.isfile(toolchain):
-            cmake_args.append(f"-DCMAKE_TOOLCHAIN_FILE={toolchain}")
+    cached_toolchain = read_cached_toolchain(build_dir)
+    expected_toolchain = os.path.abspath(local_toolchain)
+    cached_toolchain_abs = os.path.abspath(cached_toolchain) if cached_toolchain else ""
+    if cached_toolchain and cached_toolchain_abs != expected_toolchain:
+        print(
+            "Error: build directory is pinned to a different vcpkg toolchain than required local ./vcpkg.\n"
+            f"Current cached toolchain:\n  {cached_toolchain}\n"
+            f"Required toolchain:\n  {expected_toolchain}\n"
+            "Fix:\n"
+            f"  rm -f {build_dir}/CMakeCache.txt\n"
+            f"  rm -rf {build_dir}/CMakeFiles\n"
+            f"  ./bzbuild.py -c {build_dir}",
+            file=sys.stderr,
+        )
+        return 2
+
+    env_vcpkg_root = env.get("VCPKG_ROOT")
+    if env_vcpkg_root and os.path.abspath(env_vcpkg_root) != local_vcpkg_root:
+        print(
+            "Error: VCPKG_ROOT points outside mandatory local ./vcpkg.\n"
+            f"Current VCPKG_ROOT:\n  {env_vcpkg_root}\n"
+            f"Required VCPKG_ROOT:\n  {local_vcpkg_root}\n"
+            "Unset VCPKG_ROOT or set it to local ./vcpkg and retry.",
+            file=sys.stderr,
+        )
+        return 2
+
+    env["VCPKG_ROOT"] = local_vcpkg_root
+    cmake_args.append(f"-DCMAKE_TOOLCHAIN_FILE={local_toolchain}")
 
     if not os.path.isdir(build_dir):
         os.makedirs(build_dir, exist_ok=True)

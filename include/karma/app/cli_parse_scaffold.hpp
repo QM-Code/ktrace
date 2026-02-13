@@ -15,6 +15,8 @@ struct CliCommonState {
     bool trace_explicit = false;
     std::string trace_channels;
     bool timestamp_logging = false;
+    std::string language;
+    bool language_explicit = false;
     std::string data_dir;
     bool data_dir_explicit = false;
     std::string user_config_path;

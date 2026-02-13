@@ -2,7 +2,6 @@
 
 #include "karma/app/backend_resolution.hpp"
 #include "karma/app/bootstrap_scaffold.hpp"
-#include "karma/common/config_store.hpp"
 #include "karma/common/config_validation.hpp"
 #include "karma/common/logging.hpp"
 
@@ -37,12 +36,6 @@ void ConfigureDataAndConfig(int argc, char** argv) {
 }
 
 void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
-    if (options.language_explicit) {
-        if (!karma::config::ConfigStore::Set("language", options.language)) {
-            throw std::runtime_error("Failed to apply CLI language override.");
-        }
-        KARMA_TRACE("config", "Applied CLI language override: {}", options.language);
-    }
     if (options.backend_platform_explicit) {
         karma::app::ValidatePlatformBackendFromOption(options.backend_platform,
                                                       options.backend_platform_explicit);

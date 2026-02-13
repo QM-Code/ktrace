@@ -25,6 +25,7 @@ Then:
 - after selection, draft only the selected packet,
 - enforce `bzbuild.py`-only build policy and isolated build dirs,
 - enforce explicit wrapper build-dir args in parallel work,
+- enforce mandatory local `m-rewrite/vcpkg` bootstrap before delegated build/test work (no external vcpkg fallback),
 - include `m-dev` parity posture (what is still missing and why it is/isn't active now),
 - include KARMA capability-intake posture (adopt now vs deferred),
 - define the next specialist instructions the human should send.

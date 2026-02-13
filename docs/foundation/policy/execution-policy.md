@@ -42,6 +42,13 @@ If multiple agents need a hotspot, assign one owner and queue merge order.
 From repo root:
 - Use `./bzbuild.py <build-dir>` for configure/build/test flows.
 - Do not run raw `cmake -S/-B` directly for delegated project work.
+- Local repo `./vcpkg` is mandatory for all delegated builds.
+- External `VCPKG_ROOT` paths are not allowed for delegated builds.
+- If `./vcpkg` is missing or not bootstrapped, treat as immediate blocker and notify the human before continuing any build/test execution.
+- Mandatory bootstrap commands (run once from repo root):
+  - `git clone https://github.com/microsoft/vcpkg.git vcpkg`
+  - `./vcpkg/bootstrap-vcpkg.sh -disableMetrics`
+- One-time migration note: older build dirs may still have `CMAKE_TOOLCHAIN_FILE` cached to a non-local vcpkg path; clear that build dir cache (`CMakeCache.txt`, `CMakeFiles/`) before reconfigure.
 - Build dir names must follow `build-<platform>-<renderer>-<physics>-<ui>-<audio>`.
 - Valid platform token is `sdl3` (not `sdl`).
 - Each active specialist stays inside assigned isolated build dirs.

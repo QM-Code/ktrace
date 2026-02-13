@@ -173,3 +173,11 @@ Note:
   - preserve resilience without diverting top-track bandwidth to co-equal backend expansion.
 - Impact:
   - audio work prioritizes default-path correctness while retaining fallback validation coverage.
+
+### J) Local repo `./vcpkg` is mandatory for delegated builds
+- Decision:
+  - require local `m-rewrite/vcpkg` for delegated `bzbuild.py` flows; no external vcpkg fallback.
+- Why:
+  - remove recurring toolchain drift and cross-repo lock contention failures.
+- Impact:
+  - missing/unbootstrapped local `./vcpkg` is a hard build blocker until bootstrap commands are run.

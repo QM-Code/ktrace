@@ -270,6 +270,24 @@ CliConsumeResult ConsumeCommonCliOption(const std::string& arg,
         out.consumed = true;
         return out;
     }
+    if (arg == "--language") {
+        std::string error{};
+        auto value = RequireValue(arg, index, argc, argv, &error);
+        out.consumed = true;
+        if (!value) {
+            out.error = error;
+            return out;
+        }
+        state.language = *value;
+        state.language_explicit = true;
+        return out;
+    }
+    if (StartsWith(arg, "--language=")) {
+        state.language = ValueAfterEquals(arg, "--language=");
+        state.language_explicit = true;
+        out.consumed = true;
+        return out;
+    }
     if (arg == "-c" || arg == "--config") {
         std::string error{};
         auto value = RequireValue(arg, index, argc, argv, &error);
@@ -400,6 +418,7 @@ void AppendCommonCliHelp(std::ostream& out) {
         << "  -v, --verbose                   Enable debug-level logging\n"
         << "  -t, --trace <channels>          Enable comma-separated trace channels\n"
         << "  -d, --data-dir <dir>            Data directory override\n"
+        << "      --language <code>           Language override (applied to config)\n"
         << "  -c, --config <path>             User config file path override\n"
         << "      --strict-config=<bool>      Required-config validation (default: true)\n"
         << "  -T, --timestamp-logging         Enable timestamped log output\n";

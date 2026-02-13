@@ -160,7 +160,7 @@ class DiligentBackend final : public Backend {
             Diligent::LinuxNativeWindow linuxWindow{};
 #if defined(KARMA_HAS_X11_XCB)
             // TODO(bz3-rewrite): X11 + Diligent swapchain init still fails (VK_ERROR_INITIALIZATION_FAILED).
-            // Keep this path visible for now; needs investigation and parity with m-dev.
+            // Keep this path visible for now; needs further parity investigation.
             auto* xcb = XGetXCBConnection(reinterpret_cast<Display*>(handle.display));
             if (!xcb) {
                 spdlog::error("Diligent: X11 display missing XCB connection");

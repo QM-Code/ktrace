@@ -9,6 +9,8 @@
 # Dependency artifacts
 /**/_deps/
 /vcpkg_installed/
+/vcpkg/
+/__pycache__/
 
 # Generated shaders
 /data/bgfx/shaders/bin/

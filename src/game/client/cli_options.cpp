@@ -42,15 +42,6 @@ std::vector<karma::app::CliRegisteredOption> BuildGameCliOptions(CLIOptions& opt
             opts.connect_port = value;
             opts.port_explicit = true;
         }));
-    options.push_back(karma::app::DefineStringOption(
-        "",
-        "--language",
-        "<code>",
-        "Language override (applied to config)",
-        [&opts](const std::string& value) {
-            opts.language = value;
-            opts.language_explicit = true;
-        }));
     options.push_back(karma::app::DefineFlagOption(
         "",
         "--dev-quick-start",
