@@ -1,0 +1,17 @@
+{
+  "users": [
+    {
+      "username": "\u0410\u0434\u043c\u0438\u043d",
+      "email": "\u0430\u0434\u043c\u0438\u043d@local",
+      "language": null,
+      "password_hash": "35a0eeac72da9062b6cc59667836a2b53b42b602ae6da3e225df8854a8ca805a",
+      "password_salt": "476249d902b5260972d148deb9341487",
+      "is_admin": true,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    }
+  ],
+  "servers": []
+}

@@ -1,0 +1,46 @@
+{
+    "serverName": "Default World",
+    "maxPlayers": 20,
+    "defaultPlayerParameters": {
+        "speed": 5.0,
+        "turnSpeed": 3.0,
+        "jumpSpeed": 8.0,
+        "shotSpeed": 20.0,
+        "shotLifetime": 3.0,
+        "gravity": -9.81,
+        "forwardSpeedMultiplier": 1.0,
+        "backwardSpeedMultiplier": 0.8,
+        "leftTurnSpeedMultiplier": 1,
+        "rightTurnSpeedMultiplier": 1
+    },
+    "assets": {
+        "world": "world.glb",
+        "playerModel": "models/tank/tank.glb",
+        "shotModel": "models/shot.glb",
+        "audio": {
+            "player": {
+                "DieSound": "audio/die.wav",
+                "FireSound": "audio/fire.wav",
+                "JumpSound": "audio/jump.wav",
+                "LandSound": "audio/land.wav",
+                "SpawnSound": "audio/spawn.wav"
+            },
+            "shotRicochetSound": "audio/ricochet.wav"
+        },
+        "guiBigFont": "fonts/ShareTech.ttf"
+    },
+    "teams": [
+        {
+            "name": "Red",
+            "color": "#FF0000",
+            "model": "playerModel",
+            "maxPlayers": 8
+        },
+        {
+            "name": "Blue",
+            "color": "#0000FF",
+            "model": "playerModel",
+            "maxPlayers": 10
+        }
+    ]
+}

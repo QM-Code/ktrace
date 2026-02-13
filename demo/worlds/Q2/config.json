@@ -1,0 +1,11 @@
+
+{
+    "defaultPlayerParameters": {
+        
+    },
+    "assets": {
+        "world": "models/world.glb",
+        "skybox": "models/skybox.png",
+        "playerModel": "models/player.glb"
+    }
+}

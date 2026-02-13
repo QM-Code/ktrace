@@ -1,0 +1,13 @@
+{
+  "server": {
+    "community_name": "\u0645\u062c\u062a\u0645\u0639\u064a",
+    "language": "ar",
+    "port": 8080,
+    "admin_user": "\u0627\u0644\u0645\u0634\u0631\u0641",
+    "session_secret": "c830fa9d84c1b05332f46e15b66d5b111274616b99be96b1c20fce64ac3307a4"
+  },
+    "debug" : {
+        "disable_browser_language_detection": true
+    }
+
+}

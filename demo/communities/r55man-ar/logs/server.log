@@ -1,0 +1,15 @@
+2026-01-22 15:55:04,314 INFO waitress Serving on http://0.0.0.0:8081
+2026-01-22 15:59:56,238 ERROR waitress Exception while serving /static/style.css
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 472, in execute
+    self.write(chunk)
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 318, in write
+    towrite = data[: cl - self.content_bytes_written]
+              ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'ReadOnlyFileBasedBuffer' object is not subscriptable
+2026-01-22 16:32:10,019 INFO waitress Serving on http://0.0.0.0:8081
+2026-01-22 18:41:17,082 INFO waitress Serving on http://0.0.0.0:8081

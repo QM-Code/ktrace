@@ -1,0 +1,22 @@
+{
+    "serverName": "M's World",
+	"assets" : {
+		"audio" : {
+			"shot" : {
+				"Fire" : "audio/laser.wav"
+			}
+		}
+	},
+    "defaultPlayerParameters": {
+        "speed": 2.0,
+        "turnSpeed": 3.0,
+        "jumpSpeed": 8.0,
+        "shotSpeed": 3.0,
+        "shotLifetime": 2.0,
+        "gravity": -4.81,
+        "forwardSpeedMultiplier": 1.0,
+        "backwardSpeedMultiplier": 0.8,
+        "leftTurnSpeedMultiplier": 1,
+        "rightTurnSpeedMultiplier": 0.5
+    }
+}

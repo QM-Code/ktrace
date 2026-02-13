@@ -1,0 +1,13 @@
+{
+  "server": {
+    "community_name": "\u6211\u7684\u793e\u533a",
+    "language": "zh",
+    "port": 8080,
+    "admin_user": "\u7ba1\u7406\u5458",
+    "session_secret": "1dbb2385ca65b368d943ecf30f0dd4036330aa919d2c3e1385d05f7f589ebf49"
+  },
+    "debug" : {
+        "disable_browser_language_detection": true
+    }
+
+}

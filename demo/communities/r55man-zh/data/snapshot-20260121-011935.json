@@ -1,0 +1,17 @@
+{
+  "users": [
+    {
+      "username": "\u7ba1\u7406\u5458",
+      "email": "\u7ba1\u7406\u5458@local",
+      "language": null,
+      "password_hash": "0bab06ce7172967b568c538b370aedab46089bcce8eebe52e707d7e44c9aad68",
+      "password_salt": "d6407aa18fdc9088b2aefe4f3fd83be1",
+      "is_admin": true,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    }
+  ],
+  "servers": []
+}

@@ -1,0 +1,319 @@
+2026-01-22 12:28:51,883 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 12:28:54,522 ERROR bz3web Unhandled exception for GET /users/0aPPUi
+Traceback (most recent call last):
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 27, in application
+    result = router.dispatch(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/router.py", line 158, in dispatch
+    return user_profile.handle(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/user_profile.py", line 271, in handle
+    return _render_profile(
+           ^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/user_profile.py", line 92, in _render_profile
+    user_token = target_user.get("code") or target_user["username"]
+                 ^^^^^^^^^^^^^^^
+AttributeError: 'sqlite3.Row' object has no attribute 'get'
+2026-01-22 12:32:14,424 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 14:20:51,584 ERROR bz3web Unhandled exception for POST /server/edit
+Traceback (most recent call last):
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 27, in application
+    result = router.dispatch(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/router.py", line 134, in dispatch
+    return server_edit.handle(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/server_edit.py", line 404, in handle
+    owner_token = server.get("owner_code") or server["owner_username"]
+                  ^^^^^^^^^^
+AttributeError: 'sqlite3.Row' object has no attribute 'get'
+2026-01-22 14:21:15,157 ERROR bz3web Unhandled exception for POST /server/edit
+Traceback (most recent call last):
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 27, in application
+    result = router.dispatch(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/router.py", line 134, in dispatch
+    return server_edit.handle(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/server_edit.py", line 404, in handle
+    owner_token = server.get("owner_code") or server["owner_username"]
+                  ^^^^^^^^^^
+AttributeError: 'sqlite3.Row' object has no attribute 'get'
+2026-01-22 14:21:38,537 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 14:24:13,190 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 14:31:42,521 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 16:32:07,726 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 16:32:46,888 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 16:48:30,379 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 16:49:22,266 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 16:55:11,122 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 16:55:14,627 ERROR waitress Exception while serving /static/style.css
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 472, in execute
+    self.write(chunk)
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 318, in write
+    towrite = data[: cl - self.content_bytes_written]
+              ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'ReadOnlyFileBasedBuffer' object is not subscriptable
+2026-01-22 16:55:16,077 ERROR waitress Exception while serving /static/style.css
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 472, in execute
+    self.write(chunk)
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 318, in write
+    towrite = data[: cl - self.content_bytes_written]
+              ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'ReadOnlyFileBasedBuffer' object is not subscriptable
+2026-01-22 16:55:20,693 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 16:55:22,083 ERROR waitress Exception while serving /static/style.css
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 472, in execute
+    self.write(chunk)
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 318, in write
+    towrite = data[: cl - self.content_bytes_written]
+              ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'ReadOnlyFileBasedBuffer' object is not subscriptable
+2026-01-22 16:55:57,425 ERROR waitress Exception while serving /static/style.css
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 472, in execute
+    self.write(chunk)
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 318, in write
+    towrite = data[: cl - self.content_bytes_written]
+              ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'ReadOnlyFileBasedBuffer' object is not subscriptable
+2026-01-22 16:55:57,426 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 472, in execute
+    self.write(chunk)
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 318, in write
+    towrite = data[: cl - self.content_bytes_written]
+              ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'ReadOnlyFileBasedBuffer' object is not subscriptable
+2026-01-22 16:56:24,049 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 16:56:25,821 ERROR waitress Exception while serving /static/style.css
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    body_len = len(body) if body is not None else 0
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:25,822 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    body_len = len(body) if body is not None else 0
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:25,849 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    body_len = len(body) if body is not None else 0
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:35,848 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    body_len = len(body) if body is not None else 0
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:45,847 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    if isinstance(body, (bytes, bytearray)):
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:49,467 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    if isinstance(body, (bytes, bytearray)):
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:49,468 ERROR waitress Exception while serving /static/style.css
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    if isinstance(body, (bytes, bytearray)):
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:49,495 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    if isinstance(body, (bytes, bytearray)):
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:50,218 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    if isinstance(body, (bytes, bytearray)):
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:50,219 ERROR waitress Exception while serving /static/style.css
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    if isinstance(body, (bytes, bytearray)):
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:50,241 ERROR waitress Exception while serving /uploads/1bb272677c0399cd6b5d8efd_thumb.jpg
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/waitress/channel.py", line 428, in service
+    task.service()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 168, in service
+    self.execute()
+  File "/usr/lib/python3/dist-packages/waitress/task.py", line 434, in execute
+    app_iter = self.channel.server.application(environ, start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 51, in application
+    if isinstance(body, (bytes, bytearray)):
+               ^^^^^^^^^
+TypeError: object of type 'generator' has no len()
+2026-01-22 16:56:53,499 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:02:25,602 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:04:25,064 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:20:09,697 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:28:29,250 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:30:15,065 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:30:34,103 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:37:46,039 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:41:39,709 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 17:54:46,879 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:01:50,361 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:02:03,135 ERROR bz3web Unhandled exception for GET /users/cvfZ0Z/edit
+Traceback (most recent call last):
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 27, in application
+    result = router.dispatch(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/router.py", line 155, in dispatch
+    return users.handle(request)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/users.py", line 509, in handle
+    return _render_user_settings(request, target_user, current_user=current_user)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/users.py", line 315, in _render_user_settings
+    language_value = form_data.get("language", user.get("language") or "")
+                                               ^^^^^^^^
+AttributeError: 'sqlite3.Row' object has no attribute 'get'
+2026-01-22 18:02:47,025 ERROR bz3web Unhandled exception for GET /users/cvfZ0Z/edit
+Traceback (most recent call last):
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 27, in application
+    result = router.dispatch(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/router.py", line 155, in dispatch
+    return users.handle(request)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/users.py", line 509, in handle
+    form = request.form()
+               ^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/users.py", line 315, in _render_user_settings
+    headers=views.no_store_headers(),
+                                      
+AttributeError: 'sqlite3.Row' object has no attribute 'get'
+2026-01-22 18:02:48,499 ERROR bz3web Unhandled exception for GET /users/cvfZ0Z/edit
+Traceback (most recent call last):
+  File "/home/karmak/dev/bz3/webserver/bz3web/app.py", line 27, in application
+    result = router.dispatch(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/router.py", line 155, in dispatch
+    return users.handle(request)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/users.py", line 509, in handle
+    form = request.form()
+               ^^^^^^^^^^^
+  File "/home/karmak/dev/bz3/webserver/bz3web/handlers/users.py", line 315, in _render_user_settings
+    headers=views.no_store_headers(),
+                                      
+AttributeError: 'sqlite3.Row' object has no attribute 'get'
+2026-01-22 18:02:52,013 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:06:30,137 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:07:34,794 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:17:18,887 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:29:00,991 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:31:59,044 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:46:06,570 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:49:35,677 INFO waitress Serving on http://0.0.0.0:8080
+2026-01-22 18:53:31,175 INFO waitress Serving on http://0.0.0.0:8080

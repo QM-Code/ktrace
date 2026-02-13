@@ -41,6 +41,9 @@ Repository roles:
 ## Core Architecture Contract
 - `src/engine/` is game-agnostic and owns loop/lifecycle/timing.
 - `src/game/` contains BZ3-specific game logic and host usage.
+- `src/webserver/` is a game-agnostic community-management sidecar service.
+  - It is not `src/game/` ownership and should remain generic across games.
+  - It is not engine runtime SDK surface (`src/engine/`), but it is part of the engine ecosystem toolchain.
 - Input, world ownership, render loop, and subsystem lifetime are engine-owned.
 - Config is authoritative; required values must be read via strict helpers.
 - Render layering is stable (`kLayerWorld = 0`, `kLayerUI = 1000`).

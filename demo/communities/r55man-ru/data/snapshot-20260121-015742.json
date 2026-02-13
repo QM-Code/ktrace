@@ -1,0 +1,438 @@
+{
+  "users": [
+    {
+      "username": "ApexYard",
+      "email": "apexyard@bz3.test",
+      "language": null,
+      "password_hash": "067be9d1bbe76046b16f1de5276b902553df08a4ff22812eaa0c100c231c1cea",
+      "password_salt": "5d4ab604c69dc9f2c25af4547a7131ed",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "CrimsonDock",
+      "email": "crimsondock@bz3.test",
+      "language": null,
+      "password_hash": "1ca8d6685632a295c6fefcec95b27e88d8e3bab4d058361098e3883e9f7ddc04",
+      "password_salt": "4049811d114c39c06ef849287f0c46ef",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "EchoDelta",
+      "email": "echodelta@bz3.test",
+      "language": null,
+      "password_hash": "6253e8236f8e89834493a8ee9e7d9fc32f74b1e090b40efb6566cd8a49903c24",
+      "password_salt": "77205bc484f551631145c7301fd2ffba",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "EchoMesa",
+      "email": "echomesa@bz3.test",
+      "language": null,
+      "password_hash": "c108afa36f119d244830e630622458ac260900e4faf6ad9f636db652a7cbffd1",
+      "password_salt": "1ba7fc1eff1f075f65b2f97aa030ca4c",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "FrostHollow",
+      "email": "frosthollow@bz3.test",
+      "language": null,
+      "password_hash": "bcc1ee602e8e6e8e77ec94c948c7674358cd95a17905e9d5f84bf14d1cd75cfb",
+      "password_salt": "73d904a54fe8048b19b2b6c487b950f4",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "GaleBluff",
+      "email": "galebluff@bz3.test",
+      "language": null,
+      "password_hash": "1866ef274cb2df76bff5ffa4674c6fdba75a55440616b34ab33b0221feabeb32",
+      "password_salt": "743adb13a89386c02ba855f4fc24fd44",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "GaleKeep",
+      "email": "galekeep@bz3.test",
+      "language": null,
+      "password_hash": "73882228e4252911bd8d0dce2792f780217db3481a86b3b87cbba9d8c7664615",
+      "password_salt": "e7d371584c87a8467b29a580334d2495",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "IonLagoon",
+      "email": "ionlagoon@bz3.test",
+      "language": null,
+      "password_hash": "e3f0c21b717ead984af2692d7fce56292c81bd6792868642e089f9713f624830",
+      "password_salt": "0cfd64dca16a31021fb1ffac9b9ec071",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "KeenBay",
+      "email": "keenbay@bz3.test",
+      "language": null,
+      "password_hash": "bc26d85b5c13fbbd96b6a91d4d2981a77a39d4722fdef8b0ce89b69d51e8bb33",
+      "password_salt": "23b6d4de949788133ec6f661b212b24d",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "KeenPass",
+      "email": "keenpass@bz3.test",
+      "language": null,
+      "password_hash": "c47343d5b0bba4a4b26f37e849e8bef7881456530e2bbcf24b6b59a0e2b6f04f",
+      "password_salt": "2ebd550bbf13704469cd9ded34364f33",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "KeenValley",
+      "email": "keenvalley@bz3.test",
+      "language": null,
+      "password_hash": "5634525f4809f8121380a18b93cfcd969ae7f27f8fba32123318b018640fbff8",
+      "password_salt": "c26e5d15fbfa84fcf1ce7da9b9f8e62e",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "KeenWard",
+      "email": "keenward@bz3.test",
+      "language": null,
+      "password_hash": "8b35dbce9e8bb8323f661cfdb99b66434592f254b0cb2445a6eb70902d89d030",
+      "password_salt": "0df252c809cfd12465064b549bd4cecc",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "PyreDelta",
+      "email": "pyredelta@bz3.test",
+      "language": null,
+      "password_hash": "bd4326b141a53efe0d403121d71913d146e544b4a424f1c653247ed5ec6a8eb7",
+      "password_salt": "bc8e5a1802c03e0ea1fb444786072e6d",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "RiftSpire",
+      "email": "riftspire@bz3.test",
+      "language": null,
+      "password_hash": "8bab3aaa745e1dbe28b4c4301512911454cc03f645d4dc41b401e2b5753f8efb",
+      "password_salt": "407d4b2f7492b18dba56a4c1eda17488",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "RiftValley",
+      "email": "riftvalley@bz3.test",
+      "language": null,
+      "password_hash": "7c4fda0b32273e92470a5389554a2ea8a0ef0c335a9b67531c93d0f7ed6da6fb",
+      "password_salt": "e58e134c1d60ac3489826af277c5699d",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "TempestQuarry",
+      "email": "tempestquarry@bz3.test",
+      "language": null,
+      "password_hash": "67a3c0202aabace1cbe34319e185c5f5be6ae7746f3ceddeaa9d4d4db8ec4586",
+      "password_salt": "36f23c0172be383cddefabc631af2fec",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "TempestReach",
+      "email": "tempestreach@bz3.test",
+      "language": null,
+      "password_hash": "9a56a65d4c8eca1eb6a22dec17c585cea4f46577b68ce8ccee38a988bf5c033b",
+      "password_salt": "6cf5357d45c0f35bc2bfd81d19940257",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "UmberArc",
+      "email": "umberarc@bz3.test",
+      "language": null,
+      "password_hash": "3d07773188caab58904455655a8472ac2aba9cac1a253447b77b1b9ea862ec83",
+      "password_salt": "fd9f1d53810784d2cbd12f3d215f2fb8",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "YarrowLagoon",
+      "email": "yarrowlagoon@bz3.test",
+      "language": null,
+      "password_hash": "53f97ffef1adff1401fea3d26459b80e14587b81ac5e3fe8bcff589e9de56895",
+      "password_salt": "6a5a756af47b5f26ed0e313b35107648",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "ZephyrPass",
+      "email": "zephyrpass@bz3.test",
+      "language": null,
+      "password_hash": "25f577a52646e4c67c6c6bbc122bb962c3101a9a993dbd1894dce6ff1f71d50b",
+      "password_salt": "d723d5d61c207b6ccd5d74b931e85b37",
+      "is_admin": false,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    },
+    {
+      "username": "\u0410\u0434\u043c\u0438\u043d",
+      "email": "\u0430\u0434\u043c\u0438\u043d@local",
+      "language": null,
+      "password_hash": "35a0eeac72da9062b6cc59667836a2b53b42b602ae6da3e225df8854a8ca805a",
+      "password_salt": "476249d902b5260972d148deb9341487",
+      "is_admin": true,
+      "is_locked": false,
+      "locked_at": null,
+      "deleted": false,
+      "deleted_at": null
+    }
+  ],
+  "servers": [
+    {
+      "name": "Apex Reach",
+      "overview": "Compact arena with aggressive flanks.",
+      "description": "Wide sightlines with tight choke points.",
+      "host": "10.94.200.211",
+      "port": 5530,
+      "owner": "ZephyrPass",
+      "screenshot_id": null
+    },
+    {
+      "name": "Crimson Valley",
+      "overview": "Fast lanes with risky cutbacks.",
+      "description": "Wide sightlines with tight choke points.",
+      "host": "10.48.129.91",
+      "port": 6114,
+      "owner": "PyreDelta",
+      "screenshot_id": null
+    },
+    {
+      "name": "Drift Harbor",
+      "overview": "Open basin with narrow bridges.",
+      "description": "Layered ramps with exposed midlines.",
+      "host": "10.188.216.138",
+      "port": 6088,
+      "owner": "RiftSpire",
+      "screenshot_id": null
+    },
+    {
+      "name": "Drift Isle",
+      "overview": "Fast lanes with risky cutbacks.",
+      "description": "Fast lanes with risky cutbacks.",
+      "host": "10.78.97.191",
+      "port": 5580,
+      "owner": "EchoMesa",
+      "screenshot_id": null
+    },
+    {
+      "name": "Gale Cove",
+      "overview": "Fast lanes with risky cutbacks.",
+      "description": "Compact arena with aggressive flanks.",
+      "host": "10.77.127.148",
+      "port": 5818,
+      "owner": "TempestReach",
+      "screenshot_id": null
+    },
+    {
+      "name": "Gale Trace",
+      "overview": "Open basin with narrow bridges.",
+      "description": "Fast lanes with risky cutbacks.",
+      "host": "10.138.14.195",
+      "port": 5570,
+      "owner": "GaleKeep",
+      "screenshot_id": null
+    },
+    {
+      "name": "Jade Bluff",
+      "overview": "Open basin with narrow bridges.",
+      "description": "High ground duels and quick resets.",
+      "host": "10.170.56.53",
+      "port": 6072,
+      "owner": "RiftSpire",
+      "screenshot_id": null
+    },
+    {
+      "name": "Jade Pass",
+      "overview": "Layered ramps with exposed midlines.",
+      "description": "Open basin with narrow bridges.",
+      "host": "10.6.15.167",
+      "port": 5312,
+      "owner": "\u0410\u0434\u043c\u0438\u043d",
+      "screenshot_id": null
+    },
+    {
+      "name": "Keen Lagoon",
+      "overview": "Compact arena with aggressive flanks.",
+      "description": "Open basin with narrow bridges.",
+      "host": "10.228.222.159",
+      "port": 5819,
+      "owner": "YarrowLagoon",
+      "screenshot_id": null
+    },
+    {
+      "name": "Magma Spire",
+      "overview": "Fast lanes with risky cutbacks.",
+      "description": "Open basin with narrow bridges.",
+      "host": "10.214.254.71",
+      "port": 5264,
+      "owner": "KeenBay",
+      "screenshot_id": null
+    },
+    {
+      "name": "Pyre Circuit",
+      "overview": "Fast lanes with risky cutbacks.",
+      "description": "Fast lanes with risky cutbacks.",
+      "host": "10.223.232.29",
+      "port": 5743,
+      "owner": "YarrowLagoon",
+      "screenshot_id": null
+    },
+    {
+      "name": "Pyre Hollow",
+      "overview": "High ground duels and quick resets.",
+      "description": "Layered ramps with exposed midlines.",
+      "host": "10.70.213.29",
+      "port": 5976,
+      "owner": "GaleBluff",
+      "screenshot_id": null
+    },
+    {
+      "name": "Quill Harbor",
+      "overview": "Layered ramps with exposed midlines.",
+      "description": "Compact arena with aggressive flanks.",
+      "host": "10.18.184.191",
+      "port": 5869,
+      "owner": "GaleKeep",
+      "screenshot_id": null
+    },
+    {
+      "name": "Rift Arc",
+      "overview": "Fast lanes with risky cutbacks.",
+      "description": "Wide sightlines with tight choke points.",
+      "host": "10.13.142.167",
+      "port": 6193,
+      "owner": "YarrowLagoon",
+      "screenshot_id": null
+    },
+    {
+      "name": "Tempest Gate",
+      "overview": "Compact arena with aggressive flanks.",
+      "description": "Layered ramps with exposed midlines.",
+      "host": "10.210.72.213",
+      "port": 6026,
+      "owner": "EchoMesa",
+      "screenshot_id": null
+    },
+    {
+      "name": "Umber Trace",
+      "overview": "Compact arena with aggressive flanks.",
+      "description": "Fast lanes with risky cutbacks.",
+      "host": "10.36.134.225",
+      "port": 5581,
+      "owner": "UmberArc",
+      "screenshot_id": null
+    },
+    {
+      "name": "Vapor Harbor",
+      "overview": "Compact arena with aggressive flanks.",
+      "description": "High ground duels and quick resets.",
+      "host": "10.98.218.71",
+      "port": 5207,
+      "owner": "KeenBay",
+      "screenshot_id": null
+    },
+    {
+      "name": "Vapor Keep",
+      "overview": "Wide sightlines with tight choke points.",
+      "description": "Fast lanes with risky cutbacks.",
+      "host": "10.227.160.233",
+      "port": 5705,
+      "owner": "KeenWard",
+      "screenshot_id": null
+    },
+    {
+      "name": "Warden Circuit",
+      "overview": "Compact arena with aggressive flanks.",
+      "description": "Compact arena with aggressive flanks.",
+      "host": "10.200.137.60",
+      "port": 5683,
+      "owner": "PyreDelta",
+      "screenshot_id": null
+    },
+    {
+      "name": "Yarrow Lagoon",
+      "overview": "Layered ramps with exposed midlines.",
+      "description": "Wide sightlines with tight choke points.",
+      "host": "10.113.5.151",
+      "port": 5782,
+      "owner": "GaleBluff",
+      "screenshot_id": null
+    }
+  ]
+}
