@@ -15,6 +15,7 @@ Strategic tracking:
 |---|---|---|---|---|
 | `content-mount.md` | `codex` | `in progress` | Add stronger chunk-transfer integrity controls and one targeted regression test. | `2026-02-12` |
 | `core-engine-infrastructure.md` | `overseer` | `in progress` | Keep implementation sequencing aligned to `docs/foundation/architecture/core-engine-contracts.md` as active tracks land. | `2026-02-12` |
+| `gameplay-migration.md` | `overseer` | `in progress` | Execute G3 hit-attribution migration: add rewrite-owned CombatSystem over ShotSystem state without score/UI churn. | `2026-02-13` |
 | `gameplay-netcode.md` | `unassigned` | `queued` | Prepare next predicted-shot reconciliation slice (`local_shot_id`) behind current P0 renderer priorities. | `2026-02-12` |
 | `physics-backend.md` | `codex` | `in progress` | Decide and implement runtime lock mutation/query contract or explicitly lock constraints to creation-time only with parity assertions. | `2026-02-12` |
 | `renderer-parity.md` | `specialist-renderer-parity` | `priority/in progress` | Keep parity ledger synced with accepted `renderer-shadow-hardening` outcomes and leave VQ4 queued until VQ3 acceptance. | `2026-02-12` |

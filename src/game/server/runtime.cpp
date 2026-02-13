@@ -1,5 +1,6 @@
 #include "server/runtime.hpp"
 #include "server/community_heartbeat.hpp"
+#include "server/domain/shot_system.hpp"
 #include "server/domain/world_session.hpp"
 #include "server/net/event_source.hpp"
 #include "server/server_game.hpp"
@@ -15,6 +16,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <csignal>
@@ -107,6 +109,12 @@ int RunRuntime(const CLIOptions& options) {
     }
     ServerGame game{world_context->world_name};
     std::unique_ptr<net::ServerEventSource> event_source = net::CreateServerEventSource(options);
+    domain::ShotSystem shot_system{};
+    const float shot_lifetime_seconds =
+        std::max(0.1f, karma::config::ReadFloatConfig({"gameplay.shotLifetimeSeconds"}, 5.0f));
+    shot_system.setLifetime(std::chrono::milliseconds(static_cast<int64_t>(shot_lifetime_seconds * 1000.0f)));
+    const float shot_step_dt =
+        (engineConfig.target_tick_hz > 1e-6f) ? (1.0f / engineConfig.target_tick_hz) : (1.0f / 60.0f);
     uint32_t next_global_shot_id = 1;
     RuntimeEventRuleHandlers runtime_handlers{};
     runtime_handlers.has_client = [&game](uint32_t client_id) {
@@ -122,14 +130,22 @@ int RunRuntime(const CLIOptions& options) {
         event_source_ptr->onPlayerSpawn(client_id);
     };
     runtime_handlers.on_create_shot =
-        [event_source_ptr = event_source.get()](uint32_t source_client_id,
-                                                uint32_t global_shot_id,
-                                                float pos_x,
-                                                float pos_y,
-                                                float pos_z,
-                                                float vel_x,
-                                                float vel_y,
-                                                float vel_z) {
+        [event_source_ptr = event_source.get(), &shot_system](uint32_t source_client_id,
+                                                              uint32_t global_shot_id,
+                                                              float pos_x,
+                                                              float pos_y,
+                                                              float pos_z,
+                                                              float vel_x,
+                                                              float vel_y,
+                                                              float vel_z) {
+            shot_system.addShot(source_client_id,
+                                global_shot_id,
+                                pos_x,
+                                pos_y,
+                                pos_z,
+                                vel_x,
+                                vel_y,
+                                vel_z);
             event_source_ptr->onCreateShot(source_client_id,
                                            global_shot_id,
                                            pos_x,
@@ -234,6 +250,16 @@ int RunRuntime(const CLIOptions& options) {
             }
         }
         app.tick();
+        const auto expired_shots = shot_system.update(domain::ShotSystem::Clock::now(), shot_step_dt);
+        if (!expired_shots.empty()) {
+            for (const auto& expired : expired_shots) {
+                event_source->onRemoveShot(expired.global_shot_id, true);
+            }
+            KARMA_TRACE("net.server",
+                        "RunRuntime: expired shots removed count={} remaining={}",
+                        expired_shots.size(),
+                        shot_system.activeShotCount());
+        }
         community_heartbeat.update(game);
         if (!g_running.load()) {
             app.requestStop();

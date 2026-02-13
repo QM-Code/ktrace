@@ -264,6 +264,22 @@ bool TestCreateShotRoundTrip() {
            && Expect(decoded->event_shot_is_global, "create_shot expected global id flag");
 }
 
+bool TestRemoveShotRoundTrip() {
+    const auto payload = bz3::net::EncodeServerRemoveShot(9001, true);
+    if (payload.empty()) {
+        return Fail("EncodeServerRemoveShot returned empty payload");
+    }
+
+    const auto decoded = bz3::net::DecodeServerMessage(payload.data(), payload.size());
+    if (!decoded.has_value()) {
+        return Fail("DecodeServerMessage failed for remove_shot payload");
+    }
+
+    return Expect(decoded->type == bz3::net::ServerMessageType::RemoveShot, "remove_shot message type mismatch")
+           && Expect(decoded->event_shot_id == 9001, "remove_shot shot_id mismatch")
+           && Expect(decoded->event_shot_is_global, "remove_shot global flag mismatch");
+}
+
 bool TestScriptedSourceParsesSpawnAndShot() {
     const auto events = karma::json::Array(
         {karma::json::Value{{"type", "join"}, {"atSeconds", 0.000}, {"clientId", 2}, {"playerName", "mike"}},
@@ -449,6 +465,9 @@ int main() {
         return 1;
     }
     if (!TestCreateShotRoundTrip()) {
+        return 1;
+    }
+    if (!TestRemoveShotRoundTrip()) {
         return 1;
     }
     if (!TestWorldTransferBeginRoundTrip()) {

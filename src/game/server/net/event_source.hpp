@@ -123,6 +123,11 @@ class ServerEventSource {
         (void)vel_y;
         (void)vel_z;
     }
+
+    virtual void onRemoveShot(uint32_t shot_id, bool is_global_id) {
+        (void)shot_id;
+        (void)is_global_id;
+    }
 };
 
 std::unique_ptr<ServerEventSource> CreateServerEventSource(const CLIOptions& options);

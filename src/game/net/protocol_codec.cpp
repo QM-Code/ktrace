@@ -432,6 +432,15 @@ std::vector<std::byte> EncodeServerCreateShot(uint32_t source_client_id,
     return SerializeOrEmpty(message);
 }
 
+std::vector<std::byte> EncodeServerRemoveShot(uint32_t shot_id, bool is_global_id) {
+    karma::ServerMsg message{};
+    message.set_type(karma::ServerMsg::REMOVE_SHOT);
+    auto* remove = message.mutable_remove_shot();
+    remove->set_shot_id(shot_id);
+    remove->set_is_global_id(is_global_id);
+    return SerializeOrEmpty(message);
+}
+
 std::vector<std::byte> EncodeServerWorldTransferBegin(std::string_view transfer_id,
                                                       std::string_view world_id,
                                                       std::string_view world_revision,

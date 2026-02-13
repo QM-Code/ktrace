@@ -632,6 +632,17 @@ class TransportServerEventSource final : public ServerEventSource {
                     sent);
     }
 
+    void onRemoveShot(uint32_t shot_id, bool is_global_id) override {
+        const size_t sent = broadcastToJoined([shot_id, is_global_id, this](karma::network::PeerToken peer) {
+            return sendRemoveShot(peer, shot_id, is_global_id);
+        });
+        KARMA_TRACE("net.server",
+                    "ServerEventSource: broadcast remove_shot shot_id={} global={} peers={}",
+                    shot_id,
+                    is_global_id ? 1 : 0,
+                    sent);
+    }
+
  private:
     void emitJoinEvent(uint32_t client_id, const std::string& player_name, std::vector<ServerInputEvent>& out) {
         ServerInputEvent input{};
@@ -953,6 +964,10 @@ class TransportServerEventSource final : public ServerEventSource {
                                      global_shot_id,
                                  bz3::net::Vec3{pos_x, pos_y, pos_z},
                                  bz3::net::Vec3{vel_x, vel_y, vel_z}));
+    }
+
+    bool sendRemoveShot(karma::network::PeerToken peer, uint32_t shot_id, bool is_global_id) {
+        return sendServerPayload(peer, bz3::net::EncodeServerRemoveShot(shot_id, is_global_id));
     }
 
     bool sendWorldTransferBegin(karma::network::PeerToken peer,

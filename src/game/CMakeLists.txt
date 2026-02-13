@@ -29,6 +29,7 @@ add_executable(bz3-server
     ${PROJECT_SOURCE_DIR}/src/game/server/domain/actor_system.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/domain/match_system.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/domain/session_system.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/domain/shot_system.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/domain/world_session.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/heartbeat_client.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/main.cpp

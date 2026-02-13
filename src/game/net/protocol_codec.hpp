@@ -144,6 +144,7 @@ std::vector<std::byte> EncodeServerCreateShot(uint32_t source_client_id,
                                               uint32_t global_shot_id,
                                               const Vec3& position,
                                               const Vec3& velocity);
+std::vector<std::byte> EncodeServerRemoveShot(uint32_t shot_id, bool is_global_id);
 std::vector<std::byte> EncodeServerWorldTransferBegin(std::string_view transfer_id,
                                                       std::string_view world_id,
                                                       std::string_view world_revision,
