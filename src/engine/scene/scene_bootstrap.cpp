@@ -1,6 +1,6 @@
 #include "karma/scene/scene_bootstrap.hpp"
 
-#include "geometry/mesh_loader.hpp"
+#include "karma/geometry/mesh_loader.hpp"
 #include "karma/common/config_store.hpp"
 #include "karma/common/logging.hpp"
 #include "karma/common/data_path_resolver.hpp"

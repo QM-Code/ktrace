@@ -72,6 +72,7 @@ struct DirectionalLightData {
         float extent = 24.0f;
         int map_size = 256;
         int pcf_radius = 1;
+        int update_every_frames = 1;
     };
 
     glm::vec3 direction{0.3f, 0.7f, -0.5f};

@@ -2,7 +2,7 @@
 
 ## Project Snapshot
 - Current owner: `overseer`
-- Status: `in progress (G2 + D1 landed; D2 next)`
+- Status: `in progress (G2 + D1 landed + D1 hardening landed; D2 next)`
 - Immediate next task: execute D2 movement-replication slice by wiring client `PlayerLocation` intent and server-authoritative tank drive state updates.
 - Validation gate: `./docs/scripts/lint-project-docs.sh` for planning/doc slices; for code slices, run `./scripts/test-server-net.sh <build-dir>` with assigned build-dir args.
 
@@ -247,6 +247,7 @@ Handoff must include:
 - `2026-02-13`: G2 validation passed in both assigned build dirs (`bzbuild.py -c` + `test-server-net.sh <build-dir>` on jolt/physx).
 - `2026-02-14`: D1 landed: rewrite client now has local drivable tank baseline (`tank_drive_controller` + in-game tank entity + follow camera).
 - `2026-02-14`: D1 movement proof passed in both assigned build dirs via `src/game/tank_drive_controller_test`.
+- `2026-02-14`: D1 hardening landed: reduced movement stutter via substep+visual smoothing, added FPS/chase camera modes (FPS default), and added startup-world collision blocking via engine-public geometry contract (`include/karma/geometry/mesh_loader.hpp`) with boundary-safe include usage in game paths.
 
 ## Open Questions
 - Should D2 keep player movement state as transport-side events first, or immediately establish a server-domain movement system owning authoritative player pose?
@@ -258,4 +259,5 @@ Handoff must include:
 - [x] G1 ledger populated with concrete source->target mappings.
 - [x] G2 implementation slice accepted.
 - [x] D1 drivable-tank baseline slice accepted.
+- [x] D1 hardening follow-up slice accepted.
 - [x] Next implementation packet drafted (D2).

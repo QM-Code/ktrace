@@ -11,6 +11,7 @@
 #include "karma/common/logging.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/platform/window.hpp"
+#include "karma/renderer/layers.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -1263,12 +1264,41 @@ class BgfxBackend final : public Backend {
             camera_,
             aspect,
         };
-        const detail::DirectionalShadowMap shadow_map = detail::BuildDirectionalShadowMap(
-            shadow_semantics,
-            light_.direction,
-            shadow_casters,
-            &shadow_view);
-        updateShadowTexture(shadow_map);
+        const int requested_update_every_frames = std::max(1, light_.shadow.update_every_frames);
+        if (shadow_update_every_frames_ != requested_update_every_frames) {
+            shadow_update_every_frames_ = requested_update_every_frames;
+            shadow_frames_until_update_ = 0;
+            KARMA_TRACE_CHANGED(
+                "render.bgfx",
+                std::to_string(shadow_update_every_frames_),
+                "shadow update cadence everyFrames={}",
+                shadow_update_every_frames_);
+        }
+        const bool world_layer = (layer == renderer::kLayerWorld);
+        if (!shadow_semantics.enabled) {
+            shadow_frames_until_update_ = 0;
+            cached_shadow_map_ = detail::DirectionalShadowMap{};
+            shadow_tex_ready_ = false;
+        } else if (world_layer && shadow_casters.empty()) {
+            shadow_frames_until_update_ = 0;
+            cached_shadow_map_ = detail::DirectionalShadowMap{};
+            shadow_tex_ready_ = false;
+        } else if (world_layer && !shadow_casters.empty()) {
+            if (shadow_frames_until_update_ <= 0 ||
+                !cached_shadow_map_.ready ||
+                cached_shadow_map_.size != shadow_semantics.map_size) {
+                cached_shadow_map_ = detail::BuildDirectionalShadowMap(
+                    shadow_semantics,
+                    light_.direction,
+                    shadow_casters,
+                    &shadow_view);
+                updateShadowTexture(cached_shadow_map_);
+                shadow_frames_until_update_ = shadow_update_every_frames_ - 1;
+            } else {
+                --shadow_frames_until_update_;
+            }
+        }
+        const detail::DirectionalShadowMap& shadow_map = cached_shadow_map_;
         const float inv_depth_range = shadow_map.depth_range > 1e-6f
             ? (1.0f / shadow_map.depth_range)
             : 1.0f;
@@ -1652,6 +1682,9 @@ class BgfxBackend final : public Backend {
     bgfx::TextureHandle shadow_tex_ = BGFX_INVALID_HANDLE;
     uint16_t shadow_tex_size_ = 0u;
     bool shadow_tex_ready_ = false;
+    detail::DirectionalShadowMap cached_shadow_map_{};
+    int shadow_update_every_frames_ = 1;
+    int shadow_frames_until_update_ = 0;
     bgfx::VertexLayout layout_{};
 
     std::unordered_map<renderer::MeshId, Mesh> meshes_;

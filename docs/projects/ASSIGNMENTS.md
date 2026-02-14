@@ -15,10 +15,10 @@ Strategic tracking:
 |---|---|---|---|---|
 | `content-mount.md` | `codex` | `in progress` | Add stronger chunk-transfer integrity controls and one targeted regression test. | `2026-02-12` |
 | `core-engine-infrastructure.md` | `overseer` | `in progress` | Keep implementation sequencing aligned to `docs/foundation/architecture/core-engine-contracts.md` as active tracks land. | `2026-02-12` |
-| `gameplay-migration.md` | `overseer` | `in progress` | Execute D2 movement replication slice: wire client `PlayerLocation` intent path to rewrite server authority for tank drive state. | `2026-02-14` |
+| `gameplay-migration.md` | `overseer` | `in progress (D1 hardening landed)` | Execute D2 movement replication slice: wire client `PlayerLocation` intent path to rewrite server authority for tank drive state. | `2026-02-14` |
 | `gameplay-netcode.md` | `unassigned` | `queued` | Prepare next predicted-shot reconciliation slice (`local_shot_id`) behind current P0 renderer priorities. | `2026-02-12` |
 | `physics-backend.md` | `codex` | `in progress` | Decide and implement runtime lock mutation/query contract or explicitly lock constraints to creation-time only with parity assertions. | `2026-02-12` |
-| `renderer-parity.md` | `specialist-renderer-parity` | `priority/in progress` | Keep parity ledger synced with accepted `renderer-shadow-hardening` outcomes and leave VQ4 queued until VQ3 acceptance. | `2026-02-12` |
+| `renderer-parity.md` | `specialist-renderer-parity` | `priority/in progress (R26-A complete; R26-B queued)` | Execute `R26-B` (`KARMA intake`) GPU shadow-pass parity slice: engine-owned GPU path + CPU fallback gate using R26-A matrix as baseline. | `2026-02-14` |
 | `renderer-shadow-hardening.md` | `codex` | `priority/in progress` | Capture deterministic baseline evidence (sandbox + bz3), then execute alignment/blockiness hardening slices with parity gates. | `2026-02-12` |
 | `ui-integration.md` | `codex` | `in progress` | Execute one bounded console focus-release parity follow-up slice without backend leakage. | `2026-02-12` |
 | `webserver-unit-tests.md` | `unassigned` | `paused` | Resume only when webserver handler internals change; next slice is users/user_profile/server_edit mutation-flow tests. | `2026-02-13` |

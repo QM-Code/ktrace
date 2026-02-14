@@ -75,6 +75,12 @@ class EngineApp {
     bool running_ = false;
     glm::vec3 last_listener_position_{0.0f, 0.0f, 0.0f};
     bool has_last_listener_position_ = false;
+    float sim_trace_window_seconds_ = 0.0f;
+    float sim_trace_window_dt_sum_ = 0.0f;
+    float sim_trace_window_max_dt_ = 0.0f;
+    int sim_trace_window_frames_ = 0;
+    int sim_trace_window_steps_sum_ = 0;
+    int sim_trace_window_steps_max_ = 0;
 };
 
 } // namespace karma::app

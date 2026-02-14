@@ -120,6 +120,9 @@ int main(int argc, char** argv) {
         config.default_light.shadow.pcf_radius = static_cast<int>(karma::config::ReadUInt16Config(
             {"roamingMode.graphics.lighting.shadows.pcfRadius"},
             static_cast<uint16_t>(config.default_light.shadow.pcf_radius)));
+        config.default_light.shadow.update_every_frames = static_cast<int>(karma::config::ReadUInt16Config(
+            {"roamingMode.graphics.lighting.shadows.updateEveryFrames"},
+            static_cast<uint16_t>(config.default_light.shadow.update_every_frames)));
         config.render_backend =
             karma::app::ResolveRenderBackendFromOption(options.backend_render, options.backend_render_explicit);
         config.physics_backend =

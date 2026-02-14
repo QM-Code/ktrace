@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-renderer-parity`
-- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 active implementation moved to renderer-shadow-hardening track; VQ4 queued)`
-- Immediate next task: treat `docs/projects/renderer-shadow-hardening.md` as the active execution source-of-truth for VQ3 shadow stabilization/intake; keep this file synchronized with accepted outcomes and keep VQ4 untouched/queued until VQ3 is accepted.
+- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 active implementation moved to renderer-shadow-hardening track; VQ4 queued; R26-A baseline matrix complete; R26-B queued)`
+- Immediate next task: execute `R26-B` GPU shadow parity intake (engine-owned GPU shadow pass path + backend parity scaffolding) using R26-A baselines as regression gates.
 - Validation gate: both assigned renderer build dirs via `./bzbuild.py` plus both client runs listed in this file; run docs lint whenever this project doc or assignment board is updated.
 
 ## Mission
@@ -16,6 +16,106 @@ Expand renderer capability toward BGFX/Diligent parity behind stable engine cont
 - Prioritize deterministic visual improvements over speculative renderer feature breadth.
 - This work is explicitly prioritized ahead of incremental audio/content-mount follow-up slices.
 - Port capability and behavior from KARMA-REPO; do not mirror KARMA-REPO backend file organization.
+
+## R26 Performance/GPU Offload Program (2026-02-14)
+Strategic alignment:
+- Track labels in this program intentionally span: `shared unblocker`, `KARMA intake`, and `m-dev parity`.
+- This program expands renderer parity work; it does not replace `renderer-shadow-hardening.md` as the active VQ3 execution source.
+
+Program mission additions:
+1. Bring BGFX and Diligent to behavior/perf parity for shadow/lighting paths that currently diverge.
+2. Close the CPU/GPU capability gap between `KARMA-REPO` and `m-rewrite` for shadow generation/sampling and closely related lighting work.
+3. Mine `m-dev` rendering behavior for proven high-FPS techniques and intake candidates that fit rewrite contracts.
+4. Establish policy that performance-sensitive renderer techniques ship with config toggles in `data/client/config.json` (or explicit rationale when intentionally fixed).
+
+Execution slices:
+1. `R26-A` (`shared unblocker`): Baseline/perf matrix capture
+   - Capture repeatable roaming-mode metrics for BGFX + Diligent with shadows `on/off`.
+   - Record `engine.sim` perf1s stats + renderer traces + key frame-time spikes.
+   - Acceptance: one committed evidence summary block in this file with backend deltas and top hotspot suspects.
+2. `R26-B` (`KARMA intake`): GPU shadow parity intake
+   - Move rewrite shadow-map generation/sampling off CPU path toward GPU pass architecture, preserving rewrite-owned contracts.
+   - Minimum expectation: remove per-frame CPU shadow rasterization as the default path in both active renderer backends.
+   - Acceptance: trace/runtime evidence that shadow work moved to GPU-managed render pass/resources and FPS regression gates improve versus R26-A baseline.
+3. `R26-C` (`m-dev parity`): m-dev renderer technique intake review
+   - Inventory `m-dev` GPU-offloaded rendering techniques and compare against rewrite/KARMA posture.
+   - Classify each candidate: `adopt now`, `adopt later`, or `reject` with rationale.
+   - Acceptance: committed intake matrix in this file with concrete follow-up actions for adopt-now items.
+4. `R26-D` (`shared unblocker`): Renderer config policy expansion
+   - For each new/tuned performance-sensitive technique, add bounded config controls (with sane defaults and validation clamps).
+   - Maintain backend-neutral naming under existing config structure.
+   - Acceptance: config keys documented in this file + wired in runtime + included in operator test recipes.
+
+R26 guardrails:
+- Keep behavior/contract parity as the objective; do not mirror KARMA source layout.
+- Do not land backend-specific gameplay-facing API changes.
+- Keep each slice independently measurable with before/after perf evidence.
+
+## R26-A Baseline Matrix (Completed 2026-02-14)
+Strategic alignment:
+- Track label: `shared unblocker`.
+- Scope: roaming mode (no tank), BGFX + Diligent, shadows `OFF/ON`.
+
+Capture notes:
+- Runtime logs captured in `/tmp/r26a-renderer-baseline-20260214T064426Z/`.
+- `bz3` currently rejects legacy CLI flags `--backend-render` and `--backend-ui`; R26-A used build-specific binaries plus config overrides.
+- The first BGFX-shadows-ON run had one anomalous tail-window perf sample (`avg_fps=0.3`, `max_frame_ms=18731.69`) in `bgfx-shadow-on.log`; a same-command rerun (`bgfx-shadow-on-rerun.log`) was recorded and used for the steady-state matrix below.
+
+R26-A commands (run from `m-rewrite/`):
+```bash
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio
+
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26a-renderer-baseline-20260214T064426Z/user-shadow-off.json -v -t engine.sim,render.bgfx
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26a-renderer-baseline-20260214T064426Z/user-shadow-on.json -v -t engine.sim,render.bgfx
+timeout 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26a-renderer-baseline-20260214T064426Z/user-shadow-off.json -v -t engine.sim,render.diligent
+timeout 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26a-renderer-baseline-20260214T064426Z/user-shadow-on.json -v -t engine.sim,render.diligent
+
+# anomaly-check rerun for BGFX shadows ON
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26a-renderer-baseline-20260214T064426Z/user-shadow-on.json -v -t engine.sim,render.bgfx
+```
+
+Matrix method:
+- Metric source: `engine.sim` `perf1s` lines.
+- Aggregation: steady-state mean after dropping the first `perf1s` sample (`steady_n=22` per scenario).
+
+| Backend | Shadows | steady mean fps | steady mean frame ms | steady mean avg_steps | steady worst `max_frame_ms` | Log |
+|---|---|---:|---:|---:|---:|---|
+| BGFX | OFF | 55.64 | 17.98 | 1.08 | 31.51 | `/tmp/r26a-renderer-baseline-20260214T064426Z/bgfx-shadow-off.log` |
+| BGFX | ON | 29.30 | 34.24 | 2.05 | 78.50 | `/tmp/r26a-renderer-baseline-20260214T064426Z/bgfx-shadow-on-rerun.log` |
+| Diligent | OFF | 40.70 | 24.60 | 1.47 | 60.50 | `/tmp/r26a-renderer-baseline-20260214T064426Z/diligent-shadow-off.log` |
+| Diligent | ON | 37.49 | 26.68 | 1.60 | 49.00 | `/tmp/r26a-renderer-baseline-20260214T064426Z/diligent-shadow-on.log` |
+
+R26-A delta summary:
+- BGFX shadow cost: `-47.3%` FPS (`55.64 -> 29.30`), `+90.5%` frame time (`17.98ms -> 34.24ms`), avg sim steps nearly doubled (`1.08 -> 2.05`).
+- Diligent shadow cost: `-7.9%` FPS (`40.70 -> 37.49`), `+8.5%` frame time (`24.60ms -> 26.68ms`).
+- Backend parity flips by shadow state: BGFX leads Diligent with shadows OFF (`+36.7%` FPS) but trails with shadows ON (`-21.8%` FPS).
+
+Top CPU hotspot suspects (file-level):
+1. Shared CPU shadow map build + sampling internals:
+   - `src/engine/renderer/backends/directional_shadow_internal.hpp` (`BuildDirectionalShadowMap`, `SampleDirectionalShadowVisibility`).
+   - Why: both backends call into this path (`backend_bgfx.cpp:1290`, `backend_diligent.cpp:505`) and shadow-enable immediately increases frame cost.
+2. BGFX per-frame shadow map upload/build pressure:
+   - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp` (`shadow_update_every_frames_`, `BuildDirectionalShadowMap`, shadow-map upload/trace at `1473`).
+   - Evidence: in BGFX+ON rerun, trace reported `688` `shadow map layer=0 ... uploaded=1` entries in 25s; BGFX ON is the dominant perf cliff.
+3. Diligent CPU shadow-summary/factor path still active:
+   - `src/engine/renderer/backends/diligent/backend_diligent.cpp` (`BuildDirectionalShadowMap` + `shadow summary`).
+   - Why: Diligent uses shared CPU map/sampling path and remains CPU-bound baseline even with shadows OFF.
+4. Trace overhead is non-trivial but controlled across scenarios:
+   - Per-frame `direct sampler frame` logs are high-volume in all runs; relative deltas still isolate shadow-path impact because channel policy was held constant.
+
+R26-B implementation recommendation (ordered):
+1. Add engine-owned shadow execution mode contract and config plumbing (`data/client/config.json`) with explicit modes: `cpu_reference` (existing) and `gpu_default` (new target), plus deterministic fallback.
+2. Implement BGFX GPU shadow pass first:
+   - depth-only shadow render target + shader sample path,
+   - retain CPU reference path behind config for parity/regression.
+3. Implement Diligent GPU shadow pass to parity with the same contract surface and matching acceptance gates.
+4. Re-run the same R26-A matrix for before/after proof and keep BGFX-shadows-ON as the primary regression bar.
+
+R26-B risks:
+- Contract drift between backends if GPU pass logic diverges before shared semantics are finalized.
+- Runtime fallback complexity (GPU path failure -> CPU path) can hide regressions unless trace reasons are explicit.
+- Existing docs still include legacy CLI examples (`--backend-render`, `--backend-ui`) that now fail; command recipes should be normalized in follow-up docs maintenance.
 
 ## Primary Specs
 - `docs/foundation/architecture/core-engine-contracts.md` (renderer sections)
@@ -79,6 +179,7 @@ timeout 20s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --backend-render dil
 5. Update status and parity notes.
 
 ## Current Status
+- `2026-02-14`: R26 performance/GPU-offload program was added to this project to unify four linked efforts under one track: BGFX-vs-Diligent parity closure, KARMA CPU->GPU shadow/lighting intake, m-dev renderer-technique intake review, and config-surface expansion policy for performance-sensitive renderer controls.
 - `2026-02-12`: active shadow stabilization/investigation work (sandbox bring-up, KARMA commit-mined shadow intake findings, and staged hardening plan) has been moved to `docs/projects/renderer-shadow-hardening.md`; this file remains the parity ledger and VQ rubric host, and must be synced whenever shadow-hardening slices are accepted.
 - `2026-02-11`: merged former `renderer-visual-quality.md` into this project as VQ1-VQ4 follow-up slices so renderer execution remains under one track/owner.
 - `2026-02-11`: VQ1 diagnostics baseline accepted as shared unblocker for measurable renderer quality outcomes (deterministic repro recipe + explicit VQ2/VQ3 thresholds) while preserving backend-parity boundaries.
@@ -296,6 +397,10 @@ VQ3 closeout decision (`2026-02-11`, current state):
 26. VQ2 texture minification quality slice: add mip-chain generation/upload plus trilinear/anisotropic sampler policy across BGFX + Diligent material texture paths (including fallback/composite paths) with parity guardrails. `Accepted 2026-02-11` (manual worksheet TA scores: BGFX `0/0`, Diligent `0/0`, parity deltas `0/0`, all VQ2 rules passed).
 27. VQ3 visible directional shadowing slice: evolve bounded directional shadow path toward backend-parity projected shadow-map pass with per-pixel depth sampling (bias + bounded PCF), preserving deterministic fallback policy and contract boundaries. `In progress 2026-02-12` (active implementation + KARMA-intake execution moved to `docs/projects/renderer-shadow-hardening.md`; mirror only accepted outcomes back into this parity ledger, including final VQ3 worksheet closeout).
 28. VQ4 visual regression guardrail slice: add deterministic visual-quality assertions/metrics and align wrapper/testing docs with new renderer quality expectations. `Queued 2026-02-11`
+29. R26-A baseline matrix slice (`shared unblocker`): record roaming-mode FPS/frame-time matrix across BGFX+Diligent with shadows on/off, including trace evidence for top CPU bottlenecks. `Queued 2026-02-14`
+30. R26-B GPU shadow parity intake slice (`KARMA intake`): replace rewrite default CPU shadow-map generation/sampling path with GPU-pass-based shadow map generation and GPU sampling parity across active backends. `Queued 2026-02-14`
+31. R26-C legacy renderer intake slice (`m-dev parity`): audit `m-dev` renderer offload techniques, classify adopt-now/later/reject, and attach concrete implementation follow-ups for adopt-now items. `Queued 2026-02-14`
+32. R26-D renderer config-surface policy slice (`shared unblocker`): ensure newly introduced performance-sensitive renderer techniques are exposed as bounded config options (or explicitly documented as fixed-policy decisions) in `data/client/config.json` and runtime plumbing. `Queued 2026-02-14`
 
 ## Active Specialist Packet (R2)
 ```text

@@ -1,0 +1,14 @@
+{
+  "platform": {
+    "VSync": false
+  },
+  "roamingMode": {
+    "graphics": {
+      "lighting": {
+        "shadows": {
+          "enabled": false
+        }
+      }
+    }
+  }
+}

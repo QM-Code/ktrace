@@ -1,0 +1,11 @@
+{
+  "roamingMode": {
+    "graphics": {
+      "lighting": {
+        "shadows": {
+          "enabled": false
+        }
+      }
+    }
+  }
+}

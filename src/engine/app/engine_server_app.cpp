@@ -145,9 +145,13 @@ void EngineServerApp::tick() {
 
     const int sim_steps = simulation_clock_.beginFrame(dt);
     if (logging::ShouldTraceChannel("engine.sim.frames")) {
+        const float frame_ms = raw_dt * 1000.0f;
+        const float fps = (raw_dt > 1e-6f) ? (1.0f / raw_dt) : 0.0f;
         KARMA_TRACE("engine.sim.frames",
-                    "EngineServerApp: dt_raw={:.4f} dt={:.4f} steps={} fixed_dt={:.4f} accumulator={:.4f}",
+                    "EngineServerApp: dt_raw={:.4f}s frame_ms={:.2f} fps={:.1f} dt={:.4f} steps={} fixed_dt={:.4f} accumulator={:.4f}",
                     raw_dt,
+                    frame_ms,
+                    fps,
                     dt,
                     sim_steps,
                     simulation_clock_.fixedDeltaTime(),

@@ -1,5 +1,6 @@
 #include "karma/app/engine_app.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <sstream>
 #include <string>
@@ -189,6 +190,12 @@ void EngineApp::start(GameInterface& game, const EngineConfig& config) {
     game_->onStart();
     game_->onUiStart();
     KARMA_TRACE("ecs.world", "EngineApp: world ready entities={}", world_.entities().size());
+    sim_trace_window_seconds_ = 0.0f;
+    sim_trace_window_dt_sum_ = 0.0f;
+    sim_trace_window_max_dt_ = 0.0f;
+    sim_trace_window_frames_ = 0;
+    sim_trace_window_steps_sum_ = 0;
+    sim_trace_window_steps_max_ = 0;
     running_ = true;
 }
 
@@ -226,9 +233,13 @@ void EngineApp::tick() {
         physics_system_.simulateFixedStep(simulation_clock_.fixedDeltaTime());
     }
     if (logging::ShouldTraceChannel("engine.sim.frames")) {
+        const float frame_ms = raw_dt * 1000.0f;
+        const float fps = (raw_dt > 1e-6f) ? (1.0f / raw_dt) : 0.0f;
         KARMA_TRACE("engine.sim.frames",
-                    "EngineApp: dt_raw={:.4f} steps={} fixed_dt={:.4f} accumulator={:.4f}",
+                    "EngineApp: dt_raw={:.4f}s frame_ms={:.2f} fps={:.1f} steps={} fixed_dt={:.4f} accumulator={:.4f}",
                     raw_dt,
+                    frame_ms,
+                    fps,
                     physics_steps,
                     simulation_clock_.fixedDeltaTime(),
                     simulation_clock_.accumulator());
@@ -240,12 +251,44 @@ void EngineApp::tick() {
                     raw_dt,
                     config_.simulation_max_frame_dt);
     }
-    if (physics_steps != 1) {
-        KARMA_TRACE("engine.sim",
-                    "EngineApp: simulation catch-up steps={} fixed_dt={:.4f} accumulator={:.4f}",
-                    physics_steps,
-                    simulation_clock_.fixedDeltaTime(),
-                    simulation_clock_.accumulator());
+    if (logging::ShouldTraceChannel("engine.sim")) {
+        sim_trace_window_seconds_ += raw_dt;
+        sim_trace_window_dt_sum_ += raw_dt;
+        sim_trace_window_max_dt_ = std::max(sim_trace_window_max_dt_, raw_dt);
+        ++sim_trace_window_frames_;
+        sim_trace_window_steps_sum_ += physics_steps;
+        sim_trace_window_steps_max_ = std::max(sim_trace_window_steps_max_, physics_steps);
+        if (sim_trace_window_seconds_ >= 1.0f && sim_trace_window_frames_ > 0) {
+            const float avg_dt = sim_trace_window_dt_sum_ / static_cast<float>(sim_trace_window_frames_);
+            const float avg_fps =
+                (sim_trace_window_dt_sum_ > 1e-6f)
+                ? (static_cast<float>(sim_trace_window_frames_) / sim_trace_window_dt_sum_)
+                : 0.0f;
+            const float avg_steps =
+                static_cast<float>(sim_trace_window_steps_sum_) / static_cast<float>(sim_trace_window_frames_);
+            KARMA_TRACE("engine.sim",
+                        "EngineApp: perf1s avg_fps={:.1f} avg_frame_ms={:.2f} max_frame_ms={:.2f} avg_steps={:.2f} max_steps={} frames={}",
+                        avg_fps,
+                        avg_dt * 1000.0f,
+                        sim_trace_window_max_dt_ * 1000.0f,
+                        avg_steps,
+                        sim_trace_window_steps_max_,
+                        sim_trace_window_frames_);
+            sim_trace_window_seconds_ = 0.0f;
+            sim_trace_window_dt_sum_ = 0.0f;
+            sim_trace_window_max_dt_ = 0.0f;
+            sim_trace_window_frames_ = 0;
+            sim_trace_window_steps_sum_ = 0;
+            sim_trace_window_steps_max_ = 0;
+        }
+    }
+    if (physics_steps >= config_.simulation_max_steps) {
+        KARMA_TRACE_CHANGED("engine.sim",
+                            std::to_string(physics_steps),
+                            "EngineApp: simulation catch-up steps={} fixed_dt={:.4f} accumulator={:.4f}",
+                            physics_steps,
+                            simulation_clock_.fixedDeltaTime(),
+                            simulation_clock_.accumulator());
     }
     physics_system_.endFrame();
 
