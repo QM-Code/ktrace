@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string_view>
 #include <vector>
 #include <glm/glm.hpp>
 
@@ -65,6 +66,37 @@ struct CameraData {
 };
 
 struct DirectionalLightData {
+    enum class ShadowExecutionMode : uint8_t {
+        CpuReference = 0,
+        GpuDefault = 1,
+    };
+
+    static constexpr const char* ShadowExecutionModeToken(ShadowExecutionMode mode) {
+        switch (mode) {
+            case ShadowExecutionMode::CpuReference:
+                return "cpu_reference";
+            case ShadowExecutionMode::GpuDefault:
+                return "gpu_default";
+            default:
+                return "cpu_reference";
+        }
+    }
+
+    static constexpr bool TryParseShadowExecutionMode(std::string_view token, ShadowExecutionMode* out) {
+        if (!out) {
+            return false;
+        }
+        if (token == "cpu_reference") {
+            *out = ShadowExecutionMode::CpuReference;
+            return true;
+        }
+        if (token == "gpu_default") {
+            *out = ShadowExecutionMode::GpuDefault;
+            return true;
+        }
+        return false;
+    }
+
     struct ShadowDesc {
         bool enabled = true;
         float strength = 0.65f;
@@ -73,6 +105,7 @@ struct DirectionalLightData {
         int map_size = 256;
         int pcf_radius = 1;
         int update_every_frames = 1;
+        ShadowExecutionMode execution_mode = ShadowExecutionMode::CpuReference;
     };
 
     glm::vec3 direction{0.3f, 0.7f, -0.5f};

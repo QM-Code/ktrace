@@ -13,6 +13,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -55,6 +56,9 @@ using karma::renderer_backend::detail::ResolvedDirectionalShadowSemantics;
 using karma::renderer_backend::detail::SamplerVariableAvailability;
 using karma::renderer_backend::detail::SampleDirectionalShadowVisibility;
 using karma::renderer_backend::detail::ComputeDirectionalShadowVisibilityForReceiver;
+using karma::renderer_backend::detail::ShadowClipDepthTransform;
+using karma::renderer_backend::detail::ResolveShadowClipDepthTransform;
+using karma::renderer_backend::detail::ResolveShadowClipYSign;
 using karma::renderer_backend::detail::ValidateResolvedDebugLineSemantics;
 using karma::renderer_backend::detail::ValidateResolvedEnvironmentLightingSemantics;
 using karma::renderer_backend::detail::ValidateResolvedMaterialLighting;
@@ -152,6 +156,78 @@ bool RunShadowSemanticsClampChecks() {
         return false;
     }
 
+    return true;
+}
+
+bool RunShadowExecutionModeTokenChecks() {
+    using ShadowExecutionMode = karma::renderer::DirectionalLightData::ShadowExecutionMode;
+    if (std::string_view(
+            karma::renderer::DirectionalLightData::ShadowExecutionModeToken(ShadowExecutionMode::CpuReference)) !=
+        "cpu_reference") {
+        std::cerr << "cpu shadow execution mode token mismatch\n";
+        return false;
+    }
+    if (std::string_view(
+            karma::renderer::DirectionalLightData::ShadowExecutionModeToken(ShadowExecutionMode::GpuDefault)) !=
+        "gpu_default") {
+        std::cerr << "gpu shadow execution mode token mismatch\n";
+        return false;
+    }
+
+    ShadowExecutionMode parsed = ShadowExecutionMode::GpuDefault;
+    if (!karma::renderer::DirectionalLightData::TryParseShadowExecutionMode("cpu_reference", &parsed) ||
+        parsed != ShadowExecutionMode::CpuReference) {
+        std::cerr << "failed to parse cpu_reference shadow execution mode\n";
+        return false;
+    }
+    if (!karma::renderer::DirectionalLightData::TryParseShadowExecutionMode("gpu_default", &parsed) ||
+        parsed != ShadowExecutionMode::GpuDefault) {
+        std::cerr << "failed to parse gpu_default shadow execution mode\n";
+        return false;
+    }
+    if (karma::renderer::DirectionalLightData::TryParseShadowExecutionMode("gpu", &parsed)) {
+        std::cerr << "invalid shadow execution mode token unexpectedly accepted\n";
+        return false;
+    }
+    if (karma::renderer::DirectionalLightData::TryParseShadowExecutionMode("gpu_default", nullptr)) {
+        std::cerr << "null output pointer should be rejected for shadow execution mode parse\n";
+        return false;
+    }
+    return true;
+}
+
+bool RunShadowClipDepthTransformChecks() {
+    const ShadowClipDepthTransform zero_to_one = ResolveShadowClipDepthTransform(false);
+    if (!NearlyEqual(zero_to_one.scale, 1.0f) || !NearlyEqual(zero_to_one.bias, 0.0f)) {
+        std::cerr << "zero-to-one clip depth transform mismatch (scale=" << zero_to_one.scale
+                  << ", bias=" << zero_to_one.bias << ")\n";
+        return false;
+    }
+    const ShadowClipDepthTransform homogeneous = ResolveShadowClipDepthTransform(true);
+    if (!NearlyEqual(homogeneous.scale, 2.0f) || !NearlyEqual(homogeneous.bias, -1.0f)) {
+        std::cerr << "homogeneous clip depth transform mismatch (scale=" << homogeneous.scale
+                  << ", bias=" << homogeneous.bias << ")\n";
+        return false;
+    }
+    const float homogeneous_min = (0.0f * homogeneous.scale) + homogeneous.bias;
+    const float homogeneous_max = (1.0f * homogeneous.scale) + homogeneous.bias;
+    if (!NearlyEqual(homogeneous_min, -1.0f) || !NearlyEqual(homogeneous_max, 1.0f)) {
+        std::cerr << "homogeneous clip depth range mismatch\n";
+        return false;
+    }
+    const float zero_to_one_min = (0.0f * zero_to_one.scale) + zero_to_one.bias;
+    const float zero_to_one_max = (1.0f * zero_to_one.scale) + zero_to_one.bias;
+    if (!NearlyEqual(zero_to_one_min, 0.0f) || !NearlyEqual(zero_to_one_max, 1.0f)) {
+        std::cerr << "zero-to-one clip depth range mismatch\n";
+        return false;
+    }
+    const float bottom_left_sign = ResolveShadowClipYSign(true);
+    const float top_left_sign = ResolveShadowClipYSign(false);
+    if (!NearlyEqual(bottom_left_sign, 1.0f) || !NearlyEqual(top_left_sign, -1.0f)) {
+        std::cerr << "clip-space Y sign policy mismatch (bottom_left=" << bottom_left_sign
+                  << ", top_left=" << top_left_sign << ")\n";
+        return false;
+    }
     return true;
 }
 
@@ -2623,6 +2699,12 @@ bool RunDebugLineSemanticsChecks() {
 } // namespace
 
 int main() {
+    if (!RunShadowExecutionModeTokenChecks()) {
+        return 1;
+    }
+    if (!RunShadowClipDepthTransformChecks()) {
+        return 1;
+    }
     if (!RunShadowSemanticsClampChecks()) {
         return 1;
     }

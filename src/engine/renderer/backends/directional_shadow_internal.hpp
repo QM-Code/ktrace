@@ -47,6 +47,26 @@ struct DirectionalShadowMap {
     std::vector<float> depth{};
 };
 
+struct ShadowClipDepthTransform {
+    float scale = 1.0f;
+    float bias = 0.0f;
+};
+
+inline ShadowClipDepthTransform ResolveShadowClipDepthTransform(const bool homogeneous_depth) {
+    ShadowClipDepthTransform transform{};
+    if (homogeneous_depth) {
+        transform.scale = 2.0f;
+        transform.bias = -1.0f;
+    }
+    return transform;
+}
+
+inline float ResolveShadowClipYSign(const bool origin_bottom_left) {
+    // GPU shadow depth pass outputs clip-space Y. When render-target origin is top-left
+    // (for example Vulkan), negate Y so texture sampling space matches CPU reference projection.
+    return origin_bottom_left ? 1.0f : -1.0f;
+}
+
 struct DirectionalShadowView {
     renderer::CameraData camera{};
     float aspect_ratio = 16.0f / 9.0f;
@@ -252,10 +272,10 @@ inline float EdgeFunction(float ax, float ay, float bx, float by, float px, floa
     return ((px - ax) * (by - ay)) - ((py - ay) * (bx - ax));
 }
 
-inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalShadowSemantics& semantics,
-                                                      const glm::vec3& light_direction,
-                                                      const std::vector<DirectionalShadowCaster>& casters,
-                                                      const DirectionalShadowView* view = nullptr) {
+inline DirectionalShadowMap BuildDirectionalShadowProjection(const ResolvedDirectionalShadowSemantics& semantics,
+                                                             const glm::vec3& light_direction,
+                                                             const std::vector<DirectionalShadowCaster>& casters,
+                                                             const DirectionalShadowView* view = nullptr) {
     DirectionalShadowMap map{};
     if (!semantics.enabled || !ValidateResolvedDirectionalShadowSemantics(semantics) || casters.empty()) {
         return map;
@@ -339,8 +359,6 @@ inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalS
         center_y = view_center_y;
     }
 
-    // Keep configured extent as a quality floor, but expand to cover the current view footprint
-    // so visible receivers do not silently fall outside the shadow map.
     float resolved_extent = semantics.extent;
     if (view_bounds_valid) {
         const float view_half_x = 0.5f * std::fabs(view_max_x - view_min_x);
@@ -395,8 +413,6 @@ inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalS
     }
 
     const float depth_padding = std::max(1.0f, resolved_extent * 0.1f);
-    // Expand depth coverage beyond caster-only bounds so receiver points can still project
-    // into the same shadow volume in roaming scenes.
     const float receiver_depth_extension = std::max(2.0f, resolved_extent * 2.0f);
     const float resolved_min_depth = depth_min - depth_padding;
     const float resolved_max_depth = depth_max + depth_padding + receiver_depth_extension;
@@ -415,6 +431,18 @@ inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalS
     map.axis_right = axis_right;
     map.axis_up = axis_up;
     map.axis_forward = axis_forward;
+    return map;
+}
+
+inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalShadowSemantics& semantics,
+                                                      const glm::vec3& light_direction,
+                                                      const std::vector<DirectionalShadowCaster>& casters,
+                                                      const DirectionalShadowView* view = nullptr) {
+    DirectionalShadowMap map =
+        BuildDirectionalShadowProjection(semantics, light_direction, casters, view);
+    if (!map.ready) {
+        return map;
+    }
     map.depth.assign(static_cast<std::size_t>(map.size) * static_cast<std::size_t>(map.size),
                      std::numeric_limits<float>::infinity());
 

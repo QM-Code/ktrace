@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-renderer-parity`
-- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 active implementation moved to renderer-shadow-hardening track; VQ4 queued; R26-A baseline matrix complete; R26-B queued)`
-- Immediate next task: execute `R26-B` GPU shadow parity intake (engine-owned GPU shadow pass path + backend parity scaffolding) using R26-A baselines as regression gates.
+- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 active implementation moved to renderer-shadow-hardening track; VQ4 queued; R26-A baseline matrix complete; R26-B slice 1 landed; R26-B slice 2 scaffolding landed; R26-B slice 3 BGFX GPU pass prototype landed; R26-B slice 4 Diligent GPU pass prototype landed; R26-B slice 5 lifecycle/fallback hardening landed; R26-B visual closeout checkpoint captured with Diligent screenshot tooling blocker documented; R26-B gpu_default no-shadow regression fix landed pending operator visual verify; R26-C intake matrix landed)`
+- Immediate next task: operator-verify `gpu_default` visual shadow parity (`BGFX` + `Diligent`) after clip-depth transform fix, capture traces/screens, then execute `R26-D` config policy expansion.
 - Validation gate: both assigned renderer build dirs via `./bzbuild.py` plus both client runs listed in this file; run docs lint whenever this project doc or assignment board is updated.
 
 ## Mission
@@ -116,6 +116,335 @@ R26-B risks:
 - Contract drift between backends if GPU pass logic diverges before shared semantics are finalized.
 - Runtime fallback complexity (GPU path failure -> CPU path) can hide regressions unless trace reasons are explicit.
 - Existing docs still include legacy CLI examples (`--backend-render`, `--backend-ui`) that now fail; command recipes should be normalized in follow-up docs maintenance.
+
+## R26-B Slice 1 Progress (In Progress, 2026-02-14)
+Strategic alignment:
+- Track label: `KARMA intake`.
+- Scope: Diligent shadow correctness/perf parity pre-work before GPU default shadow pass.
+
+Implemented code path updates:
+1. Diligent moved to per-pixel shadow-map sampling path (parity with BGFX behavior) in `src/engine/renderer/backends/diligent/backend_diligent.cpp`.
+2. Diligent shadow cadence/cache parity landed (`updateEveryFrames`, cached shadow map, rebuild/upload cadence) mirroring BGFX policy in `src/engine/renderer/backends/diligent/backend_diligent.cpp`.
+
+Evidence logs:
+- Runtime logs captured in `/tmp/r26b-shadow-cadence-20260214T082141Z/`.
+
+Commands and outcomes (run from `m-rewrite/`):
+```bash
+# build gates
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio   # fail (missing layers include), then pass after fix
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio       # pass
+
+# matrix captures (expected timeout exit 124)
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-shadow-cadence-20260214T082141Z/user-shadow-off.json -v -t engine.sim,render.bgfx
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-shadow-cadence-20260214T082141Z/user-shadow-on.json -v -t engine.sim,render.bgfx
+timeout 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-shadow-cadence-20260214T082141Z/user-shadow-off.json -v -t engine.sim,render.diligent
+timeout 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-shadow-cadence-20260214T082141Z/user-shadow-on.json -v -t engine.sim,render.diligent
+
+# cadence A/B (shadows ON)
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-shadow-cadence-20260214T082141Z/user-shadow-on-every1.json -v -t engine.sim,render.bgfx
+timeout 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-shadow-cadence-20260214T082141Z/user-shadow-on-every1.json -v -t engine.sim,render.diligent
+```
+
+Matrix method:
+- Metric source: `engine.sim` `perf1s` lines.
+- Aggregation: steady-state mean after dropping first `perf1s` sample (`steady_n=22` per scenario).
+
+| Backend | Shadows | steady mean fps | steady mean frame ms | steady mean avg_steps | steady worst `max_frame_ms` | Log |
+|---|---|---:|---:|---:|---:|---|
+| BGFX | OFF | 59.75 | 16.74 | 1.00 | 37.70 | `/tmp/r26b-shadow-cadence-20260214T082141Z/bgfx-shadow-off.log` |
+| BGFX | ON | 34.81 | 28.73 | 1.72 | 38.90 | `/tmp/r26b-shadow-cadence-20260214T082141Z/bgfx-shadow-on.log` |
+| Diligent | OFF | 59.02 | 16.95 | 1.02 | 38.84 | `/tmp/r26b-shadow-cadence-20260214T082141Z/diligent-shadow-off.log` |
+| Diligent | ON | 30.75 | 32.52 | 1.95 | 38.70 | `/tmp/r26b-shadow-cadence-20260214T082141Z/diligent-shadow-on.log` |
+
+Slice-1 deltas:
+- OFF-state backend parity is now close (`59.75` vs `59.02`, Diligent `-1.2%` FPS).
+- ON-state parity remains incomplete (Diligent `30.75` vs BGFX `34.81`, Diligent `-11.7%` FPS).
+- Shadow tax in this run window remains large on both backends (BGFX `-41.7%`, Diligent `-47.9%`), consistent with CPU shadow-map generation still being the default path.
+
+Cadence A/B (`updateEveryFrames=1` vs `2`, shadows ON):
+- BGFX: `34.64` FPS (`every1`) -> `34.81` FPS (`every2`) (`+0.5%`).
+- Diligent: `28.49` FPS (`every1`) -> `30.75` FPS (`every2`) (`+7.9%`).
+- Interpretation: cadence control is active and materially beneficial in Diligent, but does not remove the core CPU shadow-map cost.
+
+Top CPU hotspot suspects after slice 1 (file-level):
+1. `src/engine/renderer/backends/directional_shadow_internal.hpp`
+   - `BuildDirectionalShadowMap` remains the dominant ON-state cost center shared by BGFX and Diligent.
+2. `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+   - Remaining per-frame shadow-map build/integration work (now cadence-gated) plus per-draw binding/submit overhead keeps ON-state behind BGFX.
+3. `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
+   - Same CPU shadow-map dependency still drives major ON-state tax even with update cadence.
+
+R26-B implementation order recommendation (updated):
+1. Add engine-owned shadow execution mode contract + config policy (`cpu_reference`, `gpu_default`) with explicit runtime trace reason when falling back.
+2. Implement BGFX GPU depth shadow pass/resources first and keep CPU reference path gated.
+3. Port same GPU-pass contract to Diligent with matching shader/resource semantics.
+4. Re-run R26-A matrix recipe and keep this R26-B slice-1 matrix as intermediate regression evidence.
+
+R26-B slice-2 risks:
+- GPU resource lifecycle mismatches (resize/reload/device-loss) can cause backend-specific fallback churn unless fallback reasons are traced.
+- CPU reference path drift can silently invalidate parity tests; keep one deterministic contract test/trace assertion path alive.
+- If config policy is not wired first, operators cannot reliably force/verify fallback during triage.
+
+R26-B slice-2 scaffolding landed (2026-02-14):
+1. Added engine-owned shadow execution mode contract in `include/karma/renderer/types.hpp`:
+   - modes: `cpu_reference`, `gpu_default`
+   - parser/token helpers: `TryParseShadowExecutionMode`, `ShadowExecutionModeToken`
+2. Added runtime config wiring in `src/game/client/main.cpp`:
+   - reads `roamingMode.graphics.lighting.shadows.executionMode`
+   - invalid values now warn and fall back deterministically.
+3. Added explicit backend fallback reason traces (until GPU pass exists):
+   - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
+   - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+   - trace reason token: `gpu_shadow_pass_not_implemented`.
+4. Added config policy defaults:
+   - `data/client/config.json`
+   - `data/client/config_tank_preview.json`
+5. Added parser contract test coverage:
+   - `src/engine/renderer/tests/directional_shadow_contract_test.cpp`.
+
+Slice-2 scaffolding validation:
+- `./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio` -> pass.
+- `./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio` -> pass.
+- `./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test` -> pass.
+- `./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test` -> pass.
+- GPU-mode fallback smoke (`executionMode=gpu_default`) logs in `/tmp/r26b-shadow-execmode-20260214T083325Z/` show:
+  - BGFX fallback trace count: `1`
+  - Diligent fallback trace count: `1`
+  - bounded smoke exits: `137` (`timeout -k` hard-stop to avoid lingering process during unattended capture).
+
+R26-B slice-3 BGFX GPU pass prototype landed (2026-02-14):
+1. Added shared shadow-projection-only helper (no CPU rasterization):
+   - `src/engine/renderer/backends/directional_shadow_internal.hpp` -> `BuildDirectionalShadowProjection(...)`.
+2. Added BGFX shadow-depth shader pair + build wiring:
+   - `data/bgfx/shaders/shadow/vs_shadow_depth.sc`
+   - `data/bgfx/shaders/shadow/fs_shadow_depth.sc`
+   - `data/bgfx/shaders/shadow/varying.def.sc`
+   - `CMakeLists.txt` (`bz3_bgfx_shaders` now compiles `vk/shadow/*` bins).
+3. Implemented BGFX GPU shadow pass path gated by `executionMode=gpu_default`:
+   - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
+   - shadow view ordering (`shadow view=0`, main view=1)
+   - R32F render-target shadow texture + framebuffer management
+   - active-path trace: `gpu shadow pass size={} draws={}`.
+4. CPU reference path remains intact and is still used for `executionMode=cpu_reference` or when GPU path is unavailable.
+
+Slice-3 validation commands and outcomes (run from `m-rewrite/`):
+```bash
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio      # pass
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio  # pass
+./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test      # pass
+./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test  # pass
+
+# BGFX CPU vs GPU mode compare (shadows ON)
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-bgfx-gpu-compare-20260214T173727Z/cpu_on.json -v -t engine.sim,render.bgfx
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-bgfx-gpu-compare-20260214T173727Z/gpu_on.json -v -t engine.sim,render.bgfx
+
+# Diligent GPU-request fallback check (shadows ON)
+timeout -k 2s 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 --strict-config=true --config /tmp/r26b-gpu-pass-20260214T173514Z/gpu_on.json -v -t engine.sim,render.diligent
+```
+
+Slice-3 evidence:
+- BGFX CPU/GPU compare logs: `/tmp/r26b-bgfx-gpu-compare-20260214T173727Z/`.
+- Diligent fallback log: `/tmp/r26b-gpu-pass-20260214T173514Z/diligent-gpu-request.log`.
+
+BGFX ON-state CPU vs GPU prototype (steady-state, `steady_n=22`):
+| Backend | Mode | steady mean fps | steady mean frame ms | steady mean avg_steps | steady worst `max_frame_ms` | Log |
+|---|---|---:|---:|---:|---:|---|
+| BGFX | `cpu_reference` | 34.58 | 28.93 | 1.73 | 61.11 | `/tmp/r26b-bgfx-gpu-compare-20260214T173727Z/bgfx-cpu.log` |
+| BGFX | `gpu_default` | 35.63 | 28.09 | 1.69 | 64.98 | `/tmp/r26b-bgfx-gpu-compare-20260214T173727Z/bgfx-gpu.log` |
+
+Slice-3 delta summary:
+- BGFX GPU prototype shows modest ON-state gain vs CPU reference (`+3.0%` FPS, `-2.9%` frame time).
+- BGFX GPU trace confirms active GPU path (`gpu shadow pass size=512 draws=14`) with no BGFX fallback trace.
+- Diligent still reports explicit fallback when `gpu_default` is requested (`reason=gpu_shadow_pass_not_implemented`).
+
+Slice-3 known risks / follow-up:
+- Visual parity of BGFX GPU pass still needs explicit screenshot/operator confirmation.
+- GPU depth output currently uses shader linearization + min blending; this should be hardened with additional invariants.
+- Diligent GPU parity was pending at the end of slice-3 and is addressed in slice-4 below.
+
+R26-B slice-4 Diligent GPU pass prototype landed (2026-02-14):
+1. Implemented Diligent GPU shadow-pass path under the same execution-mode contract in `src/engine/renderer/backends/diligent/backend_diligent.cpp`:
+   - added `shadow_depth_pso` + shadow SRB (`createShadowDepthPipeline()`),
+   - added render-target shadow texture lifecycle (`ensureShadowTexture(size, render_target)`),
+   - added GPU pass submission (`renderGpuShadowMap(...)`) with trace token `gpu shadow pass size={} draws={}`,
+   - wired `gpu_default` to projection-only build (`BuildDirectionalShadowProjection`) + GPU pass,
+   - retained `cpu_reference` path (`BuildDirectionalShadowMap` + `updateShadowTexture`) as deterministic fallback path.
+2. Added Diligent capability/fallback semantics to match BGFX policy:
+   - fallback reason tokens now include `gpu_shadow_pipeline_unavailable` and `gpu_shadow_no_casters` when relevant.
+3. Fixed Diligent GPU-path validation assertion:
+   - first GPU run failed with `DvpVerifySRBCompatibility()` (`shadow_depth_pso` required SRB),
+   - fixed by creating/committing `shadow_depth_srb_` before shadow draw submission.
+
+Slice-4 validation commands and outcomes (run from `m-rewrite/`):
+```bash
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio      # pass
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio  # pass
+./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test      # pass
+./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test  # pass
+
+# 4-way ON-state matrix (BGFX/Diligent x cpu_reference/gpu_default)
+# temporary capture configs created under data/client/, then removed
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config ./data/client/config_r26b_cpu_capture.json -v -t engine.sim,render.bgfx
+timeout 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config ./data/client/config_r26b_gpu_capture.json -v -t engine.sim,render.bgfx
+timeout 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config ./data/client/config_r26b_cpu_capture.json -v -t engine.sim,render.diligent
+timeout 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config ./data/client/config_r26b_gpu_capture.json -v -t engine.sim,render.diligent
+```
+- Final capture exits: all `124` (expected bounded run).
+- Evidence dir: `/tmp/r26b-diligent-gpu-compare-20260214T175043Z/`.
+
+Slice-4 4-way ON-state matrix (steady-state, drop first `perf1s`, `steady_n=22`):
+| Backend | Mode | steady mean fps | steady mean frame ms | steady mean avg_steps | steady worst `max_frame_ms` | Log |
+|---|---|---:|---:|---:|---:|---|
+| BGFX | `cpu_reference` | 34.00 | 29.47 | 1.77 | 66.55 | `/tmp/r26b-diligent-gpu-compare-20260214T175043Z/bgfx-cpu.log` |
+| BGFX | `gpu_default` | 34.90 | 28.72 | 1.72 | 64.52 | `/tmp/r26b-diligent-gpu-compare-20260214T175043Z/bgfx-gpu.log` |
+| Diligent | `cpu_reference` | 29.10 | 34.52 | 2.07 | 73.64 | `/tmp/r26b-diligent-gpu-compare-20260214T175043Z/diligent-cpu.log` |
+| Diligent | `gpu_default` | 33.75 | 29.68 | 1.78 | 69.28 | `/tmp/r26b-diligent-gpu-compare-20260214T175043Z/diligent-gpu.log` |
+
+Slice-4 delta summary:
+- BGFX GPU mode remains modestly better than BGFX CPU reference (`+2.6%` FPS, `-2.5%` frame time).
+- Diligent GPU mode closes the major ON-state gap vs Diligent CPU reference (`+16.0%` FPS, `-14.0%` frame time).
+- Trace evidence confirms active GPU pass in both backends:
+  - BGFX: `gpu shadow pass size=512 draws=14`
+  - Diligent: `gpu shadow pass size=512 draws=14`
+- No `gpu_default -> cpu_reference` fallback trace was emitted in the final 4 captures.
+
+Slice-4 known risks / next hardening:
+- Visual parity checkpoints still need explicit screenshot/operator signoff for `BGFX gpu_default` vs `Diligent gpu_default`.
+- Diligent GPU shadow texture lifecycle must be hardened for resize/device-loss and explicit failure fallback.
+- GPU shadow-pass invariants should be expanded to prevent silent state regression (resource transitions + SRB readiness).
+
+R26-B slice-5 lifecycle/fallback hardening landed (2026-02-14):
+1. Hardened Diligent GPU path failure behavior in `src/engine/renderer/backends/diligent/backend_diligent.cpp`:
+   - if `gpu_default` shadow pass render fails, backend now traces reason `gpu_shadow_render_failed` and deterministically falls back to CPU reference shadow build/upload in the same update window.
+2. Hardened shadow resource lifecycle on swapchain resize in `src/engine/renderer/backends/diligent/backend_diligent.cpp`:
+   - added `resetShadowResources()` and forced shadow cadence refresh (`shadow_frames_until_update_=0`) after resize,
+   - added trace token `shadow resources reset reason=swapchain_resize`.
+3. Re-ran full 4-way ON-state matrix after hardening:
+   - evidence dir: `/tmp/r26b-hardening-compare-20260214T182247Z/`,
+   - all four bounded runs exited `124` as expected.
+
+Slice-5 validation commands and outcomes (run from `m-rewrite/`):
+```bash
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio      # pass
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio  # pass
+./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test      # pass
+./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test  # pass
+
+timeout -k 2s 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config ./data/client/config_r26b_cpu_capture.json -v -t engine.sim,render.bgfx
+timeout -k 2s 25s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config ./data/client/config_r26b_gpu_capture.json -v -t engine.sim,render.bgfx
+timeout -k 2s 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config ./data/client/config_r26b_cpu_capture.json -v -t engine.sim,render.diligent
+timeout -k 2s 25s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config ./data/client/config_r26b_gpu_capture.json -v -t engine.sim,render.diligent
+```
+
+Slice-5 4-way ON-state matrix (steady-state, drop first `perf1s`, `steady_n=22`):
+| Backend | Mode | steady mean fps | steady mean frame ms | steady mean avg_steps | steady worst `max_frame_ms` | Log |
+|---|---|---:|---:|---:|---:|---|
+| BGFX | `cpu_reference` | 35.31 | 28.33 | 1.70 | 38.19 | `/tmp/r26b-hardening-compare-20260214T182247Z/bgfx-cpu.log` |
+| BGFX | `gpu_default` | 35.91 | 27.86 | 1.67 | 34.49 | `/tmp/r26b-hardening-compare-20260214T182247Z/bgfx-gpu.log` |
+| Diligent | `cpu_reference` | 30.18 | 33.14 | 1.99 | 42.48 | `/tmp/r26b-hardening-compare-20260214T182247Z/diligent-cpu.log` |
+| Diligent | `gpu_default` | 35.45 | 28.21 | 1.69 | 34.95 | `/tmp/r26b-hardening-compare-20260214T182247Z/diligent-gpu.log` |
+
+Slice-5 delta summary:
+- BGFX remains slightly better in GPU mode vs CPU reference (`+1.7%` FPS, `-1.7%` frame time).
+- Diligent GPU mode remains materially improved over CPU reference (`+17.5%` FPS, `-14.9%` frame time).
+- Trace evidence confirms active GPU pass in both backends:
+  - BGFX: `gpu shadow pass size=512 draws=14`
+  - Diligent: `gpu shadow pass size=512 draws=14`
+- No fallback trace tokens were emitted in this steady-state matrix (`gpu_shadow_render_failed` absent), indicating no runtime fallback events during the sampled window.
+
+R26-B visual closeout checkpoint (partial; tooling blocker documented, 2026-02-14):
+1. Added sandbox parity control to force GPU-path capture mode:
+   - `src/engine/renderer/tests/renderer_shadow_sandbox.cpp` now accepts `--shadow-execution-mode <cpu_reference|gpu_default>`.
+2. Captured deterministic visual artifact for BGFX `gpu_default` (sandbox, Xvfb/X11):
+   - evidence dir: `/tmp/r26b-visual-closeout-20260214T183000Z/`
+   - image files:
+     - `/tmp/r26b-visual-closeout-20260214T183000Z/sandbox-bgfx-gpu-t4.png`
+     - `/tmp/r26b-visual-closeout-20260214T183000Z/sandbox-bgfx-gpu-t7.png`
+   - image hash parity (`t4` == `t7`): `6e336f78915e36010299d0471cf3f942a9ec70d81de48e84d2fd77afc9dc69f7`
+3. Diligent screenshot capture is blocked in this environment:
+   - Xvfb/X11 path: Diligent Vulkan swapchain fails (`VK_ERROR_INITIALIZATION_FAILED`) in sandbox.
+   - Wayland path: render succeeds, but no non-interactive screenshot pipeline is available here.
+4. Wayland fallback checkpoint (trace/diagnostic parity) confirms GPU path behavior parity:
+   - BGFX log: `/tmp/r26b-visual-closeout-20260214T183000Z/sandbox-bgfx-gpu-wayland.log`
+   - Diligent log: `/tmp/r26b-visual-closeout-20260214T183000Z/sandbox-diligent-gpu-wayland-forced.log`
+   - both backends show:
+     - `gpu shadow pass size=1024 draws=3`
+     - `mode=gpu_default`
+     - identical sandbox shadow diagnostics (`ground_draw_factor`, `ground_grid_factor`, `flattening_gap`).
+
+Visual closeout commands and outcomes:
+```bash
+# build gates
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio      # pass
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio  # pass
+
+# contract tests
+./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test      # pass
+./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test  # pass
+
+# BGFX screenshot capture (sandbox, gpu_default, Xvfb/X11)
+xvfb-run -a --server-args="-screen 0 1280x720x24" \
+  ./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/renderer_shadow_sandbox \
+  --backend-render bgfx --duration-sec 10 --video-driver x11 \
+  --shadow-execution-mode gpu_default --trace render.system,render.bgfx --verbose
+# pass (images captured)
+
+# Diligent screenshot capture attempt (sandbox, gpu_default, Xvfb/X11)
+xvfb-run -a --server-args="-screen 0 1280x720x24" \
+  ./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/renderer_shadow_sandbox \
+  --backend-render diligent --duration-sec 10 --video-driver x11 \
+  --shadow-execution-mode gpu_default --trace render.system,render.diligent --verbose
+# fail (VK_ERROR_INITIALIZATION_FAILED on X11 swapchain in this environment)
+
+# Wayland trace parity fallback for Diligent and BGFX (no screenshot path)
+timeout -k 2s 10s ./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/renderer_shadow_sandbox \
+  --backend-render diligent --duration-sec 8 --video-driver wayland \
+  --shadow-execution-mode gpu_default --trace render.system,render.diligent --verbose
+timeout -k 2s 10s ./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/renderer_shadow_sandbox \
+  --backend-render bgfx --duration-sec 8 --video-driver wayland \
+  --shadow-execution-mode gpu_default --trace render.system,render.bgfx --verbose
+# both pass
+```
+
+R26-B gpu_default no-shadow regression fix attempt (pending operator visual verify, 2026-02-14):
+1. Symptom reproduced by operator:
+   - `cpu_reference` shows shadows in both BGFX and Diligent.
+   - `gpu_default` shows no visible shadows in both BGFX and Diligent.
+2. Root-cause hypothesis and fix:
+   - GPU shadow depth-pass VS used clip-space Z mapping `depth * 2 - 1` unconditionally.
+   - On Vulkan zero-to-one clip-depth paths this can clip away caster geometry and leave shadow maps effectively empty.
+   - Landed shared clip-depth transform helper in `src/engine/renderer/backends/directional_shadow_internal.hpp`:
+     - `ResolveShadowClipDepthTransform(homogeneous_depth)` -> `(scale,bias)`.
+   - BGFX now derives `(scale,bias)` from `bgfx::getCaps()->homogeneousDepth` and passes via `u_shadowParams2.zw` in:
+     - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
+     - `data/bgfx/shaders/shadow/vs_shadow_depth.sc`
+   - Diligent shadow-depth VS now uses `u_shadowParams2.zw` (Vulkan currently resolves to `1,0`) in:
+     - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+3. Regression guardrails added:
+   - `src/engine/renderer/tests/directional_shadow_contract_test.cpp` now includes `RunShadowClipDepthTransformChecks()`.
+4. Validation after fix (run from `m-rewrite/`):
+```bash
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio      # pass
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio  # pass
+./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test      # pass
+./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test  # pass
+```
+5. Remaining acceptance gate:
+   - operator visual confirmation that `gpu_default` shadows are restored on desktop runtime for both backends.
+
+R26-C m-dev intake matrix (2026-02-14):
+
+Reference root:
+- `/home/karmak/dev/bz3-rewrite/m-dev`
+
+| Candidate technique from m-dev | Evidence (m-dev) | Classification | Rationale | Concrete follow-up |
+|---|---|---|---|---|
+| Lazy offscreen scene-target allocation only when post-brightness is active | `src/engine/graphics/backends/bgfx/backend.cpp` (`wantsBrightness`, `ensureSceneTarget`); `src/engine/graphics/backends/diligent/backend.cpp` (`wantsBrightness`, `ensureSceneTarget`) | `adopt now` (already aligned in R26-B) | m-dev pattern is a proven GPU-resource-lifecycle guardrail. Rewrite shadow GPU path already follows this with lazy `ensureShadowTexture(...)` + resize reset semantics. | Keep this as enforced parity invariant in R26-D docs/config notes; add a short invariant test later that resize forces shadow-resource refresh. |
+| Offscreen-pass draw pruning (skip grass/expensive non-critical meshes) | `src/engine/graphics/backends/bgfx/backend.cpp:940`; `src/engine/graphics/backends/diligent/backend.cpp:2154` | `adopt later` | Rewrite shadow pass already prunes to shadow casters, but m-dev shows additional content-class pruning can reduce pass cost. Needs a backend-neutral content policy knob (not a backend heuristic). | Stage a rewrite-owned caster-policy flag in R26-D (for example, content-tag-based shadow caster filtering) after policy review. |
+| Config-revision-gated lighting constant refresh to avoid per-frame config churn | `src/engine/graphics/backends/bgfx/backend.cpp:881-883` | `reject` | Rewrite already routes directional light through engine contracts each frame; no backend config polling loop exists to optimize in this spot. | No code action; document as “already solved via contract-owned light push.” |
+| Aggressive model/texture cache reuse across draws | `src/engine/graphics/backends/bgfx/backend.cpp` (`modelMeshCache`, `textureCache`); `src/engine/graphics/backends/diligent/backend.cpp` (`modelMeshCache`, `textureCache`) | `reject` (already present) | Rewrite renderer already maintains mesh/material/texture lifetime caches and shadow caster reuse; direct port would duplicate existing behavior. | No code action; keep current cache-path profiling in future perf traces. |
+| Legacy shadow knobs in app config without guaranteed runtime plumbing | `src/engine/app/engine_config.hpp` (`shadow_map_size`, `shadow_pcf_radius`) | `reject` (anti-pattern) | This is exactly the policy gap rewrite is trying to avoid. Performance-sensitive controls must be either runtime-wired or explicitly fixed-policy documented. | Use R26-D to keep rewrite controls explicit and validated in `data/client/config.json` docs. |
 
 ## Primary Specs
 - `docs/foundation/architecture/core-engine-contracts.md` (renderer sections)

@@ -42,6 +42,8 @@ struct SandboxOptions {
     int shadow_map_size = 1024;
     int shadow_pcf_radius = 2;
     float shadow_bias = 0.0008f;
+    karma::renderer::DirectionalLightData::ShadowExecutionMode shadow_execution_mode =
+        karma::renderer::DirectionalLightData::ShadowExecutionMode::CpuReference;
     bool verbose = false;
     std::string trace_channels{};
     std::string preferred_video_driver{};
@@ -84,6 +86,8 @@ void PrintUsage(const char* argv0) {
         << "  --shadow-extent <2..512>      Shadow projection extent (default 22)\n"
         << "  --shadow-bias <0..0.02>       Shadow bias (default 0.0008)\n"
         << "  --shadow-pcf <0..4>           PCF radius (default 2)\n"
+        << "  --shadow-execution-mode <cpu_reference|gpu_default>\n"
+        << "                                Shadow execution policy (default cpu_reference)\n"
         << "  --video-driver <name>         SDL video driver override (e.g. wayland, x11)\n"
         << "  -v, --verbose                 Enable debug logging\n"
         << "  -t, --trace <channels>        Enable KARMA trace channels\n"
@@ -185,6 +189,17 @@ SandboxOptions ParseOptions(int argc, char** argv) {
         } else if (arg == "--shadow-pcf") {
             options.shadow_pcf_radius =
                 std::clamp(std::stoi(require_value("--shadow-pcf")), 0, 4);
+        } else if (arg == "--shadow-execution-mode") {
+            const std::string value = require_value("--shadow-execution-mode");
+            karma::renderer::DirectionalLightData::ShadowExecutionMode parsed_mode =
+                options.shadow_execution_mode;
+            if (!karma::renderer::DirectionalLightData::TryParseShadowExecutionMode(
+                    value, &parsed_mode)) {
+                throw std::runtime_error(
+                    "Invalid --shadow-execution-mode value '" + value +
+                    "' (expected cpu_reference|gpu_default)");
+            }
+            options.shadow_execution_mode = parsed_mode;
         } else if (arg == "--video-driver") {
             options.preferred_video_driver = require_value("--video-driver");
         } else if (arg == "-v" || arg == "--verbose") {
@@ -703,6 +718,7 @@ int main(int argc, char** argv) {
         light.shadow.extent = options.shadow_extent;
         light.shadow.pcf_radius = options.shadow_pcf_radius;
         light.shadow.bias = options.shadow_bias;
+        light.shadow.execution_mode = options.shadow_execution_mode;
 
         karma::renderer::EnvironmentLightingData environment{};
         environment.enabled = true;
@@ -726,14 +742,16 @@ int main(int argc, char** argv) {
         float frame_dt_max_since_diag = 0.0f;
 
         spdlog::info(
-            "[sandbox] backend={} ground_tiles={} ground_extent={} shadow_map={} pcf={} strength={:.2f} bias={:.4f}",
+            "[sandbox] backend={} ground_tiles={} ground_extent={} shadow_map={} pcf={} strength={:.2f} bias={:.4f} mode={}",
             graphics->backendName(),
             options.ground_tiles,
             options.ground_extent,
             light.shadow.map_size,
             light.shadow.pcf_radius,
             light.shadow.strength,
-            light.shadow.bias);
+            light.shadow.bias,
+            karma::renderer::DirectionalLightData::ShadowExecutionModeToken(
+                light.shadow.execution_mode));
         if (!options.preferred_video_driver.empty()) {
             spdlog::info("[sandbox] preferred_video_driver={}", options.preferred_video_driver);
         }

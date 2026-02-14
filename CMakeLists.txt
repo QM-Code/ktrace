@@ -301,10 +301,19 @@ if(KARMA_RENDER_BACKEND_BGFX_ENABLED)
     bz3_bgfx_compile_shader("${BGFX_MESH_VS_BIN_VK}" vertex "spirv" "${BGFX_MESH_DIR}/vs_mesh.sc" "${BGFX_MESH_DIR}/varying.def.sc")
     bz3_bgfx_compile_shader("${BGFX_MESH_FS_BIN_VK}" fragment "spirv" "${BGFX_MESH_DIR}/fs_mesh.sc" "${BGFX_MESH_DIR}/varying.def.sc")
 
+    set(BGFX_SHADOW_DIR "${BGFX_SHADER_DIR}/shadow")
+    set(BGFX_SHADOW_BIN_DIR_VK "${BGFX_SHADER_BIN_DIR_VK}/shadow")
+    file(MAKE_DIRECTORY "${BGFX_SHADOW_BIN_DIR_VK}")
+    set(BGFX_SHADOW_VS_BIN_VK "${BGFX_SHADOW_BIN_DIR_VK}/vs_shadow_depth.bin")
+    set(BGFX_SHADOW_FS_BIN_VK "${BGFX_SHADOW_BIN_DIR_VK}/fs_shadow_depth.bin")
+    bz3_bgfx_compile_shader("${BGFX_SHADOW_VS_BIN_VK}" vertex "spirv" "${BGFX_SHADOW_DIR}/vs_shadow_depth.sc" "${BGFX_SHADOW_DIR}/varying.def.sc")
+    bz3_bgfx_compile_shader("${BGFX_SHADOW_FS_BIN_VK}" fragment "spirv" "${BGFX_SHADOW_DIR}/fs_shadow_depth.sc" "${BGFX_SHADOW_DIR}/varying.def.sc")
+
     if(BGFX_SHADERC_EXECUTABLE)
         add_custom_target(bz3_bgfx_shaders ALL DEPENDS
             "${BGFX_SIMPLE_VS_BIN_VK}" "${BGFX_SIMPLE_FS_BIN_VK}"
-            "${BGFX_MESH_VS_BIN_VK}" "${BGFX_MESH_FS_BIN_VK}")
+            "${BGFX_MESH_VS_BIN_VK}" "${BGFX_MESH_FS_BIN_VK}"
+            "${BGFX_SHADOW_VS_BIN_VK}" "${BGFX_SHADOW_FS_BIN_VK}")
     else()
         add_custom_target(bz3_bgfx_shaders ALL)
     endif()

@@ -110,7 +110,8 @@
           "extent": 48.0,
           "mapSize": 512,
           "pcfRadius": 1,
-          "updateEveryFrames": 2
+          "updateEveryFrames": 2,
+          "executionMode": "cpu_reference"
         }
       }
     }

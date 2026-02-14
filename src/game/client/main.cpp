@@ -123,6 +123,23 @@ int main(int argc, char** argv) {
         config.default_light.shadow.update_every_frames = static_cast<int>(karma::config::ReadUInt16Config(
             {"roamingMode.graphics.lighting.shadows.updateEveryFrames"},
             static_cast<uint16_t>(config.default_light.shadow.update_every_frames)));
+        const std::string shadow_execution_mode_raw = karma::config::ReadStringConfig(
+            {"roamingMode.graphics.lighting.shadows.executionMode"},
+            karma::renderer::DirectionalLightData::ShadowExecutionModeToken(
+                config.default_light.shadow.execution_mode));
+        karma::renderer::DirectionalLightData::ShadowExecutionMode shadow_execution_mode =
+            config.default_light.shadow.execution_mode;
+        if (!karma::renderer::DirectionalLightData::TryParseShadowExecutionMode(
+                shadow_execution_mode_raw,
+                &shadow_execution_mode)) {
+            spdlog::warn(
+                "bz3: invalid roamingMode.graphics.lighting.shadows.executionMode='{}'; using '{}'",
+                shadow_execution_mode_raw,
+                karma::renderer::DirectionalLightData::ShadowExecutionModeToken(
+                    config.default_light.shadow.execution_mode));
+        } else {
+            config.default_light.shadow.execution_mode = shadow_execution_mode;
+        }
         config.render_backend =
             karma::app::ResolveRenderBackendFromOption(options.backend_render, options.backend_render_explicit);
         config.physics_backend =

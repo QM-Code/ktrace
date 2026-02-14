@@ -12,7 +12,7 @@ RenderSystem::RenderSystem(GraphicsDevice& graphics) : graphics_(graphics) {
     camera_.position = {0.0f, 6.0f, 12.0f};
     camera_.target = {0.0f, 1.0f, 0.0f};
     KARMA_TRACE("render.system",
-                "RenderSystem: default light dir=({:.2f},{:.2f},{:.2f}) color=({:.2f},{:.2f},{:.2f}) ambient=({:.2f},{:.2f},{:.2f}) unlit={:.2f} shadows(enabled={} strength={:.2f} bias={:.4f} extent={:.1f} map={} pcf={})",
+                "RenderSystem: default light dir=({:.2f},{:.2f},{:.2f}) color=({:.2f},{:.2f},{:.2f}) ambient=({:.2f},{:.2f},{:.2f}) unlit={:.2f} shadows(enabled={} strength={:.2f} bias={:.4f} extent={:.1f} map={} pcf={} mode={})",
                 light_.direction.x, light_.direction.y, light_.direction.z,
                 light_.color.r, light_.color.g, light_.color.b,
                 light_.ambient.r, light_.ambient.g, light_.ambient.b,
@@ -22,7 +22,8 @@ RenderSystem::RenderSystem(GraphicsDevice& graphics) : graphics_(graphics) {
                 light_.shadow.bias,
                 light_.shadow.extent,
                 light_.shadow.map_size,
-                light_.shadow.pcf_radius);
+                light_.shadow.pcf_radius,
+                DirectionalLightData::ShadowExecutionModeToken(light_.shadow.execution_mode));
     KARMA_TRACE("render.system",
                 "RenderSystem: default environment enabled={} sky=({:.2f},{:.2f},{:.2f}) ground=({:.2f},{:.2f},{:.2f}) diffuse={:.2f} specular={:.2f} exposure={:.2f}",
                 environment_.enabled ? 1 : 0,
@@ -56,7 +57,7 @@ const CameraData& RenderSystem::camera() const {
 void RenderSystem::setDirectionalLight(const DirectionalLightData& light) {
     light_ = light;
     KARMA_TRACE("render.system",
-                "RenderSystem: light dir=({:.2f},{:.2f},{:.2f}) color=({:.2f},{:.2f},{:.2f}) ambient=({:.2f},{:.2f},{:.2f}) unlit={:.2f} shadows(enabled={} strength={:.2f} bias={:.4f} extent={:.1f} map={} pcf={})",
+                "RenderSystem: light dir=({:.2f},{:.2f},{:.2f}) color=({:.2f},{:.2f},{:.2f}) ambient=({:.2f},{:.2f},{:.2f}) unlit={:.2f} shadows(enabled={} strength={:.2f} bias={:.4f} extent={:.1f} map={} pcf={} mode={})",
                 light_.direction.x, light_.direction.y, light_.direction.z,
                 light_.color.r, light_.color.g, light_.color.b,
                 light_.ambient.r, light_.ambient.g, light_.ambient.b,
@@ -66,7 +67,8 @@ void RenderSystem::setDirectionalLight(const DirectionalLightData& light) {
                 light_.shadow.bias,
                 light_.shadow.extent,
                 light_.shadow.map_size,
-                light_.shadow.pcf_radius);
+                light_.shadow.pcf_radius,
+                DirectionalLightData::ShadowExecutionModeToken(light_.shadow.execution_mode));
 }
 
 void RenderSystem::setEnvironmentLighting(const EnvironmentLightingData& environment) {

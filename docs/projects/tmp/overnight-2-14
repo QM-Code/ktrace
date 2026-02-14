@@ -1,0 +1,138 @@
+# Overnight Plan (2026-02-14)
+
+Temporary private working plan for this overnight session.
+Audience: specialist-renderer-parity only.
+Delete after morning review.
+
+## Purpose
+Drive renderer/shadow work forward in `m-rewrite` with minimal supervision, keeping strict engine/game boundaries and multi-backend parity (BGFX + Diligent), while ingesting useful performance/correctness techniques from `KARMA-REPO` and `m-dev` as behavior/contracts (not file layout).
+
+## Basic Overnight Goals
+1. Execute the active `renderer-shadow-hardening.md` + `renderer-parity.md` intent, with emphasis on R26-B GPU offload.
+2. Offload shadow work to GPU where possible under rewrite-owned contracts.
+3. Keep BGFX and Diligent behavior as close as possible while preserving backend-agnostic game-facing APIs.
+4. Add/expand regression tests and repeatable perf/parity evidence.
+5. Update docs continuously so morning handoff is complete and auditable.
+
+## Non-Negotiable Constraints
+1. Operate only in `m-rewrite/`.
+2. Use `./bzbuild.py` only (no raw `cmake -S/-B`).
+3. Use assigned renderer build dirs only:
+   - `build-sdl3-bgfx-physx-imgui-sdl3audio`
+   - `build-sdl3-diligent-physx-imgui-sdl3audio`
+4. Never leak backend-specific APIs into game-facing code.
+5. Port capability/behavior from `KARMA-REPO` and `m-dev`, not repository structure.
+6. Keep engine/game architecture contracts intact.
+
+## Why Multiple Backends Must Be Preserved
+1. Enforces a strong engine interface so game code cannot call renderer internals directly.
+2. Provides dual execution environments for parity checks and faster root-cause isolation of backend/library misunderstandings.
+
+## Concrete Target Stack (Execution Order)
+
+### Target A: Stabilize current Diligent parity fix baseline
+- Verify new Diligent per-pixel shadow behavior remains visually aligned with BGFX.
+- Guard against reintroduction of block-shadow/per-draw shadow artifacts.
+
+### Target B: R26-B GPU shadow-pass parity slice
+- Introduce/expand engine-owned GPU shadow pass path (depth pass + shader sampling) in both backends.
+- Keep deterministic CPU reference/fallback path only for diagnostics/regression safety.
+- Prefer GPU-default path once stable and verified.
+
+### Target C: KARMA shadow-performance intake
+- Intake (behavior-level) from KARMA patterns where rewrite-compatible:
+  - stable fitting/snap discipline,
+  - bias model expansion (receiver/normal/raster + constant),
+  - robust sampling policy.
+- Keep all intake under rewrite contract names/surfaces.
+
+### Target D: m-dev rendering-technique intake
+- Inventory m-dev fast/accurate rendering ideas relevant to shadows/lighting.
+- Classify each candidate: adopt now / adopt later / reject (with rationale).
+
+### Target E: Config policy (R26-D)
+- Ensure performance-sensitive renderer techniques are configurable in `data/client/config.json`.
+- If a control remains fixed-policy, document explicit rationale.
+
+### Target F: Tests + gates
+- Add/extend renderer contract tests and deterministic run scripts.
+- Keep repeatable BGFX vs Diligent evidence matrix (fps/frame-time + shadow correctness).
+- Maintain parity and regression diagnostics in trace outputs.
+
+### Target G: Documentation and handoff quality
+- Keep these current as slices land:
+  - `docs/projects/renderer-shadow-hardening.md`
+  - `docs/projects/renderer-parity.md`
+  - `docs/projects/ASSIGNMENTS.md`
+- Record exact commands/outcomes, risks, and next-step recommendations.
+
+## Overarching Technical Intent
+1. Shadows should be both accurate and fast.
+2. GPU does per-pixel work; CPU should not be the default shadow raster/sampling bottleneck.
+3. Backend parity should come from shared contract semantics and mirrored backend capability, not lowest-common-denominator quality.
+4. Keep clean separation:
+   - engine owns contracts/lifecycle,
+   - backends own backend specifics,
+   - game consumes engine abstractions only.
+
+## Overnight Success Criteria
+1. Diligent/BGFX shadow behavior parity improves (visual defects reduced, no giant projected blocks).
+2. GPU-offload progress is concrete (not just planning).
+3. Perf evidence is captured with reproducible commands and logs.
+4. Tests and docs are updated with enough detail for immediate morning review.
+5. No architecture boundary violations.
+
+## Progress Checkpoint (2026-02-14)
+1. Target A: done for current slice.
+   - Diligent now uses per-pixel shadow-map sampling path aligned to BGFX behavior.
+2. Target B: in progress.
+   - Diligent shadow cadence/cache parity landed (`updateEveryFrames` honored with cached map path).
+   - R26-B slice-1 evidence captured in `/tmp/r26b-shadow-cadence-20260214T082141Z/` and documented in `docs/projects/renderer-parity.md`.
+3. Target E policy progress: done for current slice.
+   - Added `roamingMode.graphics.lighting.shadows.executionMode` (`cpu_reference`/`gpu_default`) to runtime config policy.
+   - Added explicit backend fallback traces when `gpu_default` is requested but GPU shadow pass is not yet implemented.
+   - Validation traces recorded in `/tmp/r26b-shadow-execmode-20260214T083325Z/` (fallback lines present on both backends).
+4. Target B progress update:
+   - BGFX GPU shadow pass prototype landed under execution-mode contract (shadow depth pass + R32F render target + active trace evidence).
+   - Evidence dirs: `/tmp/r26b-bgfx-gpu-compare-20260214T173727Z/` and `/tmp/r26b-gpu-pass-20260214T173514Z/`.
+5. Current next concrete step:
+   - R26-B Diligent GPU pass parity landed: Diligent now has GPU shadow pass path under `executionMode=gpu_default`, with ON-state perf evidence in `/tmp/r26b-diligent-gpu-compare-20260214T175043Z/`.
+6. New current next concrete step:
+   - R26-B lifecycle/fallback hardening landed in Diligent (`gpu_shadow_render_failed` -> CPU fallback path + swapchain-resize shadow-resource reset), with refreshed matrix evidence in `/tmp/r26b-hardening-compare-20260214T182247Z/`.
+7. R26-B visual closeout checkpoint: partial, tooling blocker documented.
+   - Added sandbox CLI execution-mode override (`--shadow-execution-mode`) for deterministic GPU-path capture.
+   - Captured BGFX `gpu_default` screenshots in `/tmp/r26b-visual-closeout-20260214T183000Z/`.
+   - Diligent screenshot capture remains blocked in this environment (X11 swapchain init failure under Xvfb; Wayland render path has no non-interactive screenshot hook available here).
+   - Wayland trace/diagnostic parity evidence for both backends captured in:
+     - `/tmp/r26b-visual-closeout-20260214T183000Z/sandbox-bgfx-gpu-wayland.log`
+     - `/tmp/r26b-visual-closeout-20260214T183000Z/sandbox-diligent-gpu-wayland-forced.log`
+8. R26-C intake: landed.
+   - m-dev technique inventory + adopt-now/later/reject matrix documented in `docs/projects/renderer-parity.md`.
+9. Current next concrete step:
+   - Execute R26-D config policy expansion and then close manual screenshot parity with operator-assisted capture path.
+10. New blocker-focused fix attempt (2026-02-14 late):
+   - Root-cause candidate for "gpu_default shows no shadows" isolated to shadow depth-pass clip-space Z mapping on Vulkan paths (`depth*2-1`), which can clip out casters.
+   - Patched GPU shadow depth passes to use backend-correct clip-depth transform:
+     - BGFX: `clip_depth_scale/bias` derived from `bgfx::getCaps()->homogeneousDepth` and fed via `u_shadowParams2.zw`.
+     - Diligent: shadow depth VS now uses `u_shadowParams2.zw` (currently `1,0` for Vulkan).
+   - Rebuilds and shadow contract tests passed after patch; awaiting operator visual/log confirmation for `gpu_default`.
+
+## Periodic Self-Reorientation Protocol (Important)
+Run this check repeatedly (at least after each accepted slice or every ~45-60 minutes):
+1. Re-read this file.
+2. Confirm current work matches Target A-G order (or explicitly justified deviation).
+3. Verify no drift into backend leakage or structure-copying.
+4. Verify commands/policies still compliant (`bzbuild.py`, build dirs, m-rewrite-only).
+5. Confirm docs are being updated as work lands.
+
+If context feels fuzzy, stop coding and do this reset sequence:
+1. Re-open:
+   - `docs/projects/renderer-parity.md`
+   - `docs/projects/renderer-shadow-hardening.md`
+   - `docs/projects/ASSIGNMENTS.md`
+2. Re-state current slice in one sentence.
+3. Continue only when scope and gates are explicit again.
+
+## Deletion Reminder
+This file is temporary and private to this overnight run.
+Delete `docs/projects/tmp/overnight-2-14` after morning review/acceptance.
