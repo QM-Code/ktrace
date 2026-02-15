@@ -11,6 +11,7 @@ uniform vec4 u_textureMode;
 uniform vec4 u_shadowParams0;
 uniform vec4 u_shadowParams1;
 uniform vec4 u_shadowParams2;
+uniform vec4 u_shadowBiasParams; // receiver_scale, normal_scale, raster_depth_bias, raster_slope_bias
 uniform vec4 u_shadowAxisRight;
 uniform vec4 u_shadowAxisUp;
 uniform vec4 u_shadowAxisForward;
@@ -31,10 +32,10 @@ float sampleShadowVisibility(vec3 worldPos, float ndotl) {
     float invDepthRange = max(u_shadowParams2.x, 0.0001);
     float radius = clamp(u_shadowParams2.y, 0.0, 4.0);
     float invMapSize = max(u_shadowParams0.w, 0.0);
-    // Add slope-aware bias to reduce self-shadow checkerboarding on grazing angles.
     float slope = clamp(1.0 - ndotl, 0.0, 1.0);
     float bias = clamp(
-        u_shadowParams0.z + (u_shadowParams0.w * (0.08 + (0.35 * slope))),
+        u_shadowParams0.z +
+            (u_shadowParams0.w * (u_shadowBiasParams.x + (u_shadowBiasParams.y * slope))),
         0.0,
         0.02);
 

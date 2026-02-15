@@ -6,11 +6,10 @@
 namespace bz3::server {
 
 struct CLIOptions {
-    bool verbose = false;
     bool trace_explicit = false;
-    bool world_specified = false;
-    uint16_t host_port = 0;
-    bool host_port_explicit = false;
+    bool server_config_explicit = false;
+    uint16_t listen_port = 0;
+    bool listen_port_explicit = false;
     std::string data_dir;
     std::string user_config_path;
     bool data_dir_explicit = false;
@@ -24,7 +23,7 @@ struct CLIOptions {
     bool strict_config = true;
     bool timestamp_logging = false;
     std::string trace_channels;
-    std::string world_dir;
+    std::string server_config_path;
 };
 
 CLIOptions ParseCLIOptions(int argc, char** argv);

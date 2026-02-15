@@ -78,9 +78,9 @@ void AppendKeys(std::vector<RequiredKey>& out, std::initializer_list<RequiredKey
     out.insert(out.end(), keys.begin(), keys.end());
 }
 
-std::vector<RequiredKey> CommonKeys() {
+std::vector<RequiredKey> ClientKeys() {
     std::vector<RequiredKey> keys;
-    keys.reserve(10);
+    keys.reserve(21);
     AppendKeys(keys, {
         {"language", RequiredType::String},
         {"platform.WindowWidth", RequiredType::UInt16},
@@ -91,15 +91,7 @@ std::vector<RequiredKey> CommonKeys() {
         {"roamingMode.graphics.skybox.Cubemap.Name", RequiredType::String},
         {"roamingMode.camera.default.fovYDegrees", RequiredType::Float},
         {"roamingMode.camera.default.nearClip", RequiredType::Float},
-        {"roamingMode.camera.default.farClip", RequiredType::Float}
-    });
-    return keys;
-}
-
-std::vector<RequiredKey> ClientOnlyKeys() {
-    std::vector<RequiredKey> keys;
-    keys.reserve(12);
-    AppendKeys(keys, {
+        {"roamingMode.camera.default.farClip", RequiredType::Float},
         {"roamingMode.camera.roaming.MoveSpeed", RequiredType::Float},
         {"roamingMode.camera.roaming.FastMultiplier", RequiredType::Float},
         {"roamingMode.camera.roaming.LookSensitivity", RequiredType::Float},
@@ -135,19 +127,11 @@ std::vector<ValidationIssue> ValidateRequiredKeys(const std::vector<RequiredKey>
 }
 
 std::vector<RequiredKey> ClientRequiredKeys() {
-    auto keys = CommonKeys();
-    auto clientKeys = ClientOnlyKeys();
-    keys.insert(keys.end(), clientKeys.begin(), clientKeys.end());
-    return keys;
+    return ClientKeys();
 }
 
 std::vector<RequiredKey> ServerRequiredKeys() {
-    std::vector<RequiredKey> keys;
-    keys.reserve(1);
-    AppendKeys(keys, {
-        {"language", RequiredType::String}
-    });
-    return keys;
+    return {};
 }
 
 } // namespace karma::config

@@ -41,11 +41,11 @@ void ApplyCommonCliConfigOverrides(const CliCommonState& state) {
 } // namespace
 
 void ConfigureLoggingFromOptions(bool timestamp_logging,
-                                 bool verbose,
                                  bool trace_explicit,
                                  const std::string& trace_channels) {
     logging::ConfigureLogPatterns(timestamp_logging);
-    spdlog::set_level(verbose ? spdlog::level::debug : spdlog::level::info);
+    // Default to debug-level logs globally; trace remains opt-in by channel.
+    spdlog::set_level(spdlog::level::debug);
     if (trace_explicit) {
         logging::EnableTraceChannels(trace_channels);
     }
@@ -59,7 +59,11 @@ void ConfigureDataAndConfigFromSpec(const BootstrapConfigSpec& spec, int argc, c
     data::SetDataPathSpec(data_spec);
 
     const auto data_dir_result =
-        data::ApplyDataDirOverrideFromArgs(argc, argv, spec.default_user_config_relative, spec.enable_user_config);
+        data::ApplyDataDirOverrideFromArgs(argc,
+                                           argv,
+                                           spec.default_user_config_relative,
+                                           spec.enable_user_config,
+                                           spec.allow_user_config_data_dir_when_user_config_disabled);
     const auto user_config_path =
         spec.enable_user_config ? std::optional<std::filesystem::path>(data_dir_result.userConfigPath)
                                 : std::nullopt;

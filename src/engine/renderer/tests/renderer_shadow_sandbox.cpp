@@ -41,7 +41,12 @@ struct SandboxOptions {
     float shadow_extent = 22.0f;
     int shadow_map_size = 1024;
     int shadow_pcf_radius = 2;
+    int shadow_triangle_budget = 4096;
     float shadow_bias = 0.0008f;
+    float shadow_receiver_bias_scale = 0.08f;
+    float shadow_normal_bias_scale = 0.35f;
+    float shadow_raster_depth_bias = 0.0f;
+    float shadow_raster_slope_bias = 0.0f;
     karma::renderer::DirectionalLightData::ShadowExecutionMode shadow_execution_mode =
         karma::renderer::DirectionalLightData::ShadowExecutionMode::CpuReference;
     bool verbose = false;
@@ -85,7 +90,13 @@ void PrintUsage(const char* argv0) {
         << "  --shadow-strength <0..1>      Shadow strength (default 0.85)\n"
         << "  --shadow-extent <2..512>      Shadow projection extent (default 22)\n"
         << "  --shadow-bias <0..0.02>       Shadow bias (default 0.0008)\n"
+        << "  --shadow-receiver-bias <0..4> Receiver bias scale (default 0.08)\n"
+        << "  --shadow-normal-bias <0..8>   Normal/slope bias scale (default 0.35)\n"
+        << "  --shadow-raster-depth-bias <0..0.02>  Depth-pass raster bias (default 0)\n"
+        << "  --shadow-raster-slope-bias <0..8>     Depth-pass raster slope bias (default 0)\n"
         << "  --shadow-pcf <0..4>           PCF radius (default 2)\n"
+        << "  --shadow-triangle-budget <1..65536>\n"
+        << "                                CPU reference shadow triangle budget (default 4096)\n"
         << "  --shadow-execution-mode <cpu_reference|gpu_default>\n"
         << "                                Shadow execution policy (default cpu_reference)\n"
         << "  --video-driver <name>         SDL video driver override (e.g. wayland, x11)\n"
@@ -186,9 +197,24 @@ SandboxOptions ParseOptions(int argc, char** argv) {
         } else if (arg == "--shadow-bias") {
             options.shadow_bias = std::clamp(
                 std::stof(require_value("--shadow-bias")), 0.0f, 0.02f);
+        } else if (arg == "--shadow-receiver-bias") {
+            options.shadow_receiver_bias_scale = std::clamp(
+                std::stof(require_value("--shadow-receiver-bias")), 0.0f, 4.0f);
+        } else if (arg == "--shadow-normal-bias") {
+            options.shadow_normal_bias_scale = std::clamp(
+                std::stof(require_value("--shadow-normal-bias")), 0.0f, 8.0f);
+        } else if (arg == "--shadow-raster-depth-bias") {
+            options.shadow_raster_depth_bias = std::clamp(
+                std::stof(require_value("--shadow-raster-depth-bias")), 0.0f, 0.02f);
+        } else if (arg == "--shadow-raster-slope-bias") {
+            options.shadow_raster_slope_bias = std::clamp(
+                std::stof(require_value("--shadow-raster-slope-bias")), 0.0f, 8.0f);
         } else if (arg == "--shadow-pcf") {
             options.shadow_pcf_radius =
                 std::clamp(std::stoi(require_value("--shadow-pcf")), 0, 4);
+        } else if (arg == "--shadow-triangle-budget") {
+            options.shadow_triangle_budget =
+                std::clamp(std::stoi(require_value("--shadow-triangle-budget")), 1, 65536);
         } else if (arg == "--shadow-execution-mode") {
             const std::string value = require_value("--shadow-execution-mode");
             karma::renderer::DirectionalLightData::ShadowExecutionMode parsed_mode =
@@ -608,10 +634,10 @@ int main(int argc, char** argv) {
         karma::data::DataPathSpec data_spec{};
         data_spec.appName = "bz3";
         data_spec.dataDirEnvVar = "BZ3_DATA_DIR";
-        data_spec.requiredDataMarker = "common/config.json";
+        data_spec.requiredDataMarker = "client/config.json";
         karma::data::SetDataPathSpec(data_spec);
         const std::filesystem::path repo_data_root = std::filesystem::current_path() / "data";
-        if (std::filesystem::exists(repo_data_root / "common/config.json")) {
+        if (std::filesystem::exists(repo_data_root / "client/config.json")) {
             karma::data::SetDataRootOverride(repo_data_root);
         }
 
@@ -717,7 +743,12 @@ int main(int argc, char** argv) {
         light.shadow.strength = options.shadow_strength;
         light.shadow.extent = options.shadow_extent;
         light.shadow.pcf_radius = options.shadow_pcf_radius;
+        light.shadow.triangle_budget = options.shadow_triangle_budget;
         light.shadow.bias = options.shadow_bias;
+        light.shadow.receiver_bias_scale = options.shadow_receiver_bias_scale;
+        light.shadow.normal_bias_scale = options.shadow_normal_bias_scale;
+        light.shadow.raster_depth_bias = options.shadow_raster_depth_bias;
+        light.shadow.raster_slope_bias = options.shadow_raster_slope_bias;
         light.shadow.execution_mode = options.shadow_execution_mode;
 
         karma::renderer::EnvironmentLightingData environment{};
@@ -742,14 +773,19 @@ int main(int argc, char** argv) {
         float frame_dt_max_since_diag = 0.0f;
 
         spdlog::info(
-            "[sandbox] backend={} ground_tiles={} ground_extent={} shadow_map={} pcf={} strength={:.2f} bias={:.4f} mode={}",
+            "[sandbox] backend={} ground_tiles={} ground_extent={} shadow_map={} pcf={} tris={} strength={:.2f} bias={:.4f} recv={:.3f} norm={:.3f} rasterDepth={:.4f} rasterSlope={:.3f} mode={}",
             graphics->backendName(),
             options.ground_tiles,
             options.ground_extent,
             light.shadow.map_size,
             light.shadow.pcf_radius,
+            light.shadow.triangle_budget,
             light.shadow.strength,
             light.shadow.bias,
+            light.shadow.receiver_bias_scale,
+            light.shadow.normal_bias_scale,
+            light.shadow.raster_depth_bias,
+            light.shadow.raster_slope_bias,
             karma::renderer::DirectionalLightData::ShadowExecutionModeToken(
                 light.shadow.execution_mode));
         if (!options.preferred_video_driver.empty()) {

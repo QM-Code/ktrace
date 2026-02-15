@@ -79,6 +79,7 @@ struct Constants {
     glm::vec4 u_shadowParams0;
     glm::vec4 u_shadowParams1;
     glm::vec4 u_shadowParams2;
+    glm::vec4 u_shadowBiasParams;
     glm::vec4 u_shadowAxisRight;
     glm::vec4 u_shadowAxisUp;
     glm::vec4 u_shadowAxisForward;
@@ -627,6 +628,12 @@ class DiligentBackend final : public Backend {
             clip_depth.scale,
             clip_depth.bias,
         };
+        const glm::vec4 shadow_bias_params{
+            shadow_semantics.receiver_bias_scale,
+            shadow_semantics.normal_bias_scale,
+            shadow_semantics.raster_depth_bias,
+            shadow_semantics.raster_slope_bias,
+        };
         const glm::vec4 shadow_axis_right{
             shadow_map.axis_right.x,
             shadow_map.axis_right.y,
@@ -645,13 +652,15 @@ class DiligentBackend final : public Backend {
             shadow_map.axis_forward.z,
             0.0f,
         };
-        std::size_t shadow_covered = 0u;
-        if (shadow_map.ready) {
+        int shadow_covered = -1;
+        if (shadow_map.ready && !shadow_map.depth.empty()) {
+            int covered = 0;
             for (float value : shadow_map.depth) {
                 if (std::isfinite(value) && value < 0.999f) {
-                    ++shadow_covered;
+                    ++covered;
                 }
             }
+            shadow_covered = covered;
         }
         std::size_t direct_sampler_draws = 0u;
         std::size_t fallback_sampler_draws = 0u;
@@ -691,6 +700,7 @@ class DiligentBackend final : public Backend {
             constants.u_shadowParams0 = shadow_params0;
             constants.u_shadowParams1 = shadow_params1;
             constants.u_shadowParams2 = shadow_params2;
+            constants.u_shadowBiasParams = shadow_bias_params;
             constants.u_shadowAxisRight = shadow_axis_right;
             constants.u_shadowAxisUp = shadow_axis_up;
             constants.u_shadowAxisForward = shadow_axis_forward;
@@ -772,15 +782,18 @@ class DiligentBackend final : public Backend {
             context_->DrawIndexed(draw);
         }
         if (shadow_map.ready) {
+            const char* shadow_source = shadow_map.depth.empty() ? "gpu_projection" : "cpu_raster";
             KARMA_TRACE_CHANGED(
                 "render.diligent",
                 std::to_string(layer) + ":" +
                     std::to_string(shadow_map.ready ? 1 : 0) + ":" +
+                    shadow_source + ":" +
                     std::to_string(shadow_covered) + ":" +
                     std::to_string(shadow_map.size) + ":" +
                     std::to_string(shadow_tex_ready_ ? 1 : 0),
-                "shadow map layer={} mapReady={} covered={} size={} extent={:.1f} uploaded={}",
+                "shadow map layer={} source={} mapReady={} covered={} size={} extent={:.1f} uploaded={}",
                 layer,
+                shadow_source,
                 shadow_map.ready ? 1 : 0,
                 shadow_covered,
                 shadow_map.size,
@@ -1006,6 +1019,7 @@ cbuffer Constants {
     float4 u_shadowParams0;
     float4 u_shadowParams1;
     float4 u_shadowParams2; // inv_depth_range, pcf_radius, clip_depth_scale, clip_depth_bias
+    float4 u_shadowBiasParams; // receiver_scale, normal_scale, raster_depth_bias, raster_slope_bias
     float4 u_shadowAxisRight;
     float4 u_shadowAxisUp;
     float4 u_shadowAxisForward;
@@ -1040,6 +1054,7 @@ cbuffer Constants {
     float4 u_shadowParams0;
     float4 u_shadowParams1;
     float4 u_shadowParams2;
+    float4 u_shadowBiasParams;
     float4 u_shadowAxisRight;
     float4 u_shadowAxisUp;
     float4 u_shadowAxisForward;
@@ -1067,7 +1082,8 @@ float sampleShadowVisibility(float3 worldPos, float ndotl) {
     float invMapSize = max(u_shadowParams0.w, 0.0);
     float slope = clamp(1.0 - ndotl, 0.0, 1.0);
     float bias = clamp(
-        u_shadowParams0.z + (u_shadowParams0.w * (0.08 + (0.35 * slope))),
+        u_shadowParams0.z +
+            (u_shadowParams0.w * (u_shadowBiasParams.x + (u_shadowBiasParams.y * slope))),
         0.0,
         0.02);
 
@@ -1180,9 +1196,8 @@ struct VSInput {
     float3 Nor : ATTRIB1;
     float2 UV  : ATTRIB2;
 };
-struct PSInput {
+struct VSOutput {
     float4 Pos : SV_POSITION;
-    float Depth : TEXCOORD0;
 };
 cbuffer Constants {
     float4x4 u_modelViewProj;
@@ -1196,34 +1211,31 @@ cbuffer Constants {
     float4 u_shadowParams0;
     float4 u_shadowParams1;
     float4 u_shadowParams2;
+    float4 u_shadowBiasParams;
     float4 u_shadowAxisRight;
     float4 u_shadowAxisUp;
     float4 u_shadowAxisForward;
 };
-PSInput main(VSInput input) {
-    PSInput outp;
+VSOutput main(VSInput input) {
+    VSOutput outp;
     float4 worldPos = mul(u_model, float4(input.Pos, 1.0));
+    float3 worldNormal = normalize(mul((float3x3)u_model, input.Nor));
     float extent = max(u_shadowParams1.x, 0.001);
     float invDepthRange = max(u_shadowParams2.x, 0.0001);
+    float invMapSize = max(u_shadowParams0.w, 0.0);
     float lx = dot(worldPos.xyz, u_shadowAxisRight.xyz);
     float ly = dot(worldPos.xyz, u_shadowAxisUp.xyz);
     float lz = dot(worldPos.xyz, u_shadowAxisForward.xyz);
     float depth = clamp((lz - u_shadowParams1.w) * invDepthRange, 0.0, 1.0);
+    float slope = clamp(1.0 - abs(dot(worldNormal, -u_shadowAxisForward.xyz)), 0.0, 1.0);
+    depth = clamp(
+        depth + u_shadowBiasParams.z + (invMapSize * u_shadowBiasParams.w * slope),
+        0.0,
+        1.0);
     float ndcX = (lx - u_shadowParams1.y) / extent;
     float ndcY = ((ly - u_shadowParams1.z) / extent) * u_shadowAxisUp.w;
     outp.Pos = float4(ndcX, ndcY, depth * u_shadowParams2.z + u_shadowParams2.w, 1.0);
-    outp.Depth = depth;
     return outp;
-}
-)";
-
-        const char* ps_source = R"(
-struct PSInput {
-    float4 Pos : SV_POSITION;
-    float Depth : TEXCOORD0;
-};
-float4 main(PSInput input) : SV_TARGET {
-    return float4(input.Depth, input.Depth, input.Depth, 1.0);
 }
 )";
 
@@ -1234,36 +1246,21 @@ float4 main(PSInput input) : SV_TARGET {
         shader_ci.Source = vs_source;
         device_->CreateShader(shader_ci, &vs);
 
-        Diligent::RefCntAutoPtr<Diligent::IShader> ps;
-        shader_ci.Desc.ShaderType = Diligent::SHADER_TYPE_PIXEL;
-        shader_ci.Desc.Name = "shadow_depth_ps";
-        shader_ci.EntryPoint = "main";
-        shader_ci.Source = ps_source;
-        device_->CreateShader(shader_ci, &ps);
-        if (!vs || !ps) {
+        if (!vs) {
             return;
         }
 
         Diligent::GraphicsPipelineStateCreateInfo pso_ci{};
         pso_ci.PSODesc.Name = "shadow_depth_pso";
         pso_ci.PSODesc.PipelineType = Diligent::PIPELINE_TYPE_GRAPHICS;
-        pso_ci.GraphicsPipeline.NumRenderTargets = 1;
-        pso_ci.GraphicsPipeline.RTVFormats[0] = Diligent::TEX_FORMAT_R32_FLOAT;
-        pso_ci.GraphicsPipeline.DSVFormat = Diligent::TEX_FORMAT_UNKNOWN;
+        pso_ci.GraphicsPipeline.NumRenderTargets = 0;
+        pso_ci.GraphicsPipeline.DSVFormat = Diligent::TEX_FORMAT_D32_FLOAT;
         pso_ci.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         pso_ci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
         pso_ci.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise = true;
-        pso_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
-        pso_ci.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = false;
-
-        auto& rt0 = pso_ci.GraphicsPipeline.BlendDesc.RenderTargets[0];
-        rt0.BlendEnable = true;
-        rt0.SrcBlend = Diligent::BLEND_FACTOR_ONE;
-        rt0.DestBlend = Diligent::BLEND_FACTOR_ONE;
-        rt0.BlendOp = Diligent::BLEND_OPERATION_MIN;
-        rt0.SrcBlendAlpha = Diligent::BLEND_FACTOR_ONE;
-        rt0.DestBlendAlpha = Diligent::BLEND_FACTOR_ONE;
-        rt0.BlendOpAlpha = Diligent::BLEND_OPERATION_MIN;
+        pso_ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = true;
+        pso_ci.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = true;
+        pso_ci.GraphicsPipeline.DepthStencilDesc.DepthFunc = Diligent::COMPARISON_FUNC_LESS;
 
         Diligent::LayoutElement layout[] = {
             {0, 0, 3, Diligent::VT_FLOAT32, false},
@@ -1273,7 +1270,7 @@ float4 main(PSInput input) : SV_TARGET {
         pso_ci.GraphicsPipeline.InputLayout.LayoutElements = layout;
         pso_ci.GraphicsPipeline.InputLayout.NumElements = 3;
         pso_ci.pVS = vs;
-        pso_ci.pPS = ps;
+        pso_ci.pPS = nullptr;
 
         Diligent::ShaderResourceVariableDesc vars[] = {
             {Diligent::SHADER_TYPE_VERTEX, "Constants", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
@@ -1581,35 +1578,79 @@ float4 main(PSInput input) : SV_TARGET {
             shadow_tex_ = nullptr;
             shadow_srv_ = nullptr;
             shadow_rtv_ = nullptr;
+            shadow_dsv_ = nullptr;
+            shadow_tex_rt_uses_depth_ = false;
 
-            Diligent::TextureDesc desc{};
-            desc.Name = "shadow_depth_tex";
-            desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
-            desc.Width = size;
-            desc.Height = size;
-            desc.MipLevels = 1;
-            desc.Format = Diligent::TEX_FORMAT_R32_FLOAT;
-            desc.BindFlags = Diligent::BIND_SHADER_RESOURCE |
-                (render_target ? Diligent::BIND_RENDER_TARGET : Diligent::BIND_NONE);
-            desc.Usage = Diligent::USAGE_DEFAULT;
-            device_->CreateTexture(desc, nullptr, &shadow_tex_);
-            if (shadow_tex_) {
+            const auto create_shadow_texture =
+                [&](Diligent::TEXTURE_FORMAT format,
+                    Diligent::BIND_FLAGS bind_flags,
+                    bool rt_uses_depth) -> bool {
+                Diligent::TextureDesc desc{};
+                desc.Name = "shadow_depth_tex";
+                desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+                desc.Width = size;
+                desc.Height = size;
+                desc.MipLevels = 1;
+                desc.Format = format;
+                desc.BindFlags = bind_flags;
+                desc.Usage = Diligent::USAGE_DEFAULT;
+                device_->CreateTexture(desc, nullptr, &shadow_tex_);
+                if (!shadow_tex_) {
+                    return false;
+                }
                 shadow_srv_ = shadow_tex_->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
                 if (render_target) {
-                    shadow_rtv_ = shadow_tex_->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+                    if (rt_uses_depth) {
+                        shadow_dsv_ = shadow_tex_->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
+                    } else {
+                        shadow_rtv_ = shadow_tex_->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+                    }
+                }
+                const bool views_ready =
+                    shadow_srv_ &&
+                    (!render_target ||
+                     (rt_uses_depth ? static_cast<bool>(shadow_dsv_) : static_cast<bool>(shadow_rtv_)));
+                if (!views_ready) {
+                    shadow_tex_ = nullptr;
+                    shadow_srv_ = nullptr;
+                    shadow_rtv_ = nullptr;
+                    shadow_dsv_ = nullptr;
+                    return false;
                 }
                 shadow_tex_size_ = size;
                 shadow_tex_is_rt_ = render_target;
-            } else {
+                shadow_tex_rt_uses_depth_ = render_target && rt_uses_depth;
+                return true;
+            };
+
+            bool created = false;
+            if (render_target) {
+                created = create_shadow_texture(
+                    Diligent::TEX_FORMAT_D32_FLOAT,
+                    Diligent::BIND_SHADER_RESOURCE | Diligent::BIND_DEPTH_STENCIL,
+                    true);
+                if (!created) {
+                    KARMA_TRACE("render.diligent", "shadow depth attachment create failed; using color-min fallback");
+                }
+            }
+            if (!created) {
+                created = create_shadow_texture(
+                    Diligent::TEX_FORMAT_R32_FLOAT,
+                    Diligent::BIND_SHADER_RESOURCE |
+                        (render_target ? Diligent::BIND_RENDER_TARGET : Diligent::BIND_NONE),
+                    false);
+            }
+            if (!created) {
                 shadow_tex_size_ = 0u;
                 shadow_tex_is_rt_ = false;
+                shadow_tex_rt_uses_depth_ = false;
             }
         }
 
         if (!shadow_tex_ || !shadow_srv_) {
             return false;
         }
-        if (render_target && !shadow_rtv_) {
+        if (render_target && !shadow_rtv_ && !shadow_dsv_) {
             return false;
         }
         return true;
@@ -1624,11 +1665,23 @@ float4 main(PSInput input) : SV_TARGET {
             return false;
         }
 
-        auto* shadow_rtv = shadow_rtv_.RawPtr();
-        context_->SetRenderTargets(1, &shadow_rtv, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        const bool depth_attachment = shadow_tex_rt_uses_depth_;
+        if (depth_attachment) {
+            auto* shadow_dsv = shadow_dsv_.RawPtr();
+            context_->SetRenderTargets(0, nullptr, shadow_dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            context_->ClearDepthStencil(
+                shadow_dsv,
+                Diligent::CLEAR_DEPTH_FLAG,
+                1.0f,
+                0,
+                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        } else {
+            auto* shadow_rtv = shadow_rtv_.RawPtr();
+            context_->SetRenderTargets(1, &shadow_rtv, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            const float clear[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+            context_->ClearRenderTarget(shadow_rtv, clear, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        }
         setViewport(size, size);
-        const float clear[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-        context_->ClearRenderTarget(shadow_rtv, clear, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         context_->SetPipelineState(shadow_depth_pso_);
         if (shadow_depth_srb_) {
             context_->CommitShaderResources(shadow_depth_srb_, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -1637,7 +1690,15 @@ float4 main(PSInput input) : SV_TARGET {
         const detail::ShadowClipDepthTransform clip_depth =
             detail::ResolveShadowClipDepthTransform(false);
         const float clip_y_sign = detail::ResolveShadowClipYSign(false);
+        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
+            detail::ResolveDirectionalShadowSemantics(light_);
         const float inv_depth_range = map.depth_range > 1e-6f ? (1.0f / map.depth_range) : 1.0f;
+        const glm::vec4 shadow_params0{
+            1.0f,
+            map.strength,
+            map.bias,
+            map.size > 0 ? (1.0f / static_cast<float>(map.size)) : 0.0f,
+        };
         const glm::vec4 shadow_params1{
             map.extent,
             map.center_x,
@@ -1649,6 +1710,12 @@ float4 main(PSInput input) : SV_TARGET {
             static_cast<float>(map.pcf_radius),
             clip_depth.scale,
             clip_depth.bias,
+        };
+        const glm::vec4 shadow_bias_params{
+            shadow_semantics.receiver_bias_scale,
+            shadow_semantics.normal_bias_scale,
+            shadow_semantics.raster_depth_bias,
+            shadow_semantics.raster_slope_bias,
         };
         const glm::vec4 shadow_axis_right{
             map.axis_right.x,
@@ -1679,8 +1746,10 @@ float4 main(PSInput input) : SV_TARGET {
 
             Constants constants{};
             constants.u_model = item.transform;
+            constants.u_shadowParams0 = shadow_params0;
             constants.u_shadowParams1 = shadow_params1;
             constants.u_shadowParams2 = shadow_params2;
+            constants.u_shadowBiasParams = shadow_bias_params;
             constants.u_shadowAxisRight = shadow_axis_right;
             constants.u_shadowAxisUp = shadow_axis_up;
             constants.u_shadowAxisForward = shadow_axis_forward;
@@ -1713,7 +1782,9 @@ float4 main(PSInput input) : SV_TARGET {
         if (shadow_tex_) {
             Diligent::StateTransitionDesc barrier{};
             barrier.pResource = shadow_tex_;
-            barrier.OldState = Diligent::RESOURCE_STATE_RENDER_TARGET;
+            barrier.OldState = depth_attachment
+                ? Diligent::RESOURCE_STATE_DEPTH_WRITE
+                : Diligent::RESOURCE_STATE_RENDER_TARGET;
             barrier.NewState = Diligent::RESOURCE_STATE_SHADER_RESOURCE;
             barrier.Flags = Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE;
             context_->TransitionResourceStates(1, &barrier);
@@ -1721,10 +1792,12 @@ float4 main(PSInput input) : SV_TARGET {
 
         KARMA_TRACE_CHANGED(
             "render.diligent",
-            std::to_string(map.size) + ":" + std::to_string(submitted),
-            "gpu shadow pass size={} draws={}",
+            std::to_string(map.size) + ":" + std::to_string(submitted) + ":" +
+                (depth_attachment ? "depth" : "color_min"),
+            "gpu shadow pass size={} draws={} attachment={}",
             map.size,
-            submitted);
+            submitted,
+            depth_attachment ? "depth" : "color_min");
         return submitted > 0u;
     }
 
@@ -1769,8 +1842,10 @@ float4 main(PSInput input) : SV_TARGET {
         shadow_tex_ = nullptr;
         shadow_srv_ = nullptr;
         shadow_rtv_ = nullptr;
+        shadow_dsv_ = nullptr;
         shadow_tex_size_ = 0u;
         shadow_tex_is_rt_ = false;
+        shadow_tex_rt_uses_depth_ = false;
         shadow_tex_ready_ = false;
     }
 
@@ -1847,8 +1922,10 @@ float4 main(PSInput input) : SV_TARGET {
     Diligent::RefCntAutoPtr<Diligent::ITexture> shadow_tex_;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> shadow_srv_;
     Diligent::RefCntAutoPtr<Diligent::ITextureView> shadow_rtv_;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> shadow_dsv_;
     uint32_t shadow_tex_size_ = 0u;
     bool shadow_tex_is_rt_ = false;
+    bool shadow_tex_rt_uses_depth_ = false;
     bool shadow_tex_ready_ = false;
     detail::DirectionalShadowMap cached_shadow_map_{};
     int shadow_update_every_frames_ = 1;

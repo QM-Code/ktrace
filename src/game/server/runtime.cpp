@@ -48,10 +48,15 @@ int RunRuntime(const CLIOptions& options) {
     if (!world_context.has_value()) {
         return 1;
     }
-    if (options.host_port_explicit) {
+    if (options.listen_port_explicit) {
         KARMA_TRACE("engine.server",
-                    "CLI option --port set: {}",
-                    options.host_port);
+                    "CLI option --listen-port set: {}",
+                    options.listen_port);
+    }
+    if (options.server_config_explicit) {
+        KARMA_TRACE("engine.server",
+                    "CLI option --server-config set: '{}'",
+                    options.server_config_path);
     }
     if (options.community_explicit) {
         KARMA_TRACE("engine.server",
@@ -86,8 +91,8 @@ int RunRuntime(const CLIOptions& options) {
         karma::app::ResolveAudioBackendFromOption(options.backend_audio, options.backend_audio_explicit);
     engineConfig.enable_audio = options.backend_audio_explicit
         || karma::config::ReadBoolConfig({"audio.serverEnabled"}, false);
-    const uint16_t listen_port = options.host_port_explicit
-        ? options.host_port
+    const uint16_t listen_port = options.listen_port_explicit
+        ? options.listen_port
         : karma::config::ReadUInt16Config({"network.ServerPort"}, static_cast<uint16_t>(11899));
 
     CommunityHeartbeat community_heartbeat{};

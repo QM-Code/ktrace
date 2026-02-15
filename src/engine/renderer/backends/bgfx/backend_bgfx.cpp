@@ -914,6 +914,16 @@ class BgfxBackend final : public Backend {
         }
         KARMA_TRACE("render.bgfx", "init success renderer={}",
                     bgfx::getRendererName(bgfx::getRendererType()));
+        const bgfx::Caps* init_caps = bgfx::getCaps();
+        if (init_caps) {
+            const uint16_t d32f_caps = init_caps->formats[bgfx::TextureFormat::D32F];
+            shadow_depth_attachment_supported_ =
+                (0 != (d32f_caps & BGFX_CAPS_FORMAT_TEXTURE_2D)) &&
+                (0 != (d32f_caps & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER));
+        }
+        KARMA_TRACE("render.bgfx",
+                    "shadow depth attachment support={}",
+                    shadow_depth_attachment_supported_ ? 1 : 0);
         initialized_ = true;
         bgfx::setViewClear(kBgfxMainViewId, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x303030ff, 1.0f, 0);
 
@@ -955,6 +965,7 @@ class BgfxBackend final : public Backend {
         u_shadow_params0_ = bgfx::createUniform("u_shadowParams0", bgfx::UniformType::Vec4);
         u_shadow_params1_ = bgfx::createUniform("u_shadowParams1", bgfx::UniformType::Vec4);
         u_shadow_params2_ = bgfx::createUniform("u_shadowParams2", bgfx::UniformType::Vec4);
+        u_shadow_bias_params_ = bgfx::createUniform("u_shadowBiasParams", bgfx::UniformType::Vec4);
         u_shadow_axis_right_ = bgfx::createUniform("u_shadowAxisRight", bgfx::UniformType::Vec4);
         u_shadow_axis_up_ = bgfx::createUniform("u_shadowAxisUp", bgfx::UniformType::Vec4);
         u_shadow_axis_forward_ = bgfx::createUniform("u_shadowAxisForward", bgfx::UniformType::Vec4);
@@ -1027,6 +1038,7 @@ class BgfxBackend final : public Backend {
         if (bgfx::isValid(u_shadow_params0_)) bgfx::destroy(u_shadow_params0_);
         if (bgfx::isValid(u_shadow_params1_)) bgfx::destroy(u_shadow_params1_);
         if (bgfx::isValid(u_shadow_params2_)) bgfx::destroy(u_shadow_params2_);
+        if (bgfx::isValid(u_shadow_bias_params_)) bgfx::destroy(u_shadow_bias_params_);
         if (bgfx::isValid(u_shadow_axis_right_)) bgfx::destroy(u_shadow_axis_right_);
         if (bgfx::isValid(u_shadow_axis_up_)) bgfx::destroy(u_shadow_axis_up_);
         if (bgfx::isValid(u_shadow_axis_forward_)) bgfx::destroy(u_shadow_axis_forward_);
@@ -1379,6 +1391,12 @@ class BgfxBackend final : public Backend {
             clip_depth.scale,
             clip_depth.bias,
         };
+        const float shadow_bias_params[4] = {
+            shadow_semantics.receiver_bias_scale,
+            shadow_semantics.normal_bias_scale,
+            shadow_semantics.raster_depth_bias,
+            shadow_semantics.raster_slope_bias,
+        };
         const float shadow_axis_right[4] = {
             shadow_map.axis_right.x, shadow_map.axis_right.y, shadow_map.axis_right.z, 0.0f,
         };
@@ -1434,6 +1452,7 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_shadow_params0_, shadow_params0);
             bgfx::setUniform(u_shadow_params1_, shadow_params1);
             bgfx::setUniform(u_shadow_params2_, shadow_params2);
+            bgfx::setUniform(u_shadow_bias_params_, shadow_bias_params);
             bgfx::setUniform(u_shadow_axis_right_, shadow_axis_right);
             bgfx::setUniform(u_shadow_axis_up_, shadow_axis_up);
             bgfx::setUniform(u_shadow_axis_forward_, shadow_axis_forward);
@@ -1516,23 +1535,30 @@ class BgfxBackend final : public Backend {
             bgfx::submit(kBgfxMainViewId, program_);
         }
         if (shadow_map.ready) {
-            std::size_t covered = 0u;
-            for (float value : shadow_map.depth) {
-                if (std::isfinite(value)) {
-                    ++covered;
+            const char* shadow_source = shadow_map.depth.empty() ? "gpu_projection" : "cpu_raster";
+            int shadow_covered = -1;
+            if (!shadow_map.depth.empty()) {
+                int covered = 0;
+                for (float value : shadow_map.depth) {
+                    if (std::isfinite(value)) {
+                        ++covered;
+                    }
                 }
+                shadow_covered = covered;
             }
             KARMA_TRACE_CHANGED(
                 "render.bgfx",
                 std::to_string(layer) + ":" +
                     std::to_string(shadow_map.ready ? 1 : 0) + ":" +
-                    std::to_string(covered) + ":" +
+                    shadow_source + ":" +
+                    std::to_string(shadow_covered) + ":" +
                     std::to_string(shadow_map.size) + ":" +
                     std::to_string(shadow_tex_ready_ ? 1 : 0),
-                "shadow map layer={} mapReady={} covered={} size={} extent={:.1f} uploaded={}",
+                "shadow map layer={} source={} mapReady={} covered={} size={} extent={:.1f} uploaded={}",
                 layer,
+                shadow_source,
                 shadow_map.ready ? 1 : 0,
-                covered,
+                shadow_covered,
                 shadow_map.size,
                 shadow_map.extent,
                 shadow_tex_ready_ ? 1 : 0);
@@ -1628,6 +1654,7 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_shadow_params0_, zeros);
             bgfx::setUniform(u_shadow_params1_, zeros);
             bgfx::setUniform(u_shadow_params2_, zeros);
+            bgfx::setUniform(u_shadow_bias_params_, zeros);
             bgfx::setUniform(u_shadow_axis_right_, zeros);
             bgfx::setUniform(u_shadow_axis_up_, zeros);
             bgfx::setUniform(u_shadow_axis_forward_, zeros);
@@ -1684,8 +1711,12 @@ class BgfxBackend final : public Backend {
         if (size == 0u) {
             return false;
         }
+        const bool prefer_depth_attachment = render_target && shadow_depth_attachment_supported_;
         const bool needs_recreate =
-            !bgfx::isValid(shadow_tex_) || shadow_tex_size_ != size || shadow_tex_is_rt_ != render_target;
+            !bgfx::isValid(shadow_tex_) ||
+            shadow_tex_size_ != size ||
+            shadow_tex_is_rt_ != render_target ||
+            (render_target && (shadow_tex_rt_uses_depth_ != prefer_depth_attachment));
         if (needs_recreate) {
             if (bgfx::isValid(shadow_fb_)) {
                 bgfx::destroy(shadow_fb_);
@@ -1695,24 +1726,56 @@ class BgfxBackend final : public Backend {
                 bgfx::destroy(shadow_tex_);
                 shadow_tex_ = BGFX_INVALID_HANDLE;
             }
+            shadow_tex_rt_uses_depth_ = false;
 
-            uint64_t flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
-            if (render_target) {
-                flags |= BGFX_TEXTURE_RT;
+            const auto create_shadow_texture = [&](bgfx::TextureFormat::Enum format, bool rt_uses_depth) -> bool {
+                uint64_t flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+                if (render_target) {
+                    flags |= BGFX_TEXTURE_RT;
+                }
+                shadow_tex_ = bgfx::createTexture2D(
+                    size,
+                    size,
+                    false,
+                    1,
+                    format,
+                    flags,
+                    nullptr);
+                if (!bgfx::isValid(shadow_tex_)) {
+                    return false;
+                }
+                shadow_tex_size_ = size;
+                shadow_tex_is_rt_ = render_target;
+                shadow_tex_rt_uses_depth_ = render_target && rt_uses_depth;
+                if (render_target) {
+                    bgfx::TextureHandle attachments[] = {shadow_tex_};
+                    shadow_fb_ = bgfx::createFrameBuffer(1, attachments, false);
+                    if (!bgfx::isValid(shadow_fb_)) {
+                        bgfx::destroy(shadow_tex_);
+                        shadow_tex_ = BGFX_INVALID_HANDLE;
+                        shadow_tex_size_ = 0u;
+                        shadow_tex_is_rt_ = false;
+                        shadow_tex_rt_uses_depth_ = false;
+                        return false;
+                    }
+                }
+                return true;
+            };
+
+            bool created = false;
+            if (render_target && prefer_depth_attachment) {
+                created = create_shadow_texture(bgfx::TextureFormat::D32F, true);
+                if (!created) {
+                    KARMA_TRACE("render.bgfx", "shadow depth attachment create failed; using color-min fallback");
+                }
             }
-            shadow_tex_ = bgfx::createTexture2D(
-                size,
-                size,
-                false,
-                1,
-                bgfx::TextureFormat::R32F,
-                flags,
-                nullptr);
-            shadow_tex_size_ = bgfx::isValid(shadow_tex_) ? size : 0u;
-            shadow_tex_is_rt_ = bgfx::isValid(shadow_tex_) && render_target;
-            if (shadow_tex_is_rt_) {
-                bgfx::TextureHandle attachments[] = {shadow_tex_};
-                shadow_fb_ = bgfx::createFrameBuffer(1, attachments, false);
+            if (!created) {
+                created = create_shadow_texture(bgfx::TextureFormat::R32F, false);
+            }
+            if (!created) {
+                shadow_tex_size_ = 0u;
+                shadow_tex_is_rt_ = false;
+                shadow_tex_rt_uses_depth_ = false;
             }
         }
 
@@ -1737,7 +1800,13 @@ class BgfxBackend final : public Backend {
         bgfx::setViewFrameBuffer(kBgfxShadowViewId, shadow_fb_);
         bgfx::setViewRect(kBgfxShadowViewId, 0, 0, size, size);
         bgfx::setViewTransform(kBgfxShadowViewId, nullptr, nullptr);
-        bgfx::setViewClear(kBgfxShadowViewId, BGFX_CLEAR_COLOR, 0xffffffff, 1.0f, 0);
+        const bool depth_attachment = shadow_tex_rt_uses_depth_;
+        bgfx::setViewClear(
+            kBgfxShadowViewId,
+            depth_attachment ? BGFX_CLEAR_DEPTH : BGFX_CLEAR_COLOR,
+            0xffffffff,
+            1.0f,
+            0);
         bgfx::touch(kBgfxShadowViewId);
 
         const bgfx::Caps* caps = bgfx::getCaps();
@@ -1745,6 +1814,8 @@ class BgfxBackend final : public Backend {
             detail::ResolveShadowClipDepthTransform(caps && caps->homogeneousDepth);
         const float clip_y_sign =
             detail::ResolveShadowClipYSign(caps && caps->originBottomLeft);
+        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
+            detail::ResolveDirectionalShadowSemantics(light_);
         const float inv_depth_range = map.depth_range > 1e-6f ? (1.0f / map.depth_range) : 1.0f;
         const float shadow_params1[4] = {
             map.extent,
@@ -1752,11 +1823,23 @@ class BgfxBackend final : public Backend {
             map.center_y,
             map.min_depth,
         };
+        const float shadow_params0[4] = {
+            1.0f,
+            map.strength,
+            map.bias,
+            map.size > 0 ? (1.0f / static_cast<float>(map.size)) : 0.0f,
+        };
         const float shadow_params2[4] = {
             inv_depth_range,
             static_cast<float>(map.pcf_radius),
             clip_depth.scale,
             clip_depth.bias,
+        };
+        const float shadow_bias_params[4] = {
+            shadow_semantics.receiver_bias_scale,
+            shadow_semantics.normal_bias_scale,
+            shadow_semantics.raster_depth_bias,
+            shadow_semantics.raster_slope_bias,
         };
         const float shadow_axis_right[4] = {
             map.axis_right.x, map.axis_right.y, map.axis_right.z, 0.0f,
@@ -1767,8 +1850,10 @@ class BgfxBackend final : public Backend {
         const float shadow_axis_forward[4] = {
             map.axis_forward.x, map.axis_forward.y, map.axis_forward.z, 0.0f,
         };
+        bgfx::setUniform(u_shadow_params0_, shadow_params0);
         bgfx::setUniform(u_shadow_params1_, shadow_params1);
         bgfx::setUniform(u_shadow_params2_, shadow_params2);
+        bgfx::setUniform(u_shadow_bias_params_, shadow_bias_params);
         bgfx::setUniform(u_shadow_axis_right_, shadow_axis_right);
         bgfx::setUniform(u_shadow_axis_up_, shadow_axis_up);
         bgfx::setUniform(u_shadow_axis_forward_, shadow_axis_forward);
@@ -1784,11 +1869,15 @@ class BgfxBackend final : public Backend {
             bgfx::setVertexBuffer(0, renderable.mesh->vbh);
             bgfx::setIndexBuffer(renderable.mesh->ibh);
             bgfx::setTransform(&item.transform[0][0]);
-            const uint64_t state =
-                BGFX_STATE_WRITE_RGB |
-                BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE) |
-                BGFX_STATE_BLEND_EQUATION_MIN |
-                BGFX_STATE_MSAA;
+            uint64_t state = BGFX_STATE_MSAA;
+            if (depth_attachment) {
+                state |= BGFX_STATE_WRITE_Z |
+                    BGFX_STATE_DEPTH_TEST_LESS;
+            } else {
+                state |= BGFX_STATE_WRITE_RGB |
+                    BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE) |
+                    BGFX_STATE_BLEND_EQUATION_MIN;
+            }
             bgfx::setState(state);
             bgfx::submit(kBgfxShadowViewId, shadow_depth_program_);
             ++submitted;
@@ -1796,10 +1885,12 @@ class BgfxBackend final : public Backend {
 
         KARMA_TRACE_CHANGED(
             "render.bgfx",
-            std::to_string(map.size) + ":" + std::to_string(submitted),
-            "gpu shadow pass size={} draws={}",
+            std::to_string(map.size) + ":" + std::to_string(submitted) + ":" +
+                (depth_attachment ? "depth" : "color_min"),
+            "gpu shadow pass size={} draws={} attachment={}",
             map.size,
-            submitted);
+            submitted,
+            depth_attachment ? "depth" : "color_min");
         return submitted > 0u;
     }
 
@@ -1835,6 +1926,7 @@ class BgfxBackend final : public Backend {
     bgfx::UniformHandle u_shadow_params0_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_params1_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_params2_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_bias_params_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_axis_right_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_axis_up_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_axis_forward_ = BGFX_INVALID_HANDLE;
@@ -1847,6 +1939,8 @@ class BgfxBackend final : public Backend {
     bgfx::FrameBufferHandle shadow_fb_ = BGFX_INVALID_HANDLE;
     uint16_t shadow_tex_size_ = 0u;
     bool shadow_tex_is_rt_ = false;
+    bool shadow_tex_rt_uses_depth_ = false;
+    bool shadow_depth_attachment_supported_ = false;
     bool shadow_tex_ready_ = false;
     detail::DirectionalShadowMap cached_shadow_map_{};
     int shadow_update_every_frames_ = 1;

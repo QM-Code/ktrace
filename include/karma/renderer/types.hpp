@@ -101,9 +101,14 @@ struct DirectionalLightData {
         bool enabled = true;
         float strength = 0.65f;
         float bias = 0.0015f;
+        float receiver_bias_scale = 0.08f;
+        float normal_bias_scale = 0.35f;
+        float raster_depth_bias = 0.0f;
+        float raster_slope_bias = 0.0f;
         float extent = 24.0f;
         int map_size = 256;
         int pcf_radius = 1;
+        int triangle_budget = 4096;
         int update_every_frames = 1;
         ShadowExecutionMode execution_mode = ShadowExecutionMode::CpuReference;
     };

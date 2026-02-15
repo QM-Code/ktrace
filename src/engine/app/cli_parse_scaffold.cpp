@@ -224,11 +224,6 @@ CliConsumeResult ConsumeCommonCliOption(const std::string& arg,
         out.help_requested = true;
         return out;
     }
-    if (arg == "-v" || arg == "--verbose") {
-        state.verbose = true;
-        out.consumed = true;
-        return out;
-    }
     if (arg == "-T" || arg == "--timestamp-logging") {
         state.timestamp_logging = true;
         out.consumed = true;
@@ -415,7 +410,6 @@ bool ShouldExposeAudioBackendCliOption() {
 void AppendCommonCliHelp(std::ostream& out, bool include_user_config_option) {
     out
         << "  -h, --help                      Show this help message\n"
-        << "  -v, --verbose                   Enable debug-level logging\n"
         << "  -t, --trace <channels>          Enable comma-separated trace channels\n"
         << "  -d, --data-dir <dir>            Data directory override\n"
         << "      --language <code>           Language override (runtime only)\n"

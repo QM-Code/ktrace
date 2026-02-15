@@ -11,6 +11,7 @@
 #include <spdlog/spdlog.h>
 
 #include <exception>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -40,22 +41,29 @@ bz3::GameStartupOptions ResolveGameStartupOptions(const bz3::client::CLIOptions&
         ? options.player_name
         : karma::config::ReadStringConfig({"userDefaults.username"}, "Player");
 
-    const bool connect_requested = options.addr_explicit || options.port_explicit;
+    const bool connect_requested = options.addr_explicit;
     if (!connect_requested) {
         return startup;
     }
 
-    startup.connect_addr = options.addr_explicit ? options.connect_addr : std::string("localhost");
-    startup.connect_port = options.port_explicit
-        ? options.connect_port
-        : karma::config::ReadUInt16Config({"network.ServerPort"}, static_cast<uint16_t>(11899));
-
-    if (startup.connect_addr.empty()) {
-        throw std::runtime_error("Client connect requested but address is empty.");
+    const std::string endpoint = options.connect_addr;
+    const std::size_t split = endpoint.rfind(':');
+    if (split == std::string::npos || split == 0 || split + 1 >= endpoint.size()) {
+        throw std::runtime_error("Client --addr must be formatted as <host:port>.");
     }
-    if (startup.connect_port == 0) {
-        throw std::runtime_error("Client connect requested but port is 0.");
+    startup.connect_addr = endpoint.substr(0, split);
+    const std::string port_text = endpoint.substr(split + 1);
+    uint16_t parsed_port = 0;
+    try {
+        const unsigned long raw = std::stoul(port_text);
+        if (raw == 0 || raw > std::numeric_limits<uint16_t>::max()) {
+            throw std::runtime_error("out of range");
+        }
+        parsed_port = static_cast<uint16_t>(raw);
+    } catch (...) {
+        throw std::runtime_error("Client --addr port must be an integer in range 1..65535.");
     }
+    startup.connect_port = parsed_port;
 
     startup.connect_on_start = true;
     return startup;
@@ -111,6 +119,18 @@ int main(int argc, char** argv) {
         config.default_light.shadow.bias = karma::config::ReadFloatConfig(
             {"roamingMode.graphics.lighting.shadows.bias"},
             config.default_light.shadow.bias);
+        config.default_light.shadow.receiver_bias_scale = karma::config::ReadFloatConfig(
+            {"roamingMode.graphics.lighting.shadows.receiverBiasScale"},
+            config.default_light.shadow.receiver_bias_scale);
+        config.default_light.shadow.normal_bias_scale = karma::config::ReadFloatConfig(
+            {"roamingMode.graphics.lighting.shadows.normalBiasScale"},
+            config.default_light.shadow.normal_bias_scale);
+        config.default_light.shadow.raster_depth_bias = karma::config::ReadFloatConfig(
+            {"roamingMode.graphics.lighting.shadows.rasterDepthBias"},
+            config.default_light.shadow.raster_depth_bias);
+        config.default_light.shadow.raster_slope_bias = karma::config::ReadFloatConfig(
+            {"roamingMode.graphics.lighting.shadows.rasterSlopeBias"},
+            config.default_light.shadow.raster_slope_bias);
         config.default_light.shadow.extent = karma::config::ReadFloatConfig(
             {"roamingMode.graphics.lighting.shadows.extent"},
             config.default_light.shadow.extent);
@@ -120,6 +140,9 @@ int main(int argc, char** argv) {
         config.default_light.shadow.pcf_radius = static_cast<int>(karma::config::ReadUInt16Config(
             {"roamingMode.graphics.lighting.shadows.pcfRadius"},
             static_cast<uint16_t>(config.default_light.shadow.pcf_radius)));
+        config.default_light.shadow.triangle_budget = static_cast<int>(karma::config::ReadUInt16Config(
+            {"roamingMode.graphics.lighting.shadows.triangleBudget"},
+            static_cast<uint16_t>(config.default_light.shadow.triangle_budget)));
         config.default_light.shadow.update_every_frames = static_cast<int>(karma::config::ReadUInt16Config(
             {"roamingMode.graphics.lighting.shadows.updateEveryFrames"},
             static_cast<uint16_t>(config.default_light.shadow.update_every_frames)));

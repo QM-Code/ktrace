@@ -14,6 +14,7 @@ DataDirOverrideResult ApplyDataDirOverrideFromArgs(
     int argc,
     char* argv[],
     const std::filesystem::path& defaultConfigRelative = std::filesystem::path("config.json"),
-    bool enableUserConfig = true);
+    bool enableUserConfig = true,
+    bool allowDataDirFromUserConfigWhenUserConfigDisabled = false);
 
 } // namespace karma::data

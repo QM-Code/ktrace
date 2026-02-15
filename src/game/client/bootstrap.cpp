@@ -17,7 +17,6 @@ namespace {
 
 void ConfigureLogging(const CLIOptions& options) {
     karma::app::ConfigureLoggingFromOptions(options.timestamp_logging,
-                                            options.verbose,
                                             options.trace_explicit,
                                             options.trace_channels);
 }
@@ -26,10 +25,9 @@ void ConfigureDataAndConfig(int argc, char** argv) {
     karma::app::BootstrapConfigSpec spec{};
     spec.app_name = "bz3";
     spec.data_dir_env_var = "BZ3_DATA_DIR";
-    spec.required_data_marker = "common/config.json";
+    spec.required_data_marker = "client/config.json";
     spec.default_user_config_relative = std::filesystem::path("config.json");
     spec.config_specs = {
-        {"common/config.json", "data/common/config.json", spdlog::level::err, true, true},
         {"client/config.json", "data/client/config.json", spdlog::level::debug, false, true}
     };
     karma::app::ConfigureDataAndConfigFromSpec(spec, argc, argv);
@@ -64,9 +62,6 @@ void ApplyRuntimeOptionOverrides(const CLIOptions& options) {
     }
     if (options.addr_explicit) {
         KARMA_TRACE("engine.app", "CLI option --addr set: '{}'", options.connect_addr);
-    }
-    if (options.port_explicit) {
-        KARMA_TRACE("engine.app", "CLI option --port set: {}", options.connect_port);
     }
     if (options.dev_quick_start) {
         KARMA_TRACE("engine.app", "CLI option --dev-quick-start parsed (not wired yet)");

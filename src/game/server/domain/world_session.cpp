@@ -24,11 +24,28 @@ namespace bz3::server::domain {
 
 namespace {
 
-std::string ResolveWorldDirectory(const CLIOptions& options) {
-    if (options.world_specified) {
-        return options.world_dir;
+std::filesystem::path TryCanonical(const std::filesystem::path& path) {
+    std::error_code ec;
+    auto result = std::filesystem::weakly_canonical(path, ec);
+    if (!ec) {
+        return result;
     }
-    return karma::config::ReadStringConfig("defaultWorld", "");
+    result = std::filesystem::absolute(path, ec);
+    if (!ec) {
+        return result;
+    }
+    return path;
+}
+
+std::optional<std::filesystem::path> ResolveServerConfigOverlayPath(const CLIOptions& options) {
+    if (!options.server_config_explicit) {
+        return std::nullopt;
+    }
+    std::filesystem::path path(options.server_config_path);
+    if (!path.is_absolute()) {
+        path = std::filesystem::absolute(path);
+    }
+    return TryCanonical(path);
 }
 
 void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
@@ -134,49 +151,47 @@ WorldManifestSummary ComputeWorldManifestSummary(const std::filesystem::path& wo
 } // namespace
 
 std::optional<WorldSessionContext> LoadWorldSessionContext(const CLIOptions& options) {
-    const std::string world_dir = ResolveWorldDirectory(options);
-    if (world_dir.empty()) {
-        spdlog::error("bz3-server: no world directory specified and 'defaultWorld' is missing.");
-        return std::nullopt;
-    }
-
-    const std::filesystem::path world_dir_path = karma::data::Resolve(world_dir);
-    if (!std::filesystem::is_directory(world_dir_path)) {
-        spdlog::error("bz3-server: world directory not found: {}", world_dir_path.string());
-        return std::nullopt;
-    }
-
-    const std::filesystem::path world_config_path = world_dir_path / "config.json";
-    const auto world_config_opt =
-        karma::data::LoadJsonFile(world_config_path, "world config", spdlog::level::err);
-    if (!world_config_opt || !world_config_opt->is_object()) {
-        spdlog::error("bz3-server: failed to load world config object from {}", world_config_path.string());
-        return std::nullopt;
-    }
-
-    if (!karma::config::ConfigStore::AddRuntimeLayer("world config", *world_config_opt, world_config_path.parent_path())) {
-        spdlog::error("bz3-server: failed to add world config runtime layer.");
-        return std::nullopt;
-    }
-
-    const auto* layer = karma::config::ConfigStore::LayerByLabel("world config");
-    if (!layer || !layer->is_object()) {
-        spdlog::error("bz3-server: runtime layer lookup failed for world config.");
-        return std::nullopt;
-    }
-
     WorldSessionContext context{};
-    context.world_dir = world_dir_path;
-    context.world_config_path = world_config_path;
+    context.world_package_enabled = options.server_config_explicit;
+
+    const auto overlay_path = ResolveServerConfigOverlayPath(options);
+    if (overlay_path.has_value()) {
+        const auto world_config_opt =
+            karma::data::LoadJsonFile(*overlay_path, "server config overlay", spdlog::level::err);
+        if (!world_config_opt || !world_config_opt->is_object()) {
+            spdlog::error("bz3-server: failed to load server config overlay object from {}", overlay_path->string());
+            return std::nullopt;
+        }
+        const std::filesystem::path overlay_base_dir = overlay_path->parent_path();
+        if (!karma::config::ConfigStore::AddRuntimeLayer("server config overlay", *world_config_opt, overlay_base_dir)) {
+            spdlog::error("bz3-server: failed to add server config overlay runtime layer.");
+            return std::nullopt;
+        }
+        const auto* layer = karma::config::ConfigStore::LayerByLabel("server config overlay");
+        if (!layer || !layer->is_object()) {
+            spdlog::error("bz3-server: runtime layer lookup failed for server config overlay.");
+            return std::nullopt;
+        }
+        context.world_config_path = *overlay_path;
+        context.world_dir = overlay_base_dir;
+    }
+
+    const std::string default_world_name = context.world_package_enabled && !context.world_dir.empty()
+        ? context.world_dir.filename().string()
+        : std::string("Default");
     context.world_name =
-        karma::config::ReadStringConfig("worldName", world_dir_path.filename().string());
-    context.world_package_enabled = options.world_specified;
+        karma::config::ReadStringConfig("worldName", default_world_name);
 
     if (context.world_package_enabled) {
+        if (!std::filesystem::is_directory(context.world_dir)) {
+            spdlog::error("bz3-server: server config overlay base directory not found: {}",
+                          context.world_dir.string());
+            return std::nullopt;
+        }
         try {
             context.world_package = world::BuildWorldArchive(context.world_dir);
         } catch (const std::exception& ex) {
-            spdlog::error("bz3-server: failed to package world '{}': {}",
+            spdlog::error("bz3-server: failed to package server config base directory '{}': {}",
                           context.world_dir.string(),
                           ex.what());
             return std::nullopt;
@@ -191,7 +206,7 @@ std::optional<WorldSessionContext> LoadWorldSessionContext(const CLIOptions& opt
         context.world_manifest_file_count = static_cast<uint32_t>(context.world_manifest.size());
 
         KARMA_TRACE("net.server",
-                    "bz3-server: packaged custom world '{}' bytes={} hash={} content_hash={} manifest_hash={} files={} dir='{}'",
+                    "bz3-server: packaged server config overlay '{}' bytes={} hash={} content_hash={} manifest_hash={} files={} dir='{}'",
                     context.world_name,
                     context.world_package_size,
                     context.world_package_hash,
@@ -201,7 +216,7 @@ std::optional<WorldSessionContext> LoadWorldSessionContext(const CLIOptions& opt
                     context.world_dir.string());
     } else {
         KARMA_TRACE("net.server",
-                    "bz3-server: bundled world mode '{}' (no world package transfer)",
+                    "bz3-server: bundled default mode '{}' (no world package transfer)",
                     context.world_name);
     }
 
@@ -221,7 +236,7 @@ std::optional<WorldSessionContext> LoadWorldSessionContext(const CLIOptions& opt
                 context.world_name,
                 context.world_id,
                 context.world_revision,
-                context.world_dir.string());
+                context.world_package_enabled ? context.world_dir.string() : std::string("default server config"));
     return context;
 }
 

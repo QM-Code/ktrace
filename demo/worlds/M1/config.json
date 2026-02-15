@@ -7,7 +7,7 @@
 			}
 		}
 	},
-    "defaultPlayerParameters": {
+    "playerParameters" : {
         "speed": 2.0,
         "turnSpeed": 3.0,
         "jumpSpeed": 8.0,

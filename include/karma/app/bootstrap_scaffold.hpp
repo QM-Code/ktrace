@@ -14,12 +14,12 @@ struct BootstrapConfigSpec {
     std::string data_dir_env_var;
     std::string required_data_marker;
     bool enable_user_config = true;
+    bool allow_user_config_data_dir_when_user_config_disabled = false;
     std::filesystem::path default_user_config_relative = std::filesystem::path("config.json");
     std::vector<config::ConfigFileSpec> config_specs{};
 };
 
 void ConfigureLoggingFromOptions(bool timestamp_logging,
-                                 bool verbose,
                                  bool trace_explicit,
                                  const std::string& trace_channels);
 

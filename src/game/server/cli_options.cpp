@@ -15,22 +15,22 @@ namespace {
 std::vector<karma::app::CliRegisteredOption> BuildGameCliOptions(CLIOptions& opts) {
     std::vector<karma::app::CliRegisteredOption> options{};
     options.push_back(karma::app::DefineStringOption(
-        "-w",
-        "--world",
-        "<dir>",
-        "World directory",
+        "",
+        "--server-config",
+        "<path>",
+        "Server config overlay file",
         [&opts](const std::string& value) {
-            opts.world_dir = value;
-            opts.world_specified = true;
+            opts.server_config_path = value;
+            opts.server_config_explicit = true;
         }));
     options.push_back(karma::app::DefineUInt16Option(
         "-p",
-        "--port",
+        "--listen-port",
         "<port>",
         "Server listen port",
         [&opts](uint16_t value) {
-            opts.host_port = value;
-            opts.host_port_explicit = true;
+            opts.listen_port = value;
+            opts.listen_port_explicit = true;
         }));
     options.push_back(karma::app::DefineStringOption(
         "-C",
@@ -119,7 +119,6 @@ CLIOptions ParseCLIOptions(int argc, char** argv) {
         Fail("Unknown option '" + arg + "'.", game_options);
     }
 
-    opts.verbose = common.verbose;
     opts.trace_explicit = common.trace_explicit;
     opts.trace_channels = common.trace_channels;
     opts.timestamp_logging = common.timestamp_logging;

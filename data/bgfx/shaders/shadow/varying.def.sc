@@ -1,2 +1,2 @@
 vec3 a_position : POSITION;
-float v_depth : TEXCOORD0;
+vec3 a_normal : NORMAL;

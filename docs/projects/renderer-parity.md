@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-renderer-parity`
-- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 active implementation moved to renderer-shadow-hardening track; VQ4 queued; R26-A baseline matrix complete; R26-B slice 1 landed; R26-B slice 2 scaffolding landed; R26-B slice 3 BGFX GPU pass prototype landed; R26-B slice 4 Diligent GPU pass prototype landed; R26-B slice 5 lifecycle/fallback hardening landed; R26-B visual closeout checkpoint captured with Diligent screenshot tooling blocker documented; R26-B gpu_default no-shadow regression fix landed pending operator visual verify; R26-C intake matrix landed)`
-- Immediate next task: operator-verify `gpu_default` visual shadow parity (`BGFX` + `Diligent`) after clip-depth transform fix, capture traces/screens, then execute `R26-D` config policy expansion.
+- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 active implementation moved to renderer-shadow-hardening track; VQ4 queued; R26-A baseline matrix complete; R26-B slice 1 landed; R26-B slice 2 scaffolding landed; R26-B slice 3 BGFX GPU pass prototype landed; R26-B slice 4 Diligent GPU pass prototype landed; R26-B slice 5 lifecycle/fallback hardening landed; R26-B visual closeout checkpoint captured with Diligent screenshot tooling blocker documented; R26-B gpu_default no-shadow regression fix landed and operator-verified; R26-B depth-attachment GPU shadow slice landed; R26-C intake matrix landed; R26-D config-policy slice landed; R26-D bias-model policy slice landed)`
+- Immediate next task: run bounded bias sweep evidence (BGFX + Diligent) and lock default bias presets for stable contact shadows without acne regressions.
 - Validation gate: both assigned renderer build dirs via `./bzbuild.py` plus both client runs listed in this file; run docs lint whenever this project doc or assignment board is updated.
 
 ## Mission
@@ -433,6 +433,185 @@ R26-B gpu_default no-shadow regression fix attempt (pending operator visual veri
 5. Remaining acceptance gate:
    - operator visual confirmation that `gpu_default` shadows are restored on desktop runtime for both backends.
 
+R26-D config-surface policy slice landed (2026-02-14):
+1. Added bounded performance-sensitive CPU shadow raster budget control:
+   - contract field: `triangle_budget` in `include/karma/renderer/types.hpp`
+   - runtime config plumbing in `src/game/client/main.cpp`:
+     - `roamingMode.graphics.lighting.shadows.triangleBudget`
+   - semantics clamp wiring in `src/engine/renderer/backends/directional_shadow_internal.hpp`:
+     - bounded range `[1, 65536]`, fallback `4096`.
+2. Added operator-facing defaults:
+   - `data/client/config.json`
+   - `data/client/config_tank_preview.json`
+3. Added sandbox parity control for bounded repro sweeps:
+   - `src/engine/renderer/tests/renderer_shadow_sandbox.cpp`
+   - new CLI arg: `--shadow-triangle-budget <1..65536>`.
+4. Added regression coverage:
+   - `src/engine/renderer/tests/directional_shadow_contract_test.cpp`
+   - invalid triangle budget now asserted to fallback to `4096`.
+5. Added runtime observability:
+   - `src/engine/renderer/render_system.cpp` trace now reports `tris=<triangle_budget>` in shadow settings.
+6. Shadow-map trace semantics hardened for GPU path readability:
+   - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
+   - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+   - trace now reports `source=cpu_raster|gpu_projection`; GPU projection mode intentionally reports `covered=-1` (CPU depth-coverage metric is not applicable).
+
+R26-D validation commands and outcomes (run from `m-rewrite/`):
+```bash
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio      # pass
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio  # pass
+./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test      # pass
+./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test  # pass
+```
+
+R26-D perf-capture note:
+- Attempted autonomous 4-way ON-state `bz3` refresh capture in this environment (`/tmp/r26b-refresh-20260214T202029Z/`) was terminated by host kills (`exit 137`) before stable `perf1s` windows; partial traces still confirmed expected shadow-path routing.
+- Use operator desktop/runtime session for canonical perf matrix refresh.
+- Short sandbox trace sanity (`gpu_default`) still confirmed new trace semantics despite host kills:
+  - `/tmp/r26b-shadow-source-bgfx.log` -> `shadow map layer=0 source=gpu_projection ... covered=-1`
+  - `/tmp/r26b-shadow-source-diligent.log` -> `shadow map layer=0 source=gpu_projection ... covered=-1`
+
+R26-D fixed-policy notes (explicit):
+1. Shadow view-fit expansion constants in `BuildDirectionalShadowProjection(...)` (for example 1.05 extent guard, depth padding factors) remain fixed-policy for now.
+2. Reason: they are correctness/stability safeguards, not operator tuning controls; exposing them prematurely would create high-dimensional unstable config space during ongoing parity hardening.
+3. Follow-up policy: revisit exposure only after GPU shadow depth-attachment path and parity/perf matrix stabilize.
+
+R26-B slice-6 depth-attachment GPU shadow path landed (2026-02-15):
+1. BGFX GPU shadow path now prefers depth attachment with fallback:
+   - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
+   - `ensureShadowTexture(...)` now attempts `TextureFormat::D32F` for GPU render-target use when supported and falls back to `R32F` color-min path if needed.
+   - `renderGpuShadowMap(...)` now runs depth-write/depth-test state when attachment is depth, and traces attachment mode.
+2. Diligent GPU shadow path now uses depth-stencil attachment by default with fallback:
+   - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+   - `ensureShadowTexture(...)` now attempts `TEX_FORMAT_D32_FLOAT` with `BIND_DEPTH_STENCIL | BIND_SHADER_RESOURCE`, falling back to `R32_FLOAT` color-min path if depth SRV/DSV creation is unavailable.
+   - `renderGpuShadowMap(...)` now binds DSV for depth path and transitions from `DEPTH_WRITE -> SHADER_RESOURCE`.
+3. Diligent shadow depth pipeline moved to depth-only configuration:
+   - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+   - `createShadowDepthPipeline()` now uses `NumRenderTargets=0`, `DSVFormat=D32_FLOAT`, `DepthEnable=true`, `DepthWriteEnable=true`, `DepthFunc=LESS`, and no pixel shader.
+4. BGFX shadow depth shader pair updated for depth-only pass:
+   - `data/bgfx/shaders/shadow/vs_shadow_depth.sc`
+   - `data/bgfx/shaders/shadow/fs_shadow_depth.sc`
+   - `data/bgfx/shaders/shadow/varying.def.sc`
+   - removed color-depth payload varying/output from the GPU shadow depth pass.
+5. Observability hardening:
+   - both backends now trace `gpu shadow pass size={} draws={} attachment={depth|color_min}` so depth-attachment enablement is explicit in runtime evidence.
+
+R26-B slice-6 validation commands and outcomes (run from `m-rewrite/`):
+```bash
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio      # pass
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio  # pass
+./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test      # pass
+./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test  # pass
+
+# matrix configs (temporary; removed after capture)
+jq '.roamingMode.graphics.lighting.shadows.enabled=false' data/client/config.json > data/client/config_r26d_shadow_off.json
+jq '.roamingMode.graphics.lighting.shadows.enabled=true | .roamingMode.graphics.lighting.shadows.executionMode="gpu_default"' data/client/config.json > data/client/config_r26d_shadow_on_gpu.json
+
+timeout -k 2s 20s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config data/client/config_r26d_shadow_off.json -v -t engine.sim,render.bgfx
+timeout -k 2s 20s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config data/client/config_r26d_shadow_on_gpu.json -v -t engine.sim,render.bgfx
+timeout -k 2s 20s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config data/client/config_r26d_shadow_off.json -v -t engine.sim,render.diligent
+timeout -k 2s 20s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config data/client/config_r26d_shadow_on_gpu.json -v -t engine.sim,render.diligent
+
+rm -f data/client/config_r26d_shadow_off.json data/client/config_r26d_shadow_on_gpu.json
+```
+- Final bounded run exits: all `124` (expected timeout).
+- Evidence dir: `/tmp/r26d-depth-matrix-20260215T054107Z/`.
+
+R26-B slice-6 refreshed roaming matrix (steady-state, drop first `perf1s`, `steady_n=17`):
+| Backend | Shadows | Mode | steady mean fps | steady mean frame ms | steady mean avg_steps | steady worst `max_frame_ms` | Log |
+|---|---|---|---:|---:|---:|---:|---|
+| BGFX | OFF | n/a | 59.75 | 16.74 | 1.00 | 35.94 | `/tmp/r26d-depth-matrix-20260215T054107Z/bgfx-shadow-off.log` |
+| BGFX | ON | `gpu_default` | 35.92 | 27.85 | 1.67 | 34.91 | `/tmp/r26d-depth-matrix-20260215T054107Z/bgfx-shadow-on-gpu.log` |
+| Diligent | OFF | n/a | 59.28 | 16.87 | 1.01 | 41.45 | `/tmp/r26d-depth-matrix-20260215T054107Z/diligent-shadow-off.log` |
+| Diligent | ON | `gpu_default` | 36.21 | 27.62 | 1.66 | 39.80 | `/tmp/r26d-depth-matrix-20260215T054107Z/diligent-shadow-on-gpu.log` |
+
+Slice-6 delta summary:
+- BGFX shadow tax (`OFF -> ON gpu_default`): `-39.9%` FPS (`59.75 -> 35.92`), `+66.4%` frame time (`16.74 -> 27.85`).
+- Diligent shadow tax (`OFF -> ON gpu_default`): `-38.9%` FPS (`59.28 -> 36.21`), `+63.7%` frame time (`16.87 -> 27.62`).
+- ON-state backend parity is now tight in this run (`36.21` vs `35.92`, Diligent `+0.8%` FPS).
+- Trace evidence confirms depth attachment is active in both backends:
+  - BGFX: `gpu shadow pass size=512 draws=14 attachment=depth`
+  - Diligent: `gpu shadow pass size=512 draws=14 attachment=depth`
+  - plus `shadow map layer=0 source=gpu_projection ... covered=-1 ... uploaded=1` in both logs.
+
+R26-B slice-6 recommendation and risks:
+1. Next implementation order (`R26-B` -> `R26-D` bridge):
+   - add receiver/normal/raster bias model parity under shared contracts,
+   - wire bounded config controls for those new performance-sensitive bias terms in `data/client/config.json`,
+   - hold depth-attachment fallback behavior as fixed-policy with explicit trace evidence.
+2. Risks:
+   - some GPU/driver stacks may fail depth SRV/DSV creation and silently use fallback unless attachment trace is checked; keep `attachment=` trace in perf recipes.
+   - depth path visual quality still depends on current bias model; without receiver/normal/raster terms, acne vs peter-panning tuning remains constrained.
+
+R26-D bias-model policy slice landed (2026-02-15):
+1. Extended shared shadow contract with bounded bias controls:
+   - `include/karma/renderer/types.hpp`
+   - new fields under `DirectionalLightData::ShadowDesc`:
+     - `receiver_bias_scale` (default `0.08`)
+     - `normal_bias_scale` (default `0.35`)
+     - `raster_depth_bias` (default `0.0`)
+     - `raster_slope_bias` (default `0.0`)
+2. Added bounded semantics/clamp policy in shared renderer internals:
+   - `src/engine/renderer/backends/directional_shadow_internal.hpp`
+   - clamp ranges:
+     - `receiver_bias_scale`: `[0.0, 4.0]`
+     - `normal_bias_scale`: `[0.0, 8.0]`
+     - `raster_depth_bias`: `[0.0, 0.02]`
+     - `raster_slope_bias`: `[0.0, 8.0]`
+3. Runtime config plumbing added:
+   - `src/game/client/main.cpp`
+   - keys:
+     - `roamingMode.graphics.lighting.shadows.receiverBiasScale`
+     - `roamingMode.graphics.lighting.shadows.normalBiasScale`
+     - `roamingMode.graphics.lighting.shadows.rasterDepthBias`
+     - `roamingMode.graphics.lighting.shadows.rasterSlopeBias`
+4. Operator defaults added:
+   - `data/client/config.json`
+   - `data/client/config_tank_preview.json`
+5. Backend parity wiring:
+   - BGFX:
+     - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
+     - `data/bgfx/shaders/mesh/fs_mesh.sc`
+     - `data/bgfx/shaders/shadow/vs_shadow_depth.sc`
+     - `data/bgfx/shaders/shadow/varying.def.sc`
+   - Diligent:
+     - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+   - Both backends now use the same bias parameter contract in GPU sampling and depth-pass offset behavior.
+6. Sandbox policy/debug control expansion:
+   - `src/engine/renderer/tests/renderer_shadow_sandbox.cpp`
+   - new CLI knobs:
+     - `--shadow-receiver-bias <0..4>`
+     - `--shadow-normal-bias <0..8>`
+     - `--shadow-raster-depth-bias <0..0.02>`
+     - `--shadow-raster-slope-bias <0..8>`
+7. Regression coverage + observability:
+   - `src/engine/renderer/tests/directional_shadow_contract_test.cpp` now validates new clamp/fallback behavior.
+   - `src/engine/renderer/render_system.cpp` traces now include `recv`, `norm`, `rasterDepth`, `rasterSlope`.
+
+R26-D bias-model validation commands and outcomes (run from `m-rewrite/`):
+```bash
+./bzbuild.py -c build-sdl3-bgfx-physx-imgui-sdl3audio      # pass
+./bzbuild.py -c build-sdl3-diligent-physx-imgui-sdl3audio  # pass
+./build-sdl3-bgfx-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test      # pass
+./build-sdl3-diligent-physx-imgui-sdl3audio/src/engine/directional_shadow_contract_test  # pass
+
+timeout -k 2s 20s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config data/client/config.json -v -t engine.sim,render.bgfx
+timeout -k 2s 20s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config data/client/config.json -v -t engine.sim,render.diligent
+timeout -k 2s 10s ./build-sdl3-bgfx-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config data/client/config.json -v -t render.system,render.bgfx
+timeout -k 2s 10s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --strict-config=true --config data/client/config.json -v -t render.system,render.diligent
+```
+- Final bounded run exits: all `124` (expected timeout).
+- Evidence logs:
+  - `/tmp/r26e-bias-bgfx.log`
+  - `/tmp/r26e-bias-diligent.log`
+  - `/tmp/r26e-bias-bgfx-system.log`
+  - `/tmp/r26e-bias-diligent-system.log`
+- Key trace confirmations:
+  - BGFX: `gpu shadow pass size=512 draws=14 attachment=depth`
+  - Diligent: `gpu shadow pass size=512 draws=14 attachment=depth`
+  - RenderSystem now reports bias fields in both backends:
+    - `... shadows(... bias=... recv=... norm=... rasterDepth=... rasterSlope=... mode=gpu_default)`.
+
 R26-C m-dev intake matrix (2026-02-14):
 
 Reference root:
@@ -729,7 +908,7 @@ VQ3 closeout decision (`2026-02-11`, current state):
 29. R26-A baseline matrix slice (`shared unblocker`): record roaming-mode FPS/frame-time matrix across BGFX+Diligent with shadows on/off, including trace evidence for top CPU bottlenecks. `Queued 2026-02-14`
 30. R26-B GPU shadow parity intake slice (`KARMA intake`): replace rewrite default CPU shadow-map generation/sampling path with GPU-pass-based shadow map generation and GPU sampling parity across active backends. `Queued 2026-02-14`
 31. R26-C legacy renderer intake slice (`m-dev parity`): audit `m-dev` renderer offload techniques, classify adopt-now/later/reject, and attach concrete implementation follow-ups for adopt-now items. `Queued 2026-02-14`
-32. R26-D renderer config-surface policy slice (`shared unblocker`): ensure newly introduced performance-sensitive renderer techniques are exposed as bounded config options (or explicitly documented as fixed-policy decisions) in `data/client/config.json` and runtime plumbing. `Queued 2026-02-14`
+32. R26-D renderer config-surface policy slice (`shared unblocker`): ensure newly introduced performance-sensitive renderer techniques are exposed as bounded config options (or explicitly documented as fixed-policy decisions) in `data/client/config.json` and runtime plumbing. `In progress 2026-02-14` (`triangleBudget` config + fixed-policy ledger landed; further depth-pass policy controls pending)
 
 ## Active Specialist Packet (R2)
 ```text

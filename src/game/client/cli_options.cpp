@@ -27,20 +27,11 @@ std::vector<karma::app::CliRegisteredOption> BuildGameCliOptions(CLIOptions& opt
     options.push_back(karma::app::DefineStringOption(
         "-a",
         "--addr",
-        "<address>",
-        "Server address to connect",
+        "<host:port>",
+        "Server endpoint to connect",
         [&opts](const std::string& value) {
             opts.connect_addr = value;
             opts.addr_explicit = true;
-        }));
-    options.push_back(karma::app::DefineUInt16Option(
-        "-p",
-        "--port",
-        "<port>",
-        "Server port to connect",
-        [&opts](uint16_t value) {
-            opts.connect_port = value;
-            opts.port_explicit = true;
         }));
     options.push_back(karma::app::DefineFlagOption(
         "",
@@ -169,7 +160,6 @@ CLIOptions ParseCLIOptions(int argc, char** argv) {
         Fail("Unknown option '" + arg + "'.", game_options);
     }
 
-    opts.verbose = common.verbose;
     opts.trace_explicit = common.trace_explicit;
     opts.trace_channels = common.trace_channels;
     opts.timestamp_logging = common.timestamp_logging;

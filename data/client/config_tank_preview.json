@@ -1,4 +1,5 @@
 {
+  "language": "en",
   "userDefaults": {
     "username": "MPCarbon",
     "password": "securepassword123",
@@ -107,9 +108,14 @@
           "enabled": true,
           "strength": 0.95,
           "bias": 0.0008,
+          "receiverBiasScale": 0.08,
+          "normalBiasScale": 0.35,
+          "rasterDepthBias": 0.0,
+          "rasterSlopeBias": 0.0,
           "extent": 48.0,
           "mapSize": 512,
           "pcfRadius": 1,
+          "triangleBudget": 4096,
           "updateEveryFrames": 2,
           "executionMode": "cpu_reference"
         }

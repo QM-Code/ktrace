@@ -11,7 +11,6 @@
 namespace karma::app {
 
 struct CliCommonState {
-    bool verbose = false;
     bool trace_explicit = false;
     std::string trace_channels;
     bool timestamp_logging = false;

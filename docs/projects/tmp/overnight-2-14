@@ -116,6 +116,31 @@ Drive renderer/shadow work forward in `m-rewrite` with minimal supervision, keep
      - BGFX: `clip_depth_scale/bias` derived from `bgfx::getCaps()->homogeneousDepth` and fed via `u_shadowParams2.zw`.
      - Diligent: shadow depth VS now uses `u_shadowParams2.zw` (currently `1,0` for Vulkan).
    - Rebuilds and shadow contract tests passed after patch; awaiting operator visual/log confirmation for `gpu_default`.
+11. R26-D config-policy slice progress (2026-02-14 late):
+   - Operator confirmed `gpu_default` shadows restored and parity-aligned across BGFX+Diligent.
+   - Added new bounded perf-sensitive config key:
+     - `roamingMode.graphics.lighting.shadows.triangleBudget` -> runtime -> renderer contract -> shadow semantics clamp.
+   - Added sandbox control for parity/perf sweeps: `--shadow-triangle-budget`.
+   - Added contract test coverage and render-system trace observability for active triangle budget.
+   - Documented remaining fixed-policy shadow fitting constants explicitly in `renderer-parity.md`.
+12. Observability hardening + capture environment note (2026-02-14 late):
+   - Shadow map traces now report source semantics:
+     - `source=cpu_raster` with finite coverage count.
+     - `source=gpu_projection` with `covered=-1` (`CPU depth coverage` metric intentionally not applicable).
+   - Autonomous 4-way `bz3` ON-state refresh capture attempt at `/tmp/r26b-refresh-20260214T202029Z/` was host-killed (`exit 137`) before stable `perf1s`; keep canonical perf refresh on operator desktop session.
+   - Short sandbox traces still validated source semantics:
+     - `/tmp/r26b-shadow-source-bgfx.log`
+     - `/tmp/r26b-shadow-source-diligent.log`
+13. R26-B depth-attachment shadow slice landed (2026-02-15 early):
+   - BGFX GPU shadow pass now prefers `D32F` depth attachment with explicit `R32F` color-min fallback.
+   - Diligent GPU shadow pass now uses depth-stencil target (`D32`) by default with explicit color-min fallback when depth views are unavailable.
+   - Both backends now emit attachment trace: `gpu shadow pass ... attachment=depth|color_min`.
+   - Refreshed 4-way roaming matrix captured successfully in `/tmp/r26d-depth-matrix-20260215T054107Z/` with tight ON-state parity and depth attachment confirmed in both backends.
+14. R26-D bias-model policy slice landed (2026-02-15):
+   - Added shared shadow bias controls for `receiver/normal/raster` terms in renderer contract + runtime config (`config.json` + `config_tank_preview.json`).
+   - Wired BGFX + Diligent to consume identical bias controls in GPU sampling/depth pass.
+   - Added sandbox CLI controls for bias sweeps and extended RenderSystem traces with `recv/norm/rasterDepth/rasterSlope`.
+   - Contract tests + both backend builds pass after slice; runtime traces confirm depth attachment path still active on both backends.
 
 ## Periodic Self-Reorientation Protocol (Important)
 Run this check repeatedly (at least after each accepted slice or every ~45-60 minutes):

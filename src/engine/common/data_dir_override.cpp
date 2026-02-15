@@ -193,7 +193,8 @@ namespace karma::data {
 DataDirOverrideResult ApplyDataDirOverrideFromArgs(int argc,
                                                    char *argv[],
                                                    const std::filesystem::path &defaultConfigRelative,
-                                                   bool enableUserConfig) {
+                                                   bool enableUserConfig,
+                                                   bool allowDataDirFromUserConfigWhenUserConfigDisabled) {
     try {
         const auto cliConfigPath = ParsePathArg(argc, argv, "-c", "--config");
         const auto cliDataDir = ParsePathArg(argc, argv, "-d", "--data-dir");
@@ -208,6 +209,11 @@ DataDirOverrideResult ApplyDataDirOverrideFromArgs(int argc,
         } else if (cliConfigPath) {
             std::cerr << "The --config option is not supported for this executable.\n";
             std::exit(1);
+        } else if (allowDataDirFromUserConfigWhenUserConfigDisabled) {
+            const auto readOnlyConfigPath = CanonicalizePath(karma::data::UserConfigDirectory() / defaultConfigRelative);
+            configPath = readOnlyConfigPath;
+            configDataDir = cliDataDir ? std::optional<std::filesystem::path>{}
+                                       : ExtractDataDirFromConfig(readOnlyConfigPath);
         }
 
         if (cliDataDir) {
@@ -240,15 +246,15 @@ DataDirOverrideResult ApplyDataDirOverrideFromArgs(int argc,
         std::cerr << "\n";
         std::cerr << "This should not happen and may indicate a problem with installation.\n\n";
         std::cerr << "This directory can be specified";
-        if (enableUserConfig) {
+        if (enableUserConfig || allowDataDirFromUserConfigWhenUserConfigDisabled) {
             std::cerr << " in three ways:\n";
         } else {
             std::cerr << " in two ways:\n";
         }
         std::cerr << "  1. Set the " << spec.dataDirEnvVar << " environment variable.\n";
         std::cerr << "  2. Use the command-line option \"-d <datadir>\".\n";
-        if (enableUserConfig) {
-            std::cerr << "  3. Add the following to your config file:\n";
+        if (enableUserConfig || allowDataDirFromUserConfigWhenUserConfigDisabled) {
+            std::cerr << "  3. Add the following to your user config file:\n";
             std::cerr << "     " << configPath.string() << "\n";
             std::cerr << "     {\n";
             std::cerr << "         \"DataDir\" : \"<datadir>\"\n";

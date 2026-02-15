@@ -126,9 +126,14 @@ bool RunShadowSemanticsClampChecks() {
     light.shadow.enabled = true;
     light.shadow.strength = std::numeric_limits<float>::quiet_NaN();
     light.shadow.bias = -1.0f;
+    light.shadow.receiver_bias_scale = std::numeric_limits<float>::quiet_NaN();
+    light.shadow.normal_bias_scale = -2.0f;
+    light.shadow.raster_depth_bias = 5.0f;
+    light.shadow.raster_slope_bias = std::numeric_limits<float>::infinity();
     light.shadow.extent = 10000.0f;
     light.shadow.map_size = 2;
     light.shadow.pcf_radius = 99;
+    light.shadow.triangle_budget = 0;
 
     const ResolvedDirectionalShadowSemantics semantics = ResolveDirectionalShadowSemantics(light);
     if (!ValidateResolvedDirectionalShadowSemantics(semantics)) {
@@ -143,6 +148,22 @@ bool RunShadowSemanticsClampChecks() {
         std::cerr << "expected finite out-of-range bias to clamp to 0.0\n";
         return false;
     }
+    if (!NearlyEqual(semantics.receiver_bias_scale, 0.08f)) {
+        std::cerr << "expected non-finite receiver bias scale to fall back to 0.08\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.normal_bias_scale, 0.0f)) {
+        std::cerr << "expected finite out-of-range normal bias scale to clamp to 0.0\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.raster_depth_bias, 0.02f)) {
+        std::cerr << "expected finite out-of-range raster depth bias to clamp to 0.02\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.raster_slope_bias, 0.0f)) {
+        std::cerr << "expected non-finite raster slope bias to fall back to 0.0\n";
+        return false;
+    }
     if (!NearlyEqual(semantics.extent, 512.0f)) {
         std::cerr << "expected finite out-of-range extent to clamp to 512.0\n";
         return false;
@@ -153,6 +174,10 @@ bool RunShadowSemanticsClampChecks() {
     }
     if (semantics.pcf_radius != 1) {
         std::cerr << "expected invalid pcf radius to fall back to 1\n";
+        return false;
+    }
+    if (semantics.triangle_budget != 4096) {
+        std::cerr << "expected invalid triangle budget to fall back to 4096\n";
         return false;
     }
 

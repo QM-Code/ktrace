@@ -11,7 +11,6 @@ namespace bz3::server {
 
 void ConfigureLogging(const CLIOptions& options) {
     karma::app::ConfigureLoggingFromOptions(options.timestamp_logging,
-                                            options.verbose,
                                             options.trace_explicit,
                                             options.trace_channels);
 }
@@ -20,10 +19,10 @@ void ConfigureDataAndConfig(int argc, char** argv) {
     karma::app::BootstrapConfigSpec spec{};
     spec.app_name = "bz3";
     spec.data_dir_env_var = "BZ3_DATA_DIR";
-    spec.required_data_marker = "common/config.json";
+    spec.required_data_marker = "server/config.json";
     spec.enable_user_config = false;
+    spec.allow_user_config_data_dir_when_user_config_disabled = true;
     spec.config_specs = {
-        {"common/config.json", "data/common/config.json", spdlog::level::err, true, true},
         {"server/config.json", "data/server/config.json", spdlog::level::err, true, true}
     };
     karma::app::ConfigureDataAndConfigFromSpec(spec, argc, argv);

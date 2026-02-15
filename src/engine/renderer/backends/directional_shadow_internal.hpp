@@ -16,6 +16,10 @@ struct ResolvedDirectionalShadowSemantics {
     bool enabled = false;
     float strength = 0.65f;
     float bias = 0.0015f;
+    float receiver_bias_scale = 0.08f;
+    float normal_bias_scale = 0.35f;
+    float raster_depth_bias = 0.0f;
+    float raster_slope_bias = 0.0f;
     float extent = 24.0f;
     int map_size = 256;
     int pcf_radius = 1;
@@ -222,21 +226,43 @@ inline ResolvedDirectionalShadowSemantics ResolveDirectionalShadowSemantics(cons
     semantics.enabled = light.shadow.enabled;
     semantics.strength = ClampFinite(light.shadow.strength, 0.65f, 0.0f, 1.0f);
     semantics.bias = ClampFinite(light.shadow.bias, 0.0008f, 0.0f, 0.02f);
+    semantics.receiver_bias_scale = ClampFinite(light.shadow.receiver_bias_scale, 0.08f, 0.0f, 4.0f);
+    semantics.normal_bias_scale = ClampFinite(light.shadow.normal_bias_scale, 0.35f, 0.0f, 8.0f);
+    semantics.raster_depth_bias = ClampFinite(light.shadow.raster_depth_bias, 0.0f, 0.0f, 0.02f);
+    semantics.raster_slope_bias = ClampFinite(light.shadow.raster_slope_bias, 0.0f, 0.0f, 8.0f);
     semantics.extent = ClampFinite(light.shadow.extent, 24.0f, 2.0f, 512.0f);
     semantics.map_size = ClampRange(light.shadow.map_size, 256, 64, 2048);
     semantics.pcf_radius = ClampRange(light.shadow.pcf_radius, 1, 0, 4);
-    semantics.triangle_budget = 4096;
+    semantics.triangle_budget = ClampRange(light.shadow.triangle_budget, 4096, 1, 65536);
     return semantics;
 }
 
 inline bool ValidateResolvedDirectionalShadowSemantics(const ResolvedDirectionalShadowSemantics& semantics) {
-    if (!std::isfinite(semantics.strength) || !std::isfinite(semantics.bias) || !std::isfinite(semantics.extent)) {
+    if (!std::isfinite(semantics.strength) ||
+        !std::isfinite(semantics.bias) ||
+        !std::isfinite(semantics.receiver_bias_scale) ||
+        !std::isfinite(semantics.normal_bias_scale) ||
+        !std::isfinite(semantics.raster_depth_bias) ||
+        !std::isfinite(semantics.raster_slope_bias) ||
+        !std::isfinite(semantics.extent)) {
         return false;
     }
     if (semantics.strength < 0.0f || semantics.strength > 1.0f) {
         return false;
     }
     if (semantics.bias < 0.0f || semantics.bias > 0.02f) {
+        return false;
+    }
+    if (semantics.receiver_bias_scale < 0.0f || semantics.receiver_bias_scale > 4.0f) {
+        return false;
+    }
+    if (semantics.normal_bias_scale < 0.0f || semantics.normal_bias_scale > 8.0f) {
+        return false;
+    }
+    if (semantics.raster_depth_bias < 0.0f || semantics.raster_depth_bias > 0.02f) {
+        return false;
+    }
+    if (semantics.raster_slope_bias < 0.0f || semantics.raster_slope_bias > 8.0f) {
         return false;
     }
     if (semantics.extent < 2.0f || semantics.extent > 512.0f) {
