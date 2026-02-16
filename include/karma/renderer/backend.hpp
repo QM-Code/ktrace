@@ -41,6 +41,7 @@ class Backend {
 
     virtual void setCamera(const renderer::CameraData& camera) = 0;
     virtual void setDirectionalLight(const renderer::DirectionalLightData& light) = 0;
+    virtual void setLights(const std::vector<renderer::LightData>& lights) = 0;
     virtual void setEnvironmentLighting(const renderer::EnvironmentLightingData& environment) = 0;
     virtual bool isValid() const = 0;
 };

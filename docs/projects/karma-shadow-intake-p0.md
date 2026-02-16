@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `overseer`
-- Status: `priority/queued (P0 integration track created)`
-- Immediate next task: issue first specialist slice for point-shadow contract scaffolding plus moving-caster refresh policy.
+- Status: `priority/in progress (KS0 cache-invalidation + KS1 contract/config scaffolding + KS2.1 directional GPU shadow hardening + KS2.2 local-light source contract/shading bridge landed)`
+- Immediate next task: continue `KS2` by implementing bounded point-shadow map generation/sampling for selected shadow-casting local lights in both backends.
 - Validation gate: renderer build gates in both assigned build dirs, sandbox/runtime trace evidence, and docs lint.
 
 ## Mission
@@ -114,6 +114,33 @@ timeout -k 2s 20s ./build-sdl3-diligent-physx-imgui-sdl3audio/bz3 -d ./data --st
 - `2026-02-16`: Upstream intake candidates classified:
   - adopt-now: point-shadow map path, dirty refresh policy for moving casters, bounded runtime tuning controls.
   - deferred: radar/camera shader-override demo path and non-essential wide renderer refactors.
+- `2026-02-16`: `KS0` landed (behavior-first parity intake from KARMA cache policy):
+  - both BGFX and Diligent now force directional shadow-map refresh when camera/light/caster inputs change, instead of relying on cadence-only rebuilds.
+  - adopted thresholds mirror KARMA posture (`position ~= 0.12`, `direction ~= 0.3 deg`) with transform-delta detection per submitted shadow caster sequence.
+  - this is an intake bridge for shadow stability and responsiveness; point-shadow topology itself is still pending `KS1/KS2`.
+- `2026-02-16`: `KS0.1` directional quality baseline aligned toward KARMA demo posture:
+  - updated rewrite runtime config defaults used by `bz3` (`data/client/config.json`) to increase directional shadow fidelity (`mapSize=2048`, `pcfRadius=2`, `updateEveryFrames=1`).
+  - operator runtime check confirmed visibly improved shadow quality in `bz3` while staying on the existing `gpu_projection` directional path.
+- `2026-02-16`: `KS0.2` quality/perf rebalance after operator FPS feedback:
+  - reduced directional shadow runtime defaults to `mapSize=1024`, `pcfRadius=1` while keeping `updateEveryFrames=1`.
+  - intent: preserve clear quality gain over legacy `512/1` while removing the heavy frame-time cost from `2048/2`.
+- `2026-02-16`: `KS0.3` operator quality lock:
+  - directional runtime defaults restored/locked at `mapSize=2048`, `pcfRadius=2`, `updateEveryFrames=1` per operator directive to avoid quality regression while intake continues.
+- `2026-02-16`: `KS1` contract/config scaffolding landed:
+  - extended rewrite directional-shadow runtime contract with bounded point-shadow/local-light tuning fields (map size, shadow-light cap, face budget, bias/tuning controls, AO/local-light interaction and directional-lift control).
+  - wired parser support from client config (`roamingMode.graphics.lighting.shadows.*`) and expanded `render.system` trace payload to emit the new control surface for deterministic evidence capture.
+  - added contract-test coverage for clamp/fallback behavior over new fields in `directional_shadow_contract_test`.
+- `2026-02-16`: `KS2.1` directional GPU shadow hardening landed (KARMA-aligned sub-slice while point-light source contract is pending):
+  - both BGFX and Diligent now compute mesh-local shadow caster bounding spheres and cull out-of-shadow-volume casters during GPU shadow submission.
+  - both backends now emit `gpu shadow pass ... culled=<n>` trace evidence.
+  - directional PCF sampling shader path now uses bounded radius-specialized loops (`0/1/2/3/4`) with early return for non-lit surfaces, reducing per-pixel shadow sampling overhead without lowering configured quality settings.
+- `2026-02-16`: `KS2.2` local-light source contract/shading bridge landed (point-shadow pass itself still pending):
+  - renderer contract now exposes rewrite-owned local light sources (`LightData`) through `GraphicsDevice`/`RenderSystem`, with scene-owned light ingestion via `scene::LightComponent`.
+  - BGFX + Diligent forward shaders now consume bounded local light uniforms (max 4) and apply KARMA-aligned attenuation plus `localLightDirectionalShadowLiftStrength` modulation over directional shadowing.
+  - both backends now emit `point shadow status ... reason=<token>` trace evidence (`point_shadow_pass_unimplemented`, `point_shadow_no_shadow_lights`, etc.) to keep KS2 point-shadow rollout observable while the generation/sampling pass is still in flight.
+- Validation evidence (`m-rewrite/`):
+  - `./scripts/test-engine-backends.sh build-sdl3-bgfx-physx-imgui-sdl3audio` ✅
+  - `./scripts/test-engine-backends.sh build-sdl3-diligent-physx-imgui-sdl3audio` ✅
 
 ## Open Questions
 - Should point-shadow rendering be default-on in rewrite or rollout behind explicit config until closeout evidence is complete?

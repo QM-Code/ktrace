@@ -384,6 +384,39 @@ int RunRuntime(const karma::cli::ClientAppOptions& options) {
     config.default_light.shadow.update_every_frames = static_cast<int>(karma::config::ReadUInt16Config(
         {"roamingMode.graphics.lighting.shadows.updateEveryFrames"},
         static_cast<uint16_t>(config.default_light.shadow.update_every_frames)));
+    config.default_light.shadow.point_map_size = static_cast<int>(karma::config::ReadUInt16Config(
+        {"roamingMode.graphics.lighting.shadows.pointMapSize"},
+        static_cast<uint16_t>(config.default_light.shadow.point_map_size)));
+    config.default_light.shadow.point_max_shadow_lights = static_cast<int>(karma::config::ReadUInt16Config(
+        {"roamingMode.graphics.lighting.shadows.pointMaxShadowLights"},
+        static_cast<uint16_t>(config.default_light.shadow.point_max_shadow_lights)));
+    config.default_light.shadow.point_faces_per_frame_budget = static_cast<int>(karma::config::ReadUInt16Config(
+        {"roamingMode.graphics.lighting.shadows.pointFacesPerFrameBudget"},
+        static_cast<uint16_t>(config.default_light.shadow.point_faces_per_frame_budget)));
+    config.default_light.shadow.point_constant_bias = karma::config::ReadFloatConfig(
+        {"roamingMode.graphics.lighting.shadows.pointConstantBias"},
+        config.default_light.shadow.point_constant_bias);
+    config.default_light.shadow.point_slope_bias_scale = karma::config::ReadFloatConfig(
+        {"roamingMode.graphics.lighting.shadows.pointSlopeBiasScale"},
+        config.default_light.shadow.point_slope_bias_scale);
+    config.default_light.shadow.point_normal_bias_scale = karma::config::ReadFloatConfig(
+        {"roamingMode.graphics.lighting.shadows.pointNormalBiasScale"},
+        config.default_light.shadow.point_normal_bias_scale);
+    config.default_light.shadow.point_receiver_bias_scale = karma::config::ReadFloatConfig(
+        {"roamingMode.graphics.lighting.shadows.pointReceiverBiasScale"},
+        config.default_light.shadow.point_receiver_bias_scale);
+    config.default_light.shadow.local_light_distance_damping = karma::config::ReadFloatConfig(
+        {"roamingMode.graphics.lighting.shadows.localLightDistanceDamping"},
+        config.default_light.shadow.local_light_distance_damping);
+    config.default_light.shadow.local_light_range_falloff_exponent = karma::config::ReadFloatConfig(
+        {"roamingMode.graphics.lighting.shadows.localLightRangeFalloffExponent"},
+        config.default_light.shadow.local_light_range_falloff_exponent);
+    config.default_light.shadow.ao_affects_local_lights = karma::config::ReadBoolConfig(
+        {"roamingMode.graphics.lighting.shadows.aoAffectsLocalLights"},
+        config.default_light.shadow.ao_affects_local_lights);
+    config.default_light.shadow.local_light_directional_shadow_lift_strength = karma::config::ReadFloatConfig(
+        {"roamingMode.graphics.lighting.shadows.localLightDirectionalShadowLiftStrength"},
+        config.default_light.shadow.local_light_directional_shadow_lift_strength);
     const std::string shadow_execution_mode_raw = karma::config::ReadStringConfig(
         {"roamingMode.graphics.lighting.shadows.executionMode"},
         karma::renderer::DirectionalLightData::ShadowExecutionModeToken(

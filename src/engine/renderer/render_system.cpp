@@ -12,7 +12,7 @@ RenderSystem::RenderSystem(GraphicsDevice& graphics) : graphics_(graphics) {
     camera_.position = {0.0f, 6.0f, 12.0f};
     camera_.target = {0.0f, 1.0f, 0.0f};
     KARMA_TRACE("render.system",
-                "RenderSystem: default light dir=({:.2f},{:.2f},{:.2f}) color=({:.2f},{:.2f},{:.2f}) ambient=({:.2f},{:.2f},{:.2f}) unlit={:.2f} shadows(enabled={} strength={:.2f} bias={:.4f} recv={:.3f} norm={:.3f} rasterDepth={:.4f} rasterSlope={:.3f} extent={:.1f} map={} pcf={} tris={} mode={})",
+                "RenderSystem: default light dir=({:.2f},{:.2f},{:.2f}) color=({:.2f},{:.2f},{:.2f}) ambient=({:.2f},{:.2f},{:.2f}) unlit={:.2f} shadows(enabled={} strength={:.2f} bias={:.4f} recv={:.3f} norm={:.3f} rasterDepth={:.4f} rasterSlope={:.3f} extent={:.1f} map={} pcf={} tris={} mode={} point(map={} maxLights={} facesBudget={} constBias={:.4f} slope={:.2f} normal={:.2f} recv={:.2f}) local(damping={:.3f} rangeExp={:.2f} ao={} dirLift={:.2f}))",
                 light_.direction.x, light_.direction.y, light_.direction.z,
                 light_.color.r, light_.color.g, light_.color.b,
                 light_.ambient.r, light_.ambient.g, light_.ambient.b,
@@ -28,7 +28,18 @@ RenderSystem::RenderSystem(GraphicsDevice& graphics) : graphics_(graphics) {
                 light_.shadow.map_size,
                 light_.shadow.pcf_radius,
                 light_.shadow.triangle_budget,
-                DirectionalLightData::ShadowExecutionModeToken(light_.shadow.execution_mode));
+                DirectionalLightData::ShadowExecutionModeToken(light_.shadow.execution_mode),
+                light_.shadow.point_map_size,
+                light_.shadow.point_max_shadow_lights,
+                light_.shadow.point_faces_per_frame_budget,
+                light_.shadow.point_constant_bias,
+                light_.shadow.point_slope_bias_scale,
+                light_.shadow.point_normal_bias_scale,
+                light_.shadow.point_receiver_bias_scale,
+                light_.shadow.local_light_distance_damping,
+                light_.shadow.local_light_range_falloff_exponent,
+                light_.shadow.ao_affects_local_lights ? 1 : 0,
+                light_.shadow.local_light_directional_shadow_lift_strength);
     KARMA_TRACE("render.system",
                 "RenderSystem: default environment enabled={} sky=({:.2f},{:.2f},{:.2f}) ground=({:.2f},{:.2f},{:.2f}) diffuse={:.2f} specular={:.2f} exposure={:.2f}",
                 environment_.enabled ? 1 : 0,
@@ -62,7 +73,7 @@ const CameraData& RenderSystem::camera() const {
 void RenderSystem::setDirectionalLight(const DirectionalLightData& light) {
     light_ = light;
     KARMA_TRACE("render.system",
-                "RenderSystem: light dir=({:.2f},{:.2f},{:.2f}) color=({:.2f},{:.2f},{:.2f}) ambient=({:.2f},{:.2f},{:.2f}) unlit={:.2f} shadows(enabled={} strength={:.2f} bias={:.4f} recv={:.3f} norm={:.3f} rasterDepth={:.4f} rasterSlope={:.3f} extent={:.1f} map={} pcf={} tris={} mode={})",
+                "RenderSystem: light dir=({:.2f},{:.2f},{:.2f}) color=({:.2f},{:.2f},{:.2f}) ambient=({:.2f},{:.2f},{:.2f}) unlit={:.2f} shadows(enabled={} strength={:.2f} bias={:.4f} recv={:.3f} norm={:.3f} rasterDepth={:.4f} rasterSlope={:.3f} extent={:.1f} map={} pcf={} tris={} mode={} point(map={} maxLights={} facesBudget={} constBias={:.4f} slope={:.2f} normal={:.2f} recv={:.2f}) local(damping={:.3f} rangeExp={:.2f} ao={} dirLift={:.2f}))",
                 light_.direction.x, light_.direction.y, light_.direction.z,
                 light_.color.r, light_.color.g, light_.color.b,
                 light_.ambient.r, light_.ambient.g, light_.ambient.b,
@@ -78,7 +89,40 @@ void RenderSystem::setDirectionalLight(const DirectionalLightData& light) {
                 light_.shadow.map_size,
                 light_.shadow.pcf_radius,
                 light_.shadow.triangle_budget,
-                DirectionalLightData::ShadowExecutionModeToken(light_.shadow.execution_mode));
+                DirectionalLightData::ShadowExecutionModeToken(light_.shadow.execution_mode),
+                light_.shadow.point_map_size,
+                light_.shadow.point_max_shadow_lights,
+                light_.shadow.point_faces_per_frame_budget,
+                light_.shadow.point_constant_bias,
+                light_.shadow.point_slope_bias_scale,
+                light_.shadow.point_normal_bias_scale,
+                light_.shadow.point_receiver_bias_scale,
+                light_.shadow.local_light_distance_damping,
+                light_.shadow.local_light_range_falloff_exponent,
+                light_.shadow.ao_affects_local_lights ? 1 : 0,
+                light_.shadow.local_light_directional_shadow_lift_strength);
+}
+
+void RenderSystem::setLights(const std::vector<LightData>& lights) {
+    local_lights_ = lights;
+    std::size_t point_lights = 0u;
+    std::size_t shadow_casting = 0u;
+    for (const LightData& light : local_lights_) {
+        if (light.type == LightType::Point && light.enabled) {
+            ++point_lights;
+            if (light.casts_shadows) {
+                ++shadow_casting;
+            }
+        }
+    }
+    KARMA_TRACE_CHANGED(
+        "render.system",
+        std::to_string(local_lights_.size()) + ":" + std::to_string(point_lights) + ":" +
+            std::to_string(shadow_casting),
+        "RenderSystem: local lights total={} point={} pointShadowCasters={}",
+        local_lights_.size(),
+        point_lights,
+        shadow_casting);
 }
 
 void RenderSystem::setEnvironmentLighting(const EnvironmentLightingData& environment) {
@@ -100,6 +144,8 @@ void RenderSystem::setWorld(karma::ecs::World* world) {
 void RenderSystem::renderFrame() {
     graphics_.setCamera(camera_);
     graphics_.setDirectionalLight(light_);
+    std::vector<LightData> frame_lights = local_lights_;
+    frame_lights.reserve(local_lights_.size() + 8u);
     graphics_.setEnvironmentLighting(environment_);
 
     if (world_) {
@@ -129,7 +175,28 @@ void RenderSystem::renderFrame() {
                             "RenderSystem: ecs view entities={} drawable={}",
                             entities.size(),
                             drawable_count);
+
+        const std::vector<scene::EntityId> light_entities =
+            world.view<scene::TransformComponent, scene::LightComponent>();
+        std::size_t visible_light_count = 0u;
+        for (const scene::EntityId entity : light_entities) {
+            const scene::TransformComponent& transform = world.get<scene::TransformComponent>(entity);
+            const scene::LightComponent& light_component = world.get<scene::LightComponent>(entity);
+            if (!light_component.visible || !light_component.light.enabled) {
+                continue;
+            }
+            ++visible_light_count;
+            LightData light = light_component.light;
+            light.position = glm::vec3(transform.world[3]);
+            frame_lights.push_back(light);
+        }
+        KARMA_TRACE_CHANGED("ecs.world.lights",
+                            std::to_string(light_entities.size()) + ":" + std::to_string(visible_light_count),
+                            "RenderSystem: ecs light view entities={} visible={}",
+                            light_entities.size(),
+                            visible_light_count);
     }
+    graphics_.setLights(frame_lights);
 
     std::set<LayerId> active_layers{};
     for (const auto& [layer, items] : queues_) {

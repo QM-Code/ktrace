@@ -29,6 +29,7 @@ class GraphicsDevice {
     void renderLayer(LayerId layer);
     void setCamera(const CameraData& camera);
     void setDirectionalLight(const DirectionalLightData& light);
+    void setLights(const std::vector<LightData>& lights);
     void setEnvironmentLighting(const EnvironmentLightingData& environment);
     bool isValid() const;
     renderer_backend::BackendKind backendKind() const { return backend_kind_; }

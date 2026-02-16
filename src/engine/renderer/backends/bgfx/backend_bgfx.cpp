@@ -44,6 +44,7 @@ namespace {
 
 constexpr bgfx::ViewId kBgfxShadowViewId = 0;
 constexpr bgfx::ViewId kBgfxMainViewId = 1;
+constexpr std::size_t kMaxLocalLights = 4u;
 
 struct PosNormalVertex {
     float x;
@@ -65,6 +66,89 @@ struct PosNormalVertex {
         return layout;
     }
 };
+
+bool directionChangedBeyondThreshold(const glm::vec3& a, const glm::vec3& b, float threshold_deg) {
+    const float a_len = glm::length(a);
+    const float b_len = glm::length(b);
+    if (!std::isfinite(a_len) || !std::isfinite(b_len) || a_len <= 1e-6f || b_len <= 1e-6f) {
+        return true;
+    }
+    const glm::vec3 an = a / a_len;
+    const glm::vec3 bn = b / b_len;
+    const float cos_threshold = std::cos(glm::radians(std::max(0.0f, threshold_deg)));
+    const float dot_v = glm::dot(an, bn);
+    return dot_v < cos_threshold;
+}
+
+bool matrixChangedBeyondEpsilon(const glm::mat4& a, const glm::mat4& b, float eps = 1e-5f) {
+    for (int col = 0; col < 4; ++col) {
+        for (int row = 0; row < 4; ++row) {
+            if (std::abs(a[col][row] - b[col][row]) > eps) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+glm::vec3 resolveCameraForward(const renderer::CameraData& camera) {
+    const glm::vec3 forward = camera.target - camera.position;
+    const float len = glm::length(forward);
+    if (!std::isfinite(len) || len <= 1e-6f) {
+        return glm::vec3{0.0f, 0.0f, -1.0f};
+    }
+    return forward / len;
+}
+
+glm::vec3 normalizeDirectionOrFallback(const glm::vec3& value, const glm::vec3& fallback) {
+    const float len = glm::length(value);
+    if (!std::isfinite(len) || len <= 1e-6f) {
+        return fallback;
+    }
+    return value / len;
+}
+
+float maxTransformScale(const glm::mat4& transform) {
+    const float sx = glm::length(glm::vec3(transform[0]));
+    const float sy = glm::length(glm::vec3(transform[1]));
+    const float sz = glm::length(glm::vec3(transform[2]));
+    return std::max(sx, std::max(sy, sz));
+}
+
+void computeWorldShadowSphere(const glm::mat4& transform,
+                              const glm::vec3& local_center,
+                              float local_radius,
+                              glm::vec3& out_center,
+                              float& out_radius) {
+    const glm::vec4 world_center = transform * glm::vec4(local_center, 1.0f);
+    out_center = glm::vec3(world_center);
+    const float scale = maxTransformScale(transform);
+    out_radius = std::max(0.0f, local_radius * std::max(scale, 0.0f));
+}
+
+bool intersectsDirectionalShadowMap(const detail::DirectionalShadowMap& map,
+                                    const glm::vec3& center,
+                                    float radius) {
+    if (!map.ready) {
+        return true;
+    }
+    const float lx = glm::dot(center, map.axis_right);
+    const float ly = glm::dot(center, map.axis_up);
+    const float lz = glm::dot(center, map.axis_forward);
+    const float padded_extent = map.extent + std::max(radius, 0.0f);
+    if (std::fabs(lx - map.center_x) > padded_extent ||
+        std::fabs(ly - map.center_y) > padded_extent) {
+        return false;
+    }
+    if (map.depth_range > 1e-6f) {
+        const float min_depth = map.min_depth - std::max(radius, 0.0f);
+        const float max_depth = map.min_depth + map.depth_range + std::max(radius, 0.0f);
+        if (lz < min_depth || lz > max_depth) {
+            return false;
+        }
+    }
+    return true;
+}
 
 bgfx::ShaderHandle loadShader(const std::string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -726,6 +810,7 @@ struct Mesh {
     std::vector<glm::vec3> shadow_positions{};
     std::vector<uint32_t> shadow_indices{};
     glm::vec3 shadow_center{0.0f, 0.0f, 0.0f};
+    float shadow_radius = 0.0f;
 };
 
 struct Material {
@@ -969,6 +1054,12 @@ class BgfxBackend final : public Backend {
         u_shadow_axis_right_ = bgfx::createUniform("u_shadowAxisRight", bgfx::UniformType::Vec4);
         u_shadow_axis_up_ = bgfx::createUniform("u_shadowAxisUp", bgfx::UniformType::Vec4);
         u_shadow_axis_forward_ = bgfx::createUniform("u_shadowAxisForward", bgfx::UniformType::Vec4);
+        u_local_light_count_ = bgfx::createUniform("u_localLightCount", bgfx::UniformType::Vec4);
+        u_local_light_params_ = bgfx::createUniform("u_localLightParams", bgfx::UniformType::Vec4);
+        u_local_light_pos_range_ =
+            bgfx::createUniform("u_localLightPosRange", bgfx::UniformType::Vec4, static_cast<uint16_t>(kMaxLocalLights));
+        u_local_light_color_intensity_ =
+            bgfx::createUniform("u_localLightColorIntensity", bgfx::UniformType::Vec4, static_cast<uint16_t>(kMaxLocalLights));
         s_tex_ = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
         s_normal_ = bgfx::createUniform("s_normal", bgfx::UniformType::Sampler);
         s_occlusion_ = bgfx::createUniform("s_occlusion", bgfx::UniformType::Sampler);
@@ -1042,6 +1133,10 @@ class BgfxBackend final : public Backend {
         if (bgfx::isValid(u_shadow_axis_right_)) bgfx::destroy(u_shadow_axis_right_);
         if (bgfx::isValid(u_shadow_axis_up_)) bgfx::destroy(u_shadow_axis_up_);
         if (bgfx::isValid(u_shadow_axis_forward_)) bgfx::destroy(u_shadow_axis_forward_);
+        if (bgfx::isValid(u_local_light_count_)) bgfx::destroy(u_local_light_count_);
+        if (bgfx::isValid(u_local_light_params_)) bgfx::destroy(u_local_light_params_);
+        if (bgfx::isValid(u_local_light_pos_range_)) bgfx::destroy(u_local_light_pos_range_);
+        if (bgfx::isValid(u_local_light_color_intensity_)) bgfx::destroy(u_local_light_color_intensity_);
         if (bgfx::isValid(s_tex_)) bgfx::destroy(s_tex_);
         if (bgfx::isValid(s_normal_)) bgfx::destroy(s_normal_);
         if (bgfx::isValid(s_occlusion_)) bgfx::destroy(s_occlusion_);
@@ -1112,6 +1207,12 @@ class BgfxBackend final : public Backend {
                 max_pos = glm::max(max_pos, p);
             }
             out.shadow_center = 0.5f * (min_pos + max_pos);
+            float radius_sq = 0.0f;
+            for (const glm::vec3& p : out.shadow_positions) {
+                const glm::vec3 delta = p - out.shadow_center;
+                radius_sq = std::max(radius_sq, glm::dot(delta, delta));
+            }
+            out.shadow_radius = std::sqrt(std::max(radius_sq, 0.0f));
         }
         if (mesh.albedo && !mesh.albedo->pixels.empty()) {
             out.tex = createTextureFromData(*mesh.albedo);
@@ -1265,11 +1366,16 @@ class BgfxBackend final : public Backend {
             detail::ResolveEnvironmentLightingSemantics(environment_);
         const bool gpu_shadow_requested =
             light_.shadow.execution_mode == renderer::DirectionalLightData::ShadowExecutionMode::GpuDefault;
+        const bool world_layer = (layer == renderer::kLayerWorld);
 
         std::vector<RenderableDraw> renderables{};
         renderables.reserve(draw_items_.size());
         std::vector<detail::DirectionalShadowCaster> shadow_casters{};
         shadow_casters.reserve(draw_items_.size());
+        std::vector<renderer::DrawItem> current_shadow_items{};
+        if (world_layer) {
+            current_shadow_items.reserve(draw_items_.size());
+        }
         for (const auto& item : draw_items_) {
             if (item.layer != layer) {
                 continue;
@@ -1286,6 +1392,9 @@ class BgfxBackend final : public Backend {
                 continue;
             }
             renderables.push_back({&item, &mesh_it->second, &mat_it->second});
+            if (world_layer) {
+                current_shadow_items.push_back(item);
+            }
             if (!mesh_it->second.shadow_positions.empty() &&
                 !mesh_it->second.shadow_indices.empty()) {
                 detail::DirectionalShadowCaster caster{};
@@ -1313,7 +1422,51 @@ class BgfxBackend final : public Backend {
                 "shadow update cadence everyFrames={}",
                 shadow_update_every_frames_);
         }
-        const bool world_layer = (layer == renderer::kLayerWorld);
+        const glm::vec3 current_camera_forward = resolveCameraForward(camera_);
+        const glm::vec3 current_light_direction =
+            normalizeDirectionOrFallback(light_.direction, cached_shadow_light_direction_);
+        bool shadow_inputs_changed = false;
+        if (world_layer) {
+            if (!shadow_cache_inputs_valid_) {
+                shadow_inputs_changed = true;
+            } else if (glm::length(camera_.position - cached_shadow_camera_position_) >
+                       directional_shadow_position_threshold_) {
+                shadow_inputs_changed = true;
+            } else if (directionChangedBeyondThreshold(
+                           current_camera_forward,
+                           cached_shadow_camera_forward_,
+                           directional_shadow_angle_threshold_deg_)) {
+                shadow_inputs_changed = true;
+            } else if (directionChangedBeyondThreshold(
+                           current_light_direction,
+                           cached_shadow_light_direction_,
+                           directional_shadow_angle_threshold_deg_)) {
+                shadow_inputs_changed = true;
+            } else if (std::abs(aspect - cached_shadow_camera_aspect_) > 1e-3f) {
+                shadow_inputs_changed = true;
+            } else if (std::abs(camera_.fov_y_degrees - cached_shadow_camera_fov_y_degrees_) > 1e-3f) {
+                shadow_inputs_changed = true;
+            } else if (std::abs(camera_.near_clip - cached_shadow_camera_near_) > 1e-4f) {
+                shadow_inputs_changed = true;
+            } else if (std::abs(camera_.far_clip - cached_shadow_camera_far_) > 1e-2f) {
+                shadow_inputs_changed = true;
+            } else if (current_shadow_items.size() != previous_shadow_items_.size()) {
+                shadow_inputs_changed = true;
+            } else {
+                for (std::size_t i = 0; i < current_shadow_items.size(); ++i) {
+                    const renderer::DrawItem& curr = current_shadow_items[i];
+                    const renderer::DrawItem& prev = previous_shadow_items_[i];
+                    if (curr.mesh != prev.mesh ||
+                        curr.material != prev.material ||
+                        curr.layer != prev.layer ||
+                        curr.casts_shadow != prev.casts_shadow ||
+                        matrixChangedBeyondEpsilon(curr.transform, prev.transform)) {
+                        shadow_inputs_changed = true;
+                        break;
+                    }
+                }
+            }
+        }
         const bool gpu_shadow_capable =
             bgfx::isValid(shadow_depth_program_) && world_layer && !shadow_casters.empty();
         const bool use_gpu_shadow_path =
@@ -1338,12 +1491,17 @@ class BgfxBackend final : public Backend {
             shadow_frames_until_update_ = 0;
             cached_shadow_map_ = detail::DirectionalShadowMap{};
             shadow_tex_ready_ = false;
+            shadow_cache_inputs_valid_ = false;
+            previous_shadow_items_.clear();
         } else if (world_layer && shadow_casters.empty()) {
             shadow_frames_until_update_ = 0;
             cached_shadow_map_ = detail::DirectionalShadowMap{};
             shadow_tex_ready_ = false;
+            shadow_cache_inputs_valid_ = false;
+            previous_shadow_items_.clear();
         } else if (world_layer && !shadow_casters.empty()) {
             if (shadow_frames_until_update_ <= 0 ||
+                shadow_inputs_changed ||
                 !cached_shadow_map_.ready ||
                 cached_shadow_map_.size != shadow_semantics.map_size) {
                 if (use_gpu_shadow_path) {
@@ -1365,6 +1523,15 @@ class BgfxBackend final : public Backend {
             } else {
                 --shadow_frames_until_update_;
             }
+            previous_shadow_items_ = std::move(current_shadow_items);
+            cached_shadow_camera_position_ = camera_.position;
+            cached_shadow_camera_forward_ = current_camera_forward;
+            cached_shadow_light_direction_ = current_light_direction;
+            cached_shadow_camera_aspect_ = aspect;
+            cached_shadow_camera_fov_y_degrees_ = camera_.fov_y_degrees;
+            cached_shadow_camera_near_ = camera_.near_clip;
+            cached_shadow_camera_far_ = camera_.far_clip;
+            shadow_cache_inputs_valid_ = true;
         }
         const detail::DirectionalShadowMap& shadow_map = cached_shadow_map_;
         const bgfx::Caps* caps = bgfx::getCaps();
@@ -1406,6 +1573,67 @@ class BgfxBackend final : public Backend {
         const float shadow_axis_forward[4] = {
             shadow_map.axis_forward.x, shadow_map.axis_forward.y, shadow_map.axis_forward.z, 0.0f,
         };
+        std::array<float, kMaxLocalLights * 4u> local_light_pos_range{};
+        std::array<float, kMaxLocalLights * 4u> local_light_color_intensity{};
+        int local_light_count = 0;
+        int point_shadow_requested = 0;
+        for (const renderer::LightData& light : lights_) {
+            if (!light.enabled || light.type != renderer::LightType::Point) {
+                continue;
+            }
+            const float clamped_range = std::max(light.range, 0.0f);
+            const float clamped_intensity = std::max(light.intensity, 0.0f);
+            if (light.casts_shadows && clamped_range > 0.001f && clamped_intensity > 0.0f) {
+                ++point_shadow_requested;
+            }
+            if (local_light_count >= static_cast<int>(kMaxLocalLights) ||
+                clamped_range <= 0.001f ||
+                clamped_intensity <= 0.0f) {
+                continue;
+            }
+            const std::size_t base = static_cast<std::size_t>(local_light_count) * 4u;
+            local_light_pos_range[base + 0u] = light.position.x;
+            local_light_pos_range[base + 1u] = light.position.y;
+            local_light_pos_range[base + 2u] = light.position.z;
+            local_light_pos_range[base + 3u] = clamped_range;
+            local_light_color_intensity[base + 0u] = light.color.r;
+            local_light_color_intensity[base + 1u] = light.color.g;
+            local_light_color_intensity[base + 2u] = light.color.b;
+            local_light_color_intensity[base + 3u] = clamped_intensity;
+            ++local_light_count;
+        }
+        const float local_light_count_uniform[4] = {
+            static_cast<float>(local_light_count),
+            0.0f,
+            0.0f,
+            0.0f,
+        };
+        const float local_light_params_uniform[4] = {
+            shadow_semantics.local_light_distance_damping,
+            shadow_semantics.local_light_range_falloff_exponent,
+            shadow_semantics.ao_affects_local_lights ? 1.0f : 0.0f,
+            shadow_semantics.local_light_directional_shadow_lift_strength,
+        };
+        const int point_shadow_selected =
+            std::min(point_shadow_requested, std::max(0, shadow_semantics.point_max_shadow_lights));
+        const char* point_shadow_reason = "point_shadow_pass_unimplemented";
+        if (shadow_semantics.point_max_shadow_lights <= 0) {
+            point_shadow_reason = "point_shadows_disabled_by_cap";
+        } else if (point_shadow_selected <= 0) {
+            point_shadow_reason = "point_shadow_no_shadow_lights";
+        }
+        KARMA_TRACE_CHANGED(
+            "render.bgfx",
+            std::to_string(layer) + ":" +
+                std::to_string(point_shadow_requested) + ":" +
+                std::to_string(point_shadow_selected) + ":" +
+                point_shadow_reason,
+            "point shadow status layer={} requested={} selected={} active={} reason={}",
+            layer,
+            point_shadow_requested,
+            point_shadow_selected,
+            0,
+            point_shadow_reason);
         std::size_t direct_sampler_draws = 0u;
         std::size_t fallback_sampler_draws = 0u;
         std::size_t direct_contract_draws = 0u;
@@ -1456,6 +1684,24 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_shadow_axis_right_, shadow_axis_right);
             bgfx::setUniform(u_shadow_axis_up_, shadow_axis_up);
             bgfx::setUniform(u_shadow_axis_forward_, shadow_axis_forward);
+            if (bgfx::isValid(u_local_light_count_)) {
+                bgfx::setUniform(u_local_light_count_, local_light_count_uniform);
+            }
+            if (bgfx::isValid(u_local_light_params_)) {
+                bgfx::setUniform(u_local_light_params_, local_light_params_uniform);
+            }
+            if (bgfx::isValid(u_local_light_pos_range_)) {
+                bgfx::setUniform(
+                    u_local_light_pos_range_,
+                    local_light_pos_range.data(),
+                    static_cast<uint16_t>(kMaxLocalLights));
+            }
+            if (bgfx::isValid(u_local_light_color_intensity_)) {
+                bgfx::setUniform(
+                    u_local_light_color_intensity_,
+                    local_light_color_intensity.data(),
+                    static_cast<uint16_t>(kMaxLocalLights));
+            }
 
             const bool use_direct_sampler_path =
                 supports_direct_multi_sampler_inputs_ &&
@@ -1658,6 +1904,26 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_shadow_axis_right_, zeros);
             bgfx::setUniform(u_shadow_axis_up_, zeros);
             bgfx::setUniform(u_shadow_axis_forward_, zeros);
+            if (bgfx::isValid(u_local_light_count_)) {
+                bgfx::setUniform(u_local_light_count_, zeros);
+            }
+            if (bgfx::isValid(u_local_light_params_)) {
+                bgfx::setUniform(u_local_light_params_, zeros);
+            }
+            if (bgfx::isValid(u_local_light_pos_range_)) {
+                const std::array<float, kMaxLocalLights * 4u> light_zero{};
+                bgfx::setUniform(
+                    u_local_light_pos_range_,
+                    light_zero.data(),
+                    static_cast<uint16_t>(kMaxLocalLights));
+            }
+            if (bgfx::isValid(u_local_light_color_intensity_)) {
+                const std::array<float, kMaxLocalLights * 4u> light_zero{};
+                bgfx::setUniform(
+                    u_local_light_color_intensity_,
+                    light_zero.data(),
+                    static_cast<uint16_t>(kMaxLocalLights));
+            }
             if (bgfx::isValid(u_texture_mode_)) {
                 const float texture_mode[4] = {0.0f, 0.0f, 0.0f, 0.0f};
                 bgfx::setUniform(u_texture_mode_, texture_mode);
@@ -1696,6 +1962,10 @@ class BgfxBackend final : public Backend {
 
     void setDirectionalLight(const renderer::DirectionalLightData& light) override {
         light_ = light;
+    }
+
+    void setLights(const std::vector<renderer::LightData>& lights) override {
+        lights_ = lights;
     }
 
     void setEnvironmentLighting(const renderer::EnvironmentLightingData& environment) override {
@@ -1859,11 +2129,26 @@ class BgfxBackend final : public Backend {
         bgfx::setUniform(u_shadow_axis_forward_, shadow_axis_forward);
 
         std::size_t submitted = 0u;
+        std::size_t culled = 0u;
         for (const RenderableDraw& renderable : renderables) {
             const auto& item = *renderable.item;
             const auto& semantics = renderable.material->semantics;
             if (!item.casts_shadow || semantics.alpha_blend || !semantics.draw) {
                 continue;
+            }
+            if (renderable.mesh->shadow_radius > 0.0f) {
+                glm::vec3 world_center{0.0f, 0.0f, 0.0f};
+                float world_radius = 0.0f;
+                computeWorldShadowSphere(
+                    item.transform,
+                    renderable.mesh->shadow_center,
+                    renderable.mesh->shadow_radius,
+                    world_center,
+                    world_radius);
+                if (!intersectsDirectionalShadowMap(map, world_center, world_radius)) {
+                    ++culled;
+                    continue;
+                }
             }
 
             bgfx::setVertexBuffer(0, renderable.mesh->vbh);
@@ -1886,10 +2171,12 @@ class BgfxBackend final : public Backend {
         KARMA_TRACE_CHANGED(
             "render.bgfx",
             std::to_string(map.size) + ":" + std::to_string(submitted) + ":" +
+                std::to_string(culled) + ":" +
                 (depth_attachment ? "depth" : "color_min"),
-            "gpu shadow pass size={} draws={} attachment={}",
+            "gpu shadow pass size={} draws={} culled={} attachment={}",
             map.size,
             submitted,
+            culled,
             depth_attachment ? "depth" : "color_min");
         return submitted > 0u;
     }
@@ -1930,6 +2217,10 @@ class BgfxBackend final : public Backend {
     bgfx::UniformHandle u_shadow_axis_right_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_axis_up_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_axis_forward_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_local_light_count_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_local_light_params_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_local_light_pos_range_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_local_light_color_intensity_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_tex_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_normal_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle s_occlusion_ = BGFX_INVALID_HANDLE;
@@ -1945,6 +2236,17 @@ class BgfxBackend final : public Backend {
     detail::DirectionalShadowMap cached_shadow_map_{};
     int shadow_update_every_frames_ = 1;
     int shadow_frames_until_update_ = 0;
+    std::vector<renderer::DrawItem> previous_shadow_items_{};
+    bool shadow_cache_inputs_valid_ = false;
+    glm::vec3 cached_shadow_camera_position_{0.0f, 0.0f, 0.0f};
+    glm::vec3 cached_shadow_camera_forward_{0.0f, 0.0f, -1.0f};
+    glm::vec3 cached_shadow_light_direction_{0.0f, -1.0f, 0.0f};
+    float cached_shadow_camera_aspect_ = 1.0f;
+    float cached_shadow_camera_fov_y_degrees_ = 60.0f;
+    float cached_shadow_camera_near_ = 0.1f;
+    float cached_shadow_camera_far_ = 1000.0f;
+    float directional_shadow_position_threshold_ = 0.12f;
+    float directional_shadow_angle_threshold_deg_ = 0.3f;
     bgfx::VertexLayout layout_{};
 
     std::unordered_map<renderer::MeshId, Mesh> meshes_;
@@ -1954,6 +2256,7 @@ class BgfxBackend final : public Backend {
 
     renderer::CameraData camera_{};
     renderer::DirectionalLightData light_{};
+    std::vector<renderer::LightData> lights_{};
     renderer::EnvironmentLightingData environment_{};
     int width_ = 1280;
     int height_ = 720;

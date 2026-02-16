@@ -24,7 +24,7 @@ run_backend() {
   local backend_video_driver="${!backend_video_driver_var:-${SANDBOX_VIDEO_DRIVER:-}}"
   local binary="${REPO_ROOT}/${build_dir}/src/engine/renderer_shadow_sandbox"
   local log_file="${LOG_DIR}/shadow-sandbox-${backend}.log"
-  local -a cmd=(
+  local -a base_args=(
     timeout "${HARD_TIMEOUT_SEC}s"
     "${binary}"
     --backend-render "${backend}"
@@ -37,6 +37,7 @@ run_backend() {
     --trace "${trace_channels}"
     --verbose
   )
+  local -a cmd=("${base_args[@]}")
   if [[ -n "${backend_video_driver}" ]]; then
     cmd+=(--video-driver "${backend_video_driver}")
   fi
@@ -54,6 +55,24 @@ run_backend() {
   "${cmd[@]}" >"${log_file}" 2>&1
   local exit_code=$?
   set -e
+
+  if [[ "${backend}" == "diligent" && ${exit_code} -ne 0 && -z "${backend_video_driver}" ]]; then
+    if grep -q "Failed to create OS-specific surface" "${log_file}" &&
+       grep -q "ERROR_INITIALIZATION_FAILED" "${log_file}"; then
+      local retry_log_file="${LOG_DIR}/shadow-sandbox-${backend}-wayland-retry.log"
+      local -a retry_cmd=("${base_args[@]}" --video-driver "wayland")
+      echo "[shadow-sandbox] backend=${backend} retry reason=x11_swapchain_init_failed fallback=wayland"
+      printf '[shadow-sandbox] backend=%s retry command:' "${backend}"
+      printf ' %q' "${retry_cmd[@]}"
+      printf '\n'
+
+      set +e
+      "${retry_cmd[@]}" >"${retry_log_file}" 2>&1
+      exit_code=$?
+      set -e
+      log_file="${retry_log_file}"
+    fi
+  fi
 
   echo "[shadow-sandbox] backend=${backend} exit_code=${exit_code} log=${log_file}"
   echo "[shadow-sandbox] backend=${backend} diagnostic tail:"

@@ -15,6 +15,10 @@ uniform vec4 u_shadowBiasParams; // receiver_scale, normal_scale, raster_depth_b
 uniform vec4 u_shadowAxisRight;
 uniform vec4 u_shadowAxisUp;
 uniform vec4 u_shadowAxisForward;
+uniform vec4 u_localLightCount;
+uniform vec4 u_localLightParams; // distance_damping, range_exponent, ao_affects_local, directional_shadow_lift
+uniform vec4 u_localLightPosRange[4];
+uniform vec4 u_localLightColorIntensity[4];
 SAMPLER2D(s_tex, 0);
 SAMPLER2D(s_normal, 1);
 SAMPLER2D(s_occlusion, 2);
@@ -22,6 +26,9 @@ SAMPLER2D(s_shadow, 3);
 
 float sampleShadowVisibility(vec3 worldPos, float ndotl) {
     if (u_shadowParams0.x < 0.5) {
+        return 1.0;
+    }
+    if (ndotl <= 0.0001) {
         return 1.0;
     }
 
@@ -50,18 +57,53 @@ float sampleShadowVisibility(vec3 worldPos, float ndotl) {
         return 1.0;
     }
 
+    int iradius = int(clamp(floor(radius + 0.5), 0.0, 4.0));
+    if (iradius <= 0) {
+        float mapDepth = texture2D(s_shadow, vec2(u, v)).r;
+        return step(depth - bias, mapDepth);
+    }
+
     float lit = 0.0;
     float count = 0.0;
-    for (int oy = -4; oy <= 4; ++oy) {
-        for (int ox = -4; ox <= 4; ++ox) {
-            if (abs(float(ox)) > radius || abs(float(oy)) > radius) {
-                continue;
+    if (iradius == 1) {
+        for (int oy = -1; oy <= 1; ++oy) {
+            for (int ox = -1; ox <= 1; ++ox) {
+                vec2 uv = vec2(u, v) + vec2(float(ox), float(oy)) * invMapSize;
+                float mapDepth = texture2D(s_shadow, uv).r;
+                float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
+                lit += step(depth - bias, mapDepth) * w;
+                count += w;
             }
-            vec2 uv = vec2(u, v) + vec2(float(ox), float(oy)) * invMapSize;
-            float mapDepth = texture2D(s_shadow, uv).r;
-            float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-            lit += step(depth - bias, mapDepth) * w;
-            count += w;
+        }
+    } else if (iradius == 2) {
+        for (int oy = -2; oy <= 2; ++oy) {
+            for (int ox = -2; ox <= 2; ++ox) {
+                vec2 uv = vec2(u, v) + vec2(float(ox), float(oy)) * invMapSize;
+                float mapDepth = texture2D(s_shadow, uv).r;
+                float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
+                lit += step(depth - bias, mapDepth) * w;
+                count += w;
+            }
+        }
+    } else if (iradius == 3) {
+        for (int oy = -3; oy <= 3; ++oy) {
+            for (int ox = -3; ox <= 3; ++ox) {
+                vec2 uv = vec2(u, v) + vec2(float(ox), float(oy)) * invMapSize;
+                float mapDepth = texture2D(s_shadow, uv).r;
+                float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
+                lit += step(depth - bias, mapDepth) * w;
+                count += w;
+            }
+        }
+    } else {
+        for (int oy = -4; oy <= 4; ++oy) {
+            for (int ox = -4; ox <= 4; ++ox) {
+                vec2 uv = vec2(u, v) + vec2(float(ox), float(oy)) * invMapSize;
+                float mapDepth = texture2D(s_shadow, uv).r;
+                float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
+                lit += step(depth - bias, mapDepth) * w;
+                count += w;
+            }
         }
     }
     if (count < 0.5) {
@@ -80,8 +122,9 @@ void main() {
     }
 
     float occlusionModulation = 1.0;
+    float ao = 1.0;
     if (u_textureMode.y > 0.5) {
-        float ao = clamp(texture2D(s_occlusion, v_texcoord0).r, 0.0, 1.0);
+        ao = clamp(texture2D(s_occlusion, v_texcoord0).r, 0.0, 1.0);
         occlusionModulation = clamp(0.25 + (0.75 * ao), 0.25, 1.0);
     }
 
@@ -95,8 +138,42 @@ void main() {
     }
     vec3 n = normalize(v_normal);
     float ndotl = max(dot(n, normalize(u_lightDir.xyz)), 0.0);
-    float shadowVis = sampleShadowVisibility(v_worldPos, ndotl);
+    float shadowVis = ndotl > 0.0001 ? sampleShadowVisibility(v_worldPos, ndotl) : 1.0;
     float shadowFactor = clamp(1.0 - (u_shadowParams0.y * (1.0 - shadowVis)), 0.0, 1.0);
-    vec3 lit = baseColor.rgb * (u_ambientColor.rgb + (u_lightColor.rgb * ndotl * shadowFactor));
+    int localCount = int(clamp(floor(u_localLightCount.x + 0.5), 0.0, 4.0));
+    float localDamping = max(u_localLightParams.x, 0.0);
+    float localRangeExponent = max(u_localLightParams.y, 0.1);
+    bool aoAffectsLocal = u_localLightParams.z > 0.5;
+    float localShadowLiftStrength = max(u_localLightParams.w, 0.0);
+    vec3 localLightAccum = vec3(0.0, 0.0, 0.0);
+    float localShadowLiftEnergy = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        if (i >= localCount) {
+            continue;
+        }
+        vec3 toLight = u_localLightPosRange[i].xyz - v_worldPos;
+        float lightDistance = length(toLight);
+        float lightRange = max(u_localLightPosRange[i].w, 0.001);
+        if (lightDistance >= lightRange || lightDistance <= 1e-5) {
+            continue;
+        }
+        vec3 localDir = toLight / lightDistance;
+        float localNdotL = max(dot(n, localDir), 0.0);
+        if (localNdotL <= 0.0) {
+            continue;
+        }
+        float rangeAttenuation = pow(clamp(1.0 - (lightDistance / lightRange), 0.0, 1.0), localRangeExponent);
+        float distanceAttenuation = 1.0 / (1.0 + (localDamping * lightDistance * lightDistance));
+        float attenuation = rangeAttenuation * distanceAttenuation;
+        float aoMod = aoAffectsLocal ? ao : 1.0;
+        float localScalar = u_localLightColorIntensity[i].a * attenuation * localNdotL * aoMod;
+        localLightAccum += baseColor.rgb * u_localLightColorIntensity[i].rgb * localScalar;
+        float localLuminance = dot(u_localLightColorIntensity[i].rgb, vec3(0.2126, 0.7152, 0.0722));
+        localShadowLiftEnergy += localLuminance * localScalar;
+    }
+    float shadowLift = 1.0 - exp(-localShadowLiftEnergy * localShadowLiftStrength);
+    float liftedShadowFactor = mix(shadowFactor, 1.0, clamp(shadowLift, 0.0, 1.0));
+    vec3 lit = baseColor.rgb * (u_ambientColor.rgb + (u_lightColor.rgb * ndotl * liftedShadowFactor));
+    lit += localLightAccum;
     gl_FragColor = vec4(lit, baseColor.a);
 }

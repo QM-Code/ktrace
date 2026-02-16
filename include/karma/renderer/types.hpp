@@ -110,6 +110,17 @@ struct DirectionalLightData {
         int pcf_radius = 1;
         int triangle_budget = 4096;
         int update_every_frames = 1;
+        int point_map_size = 1024;
+        int point_max_shadow_lights = 2;
+        int point_faces_per_frame_budget = 2;
+        float point_constant_bias = 0.0012f;
+        float point_slope_bias_scale = 2.0f;
+        float point_normal_bias_scale = 1.5f;
+        float point_receiver_bias_scale = 0.35f;
+        float local_light_distance_damping = 0.08f;
+        float local_light_range_falloff_exponent = 1.1f;
+        bool ao_affects_local_lights = false;
+        float local_light_directional_shadow_lift_strength = 0.85f;
         ShadowExecutionMode execution_mode = ShadowExecutionMode::CpuReference;
     };
 
@@ -118,6 +129,25 @@ struct DirectionalLightData {
     glm::vec4 ambient{0.25f, 0.25f, 0.25f, 1.0f};
     float unlit = 1.0f;
     ShadowDesc shadow{};
+};
+
+enum class LightType : uint8_t {
+    Directional = 0,
+    Point = 1,
+    Spot = 2,
+};
+
+struct LightData {
+    LightType type = LightType::Point;
+    glm::vec3 position{0.0f, 0.0f, 0.0f};
+    glm::vec3 direction{0.0f, -1.0f, 0.0f};
+    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    float intensity = 1.0f;
+    float range = 10.0f;
+    float inner_cone_cos = 0.9659258f;
+    float outer_cone_cos = 0.8660254f;
+    bool casts_shadows = false;
+    bool enabled = true;
 };
 
 struct EnvironmentLightingData {

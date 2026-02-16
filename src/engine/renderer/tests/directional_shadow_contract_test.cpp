@@ -134,6 +134,17 @@ bool RunShadowSemanticsClampChecks() {
     light.shadow.map_size = 2;
     light.shadow.pcf_radius = 99;
     light.shadow.triangle_budget = 0;
+    light.shadow.point_map_size = 1;
+    light.shadow.point_max_shadow_lights = 99;
+    light.shadow.point_faces_per_frame_budget = 0;
+    light.shadow.point_constant_bias = -1.0f;
+    light.shadow.point_slope_bias_scale = std::numeric_limits<float>::infinity();
+    light.shadow.point_normal_bias_scale = -2.0f;
+    light.shadow.point_receiver_bias_scale = std::numeric_limits<float>::quiet_NaN();
+    light.shadow.local_light_distance_damping = -1.0f;
+    light.shadow.local_light_range_falloff_exponent = 0.0f;
+    light.shadow.ao_affects_local_lights = true;
+    light.shadow.local_light_directional_shadow_lift_strength = std::numeric_limits<float>::quiet_NaN();
 
     const ResolvedDirectionalShadowSemantics semantics = ResolveDirectionalShadowSemantics(light);
     if (!ValidateResolvedDirectionalShadowSemantics(semantics)) {
@@ -178,6 +189,50 @@ bool RunShadowSemanticsClampChecks() {
     }
     if (semantics.triangle_budget != 4096) {
         std::cerr << "expected invalid triangle budget to fall back to 4096\n";
+        return false;
+    }
+    if (semantics.point_map_size != 1024) {
+        std::cerr << "expected invalid point shadow map size to fall back to 1024\n";
+        return false;
+    }
+    if (semantics.point_max_shadow_lights != 2) {
+        std::cerr << "expected invalid point max shadow lights to fall back to 2\n";
+        return false;
+    }
+    if (semantics.point_faces_per_frame_budget != 2) {
+        std::cerr << "expected invalid point faces-per-frame budget to fall back to 2\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.point_constant_bias, 0.0f)) {
+        std::cerr << "expected finite out-of-range point constant bias to clamp to 0.0\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.point_slope_bias_scale, 2.0f)) {
+        std::cerr << "expected non-finite point slope bias scale to fall back to 2.0\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.point_normal_bias_scale, 0.0f)) {
+        std::cerr << "expected finite out-of-range point normal bias scale to clamp to 0.0\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.point_receiver_bias_scale, 0.35f)) {
+        std::cerr << "expected non-finite point receiver bias scale to fall back to 0.35\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.local_light_distance_damping, 0.0f)) {
+        std::cerr << "expected finite out-of-range local light distance damping to clamp to 0.0\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.local_light_range_falloff_exponent, 0.1f)) {
+        std::cerr << "expected finite out-of-range local light falloff exponent to clamp to 0.1\n";
+        return false;
+    }
+    if (!semantics.ao_affects_local_lights) {
+        std::cerr << "expected AO-affects-local-lights toggle to preserve explicit true\n";
+        return false;
+    }
+    if (!NearlyEqual(semantics.local_light_directional_shadow_lift_strength, 0.85f)) {
+        std::cerr << "expected non-finite directional shadow lift strength to fall back to 0.85\n";
         return false;
     }
 

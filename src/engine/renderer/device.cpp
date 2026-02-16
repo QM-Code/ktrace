@@ -97,6 +97,12 @@ void GraphicsDevice::setDirectionalLight(const DirectionalLightData& light) {
     }
 }
 
+void GraphicsDevice::setLights(const std::vector<LightData>& lights) {
+    if (backend_) {
+        backend_->setLights(lights);
+    }
+}
+
 void GraphicsDevice::setEnvironmentLighting(const EnvironmentLightingData& environment) {
     if (backend_) {
         backend_->setEnvironmentLighting(environment);

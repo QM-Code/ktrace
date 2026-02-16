@@ -24,6 +24,17 @@ struct ResolvedDirectionalShadowSemantics {
     int map_size = 256;
     int pcf_radius = 1;
     int triangle_budget = 4096;
+    int point_map_size = 1024;
+    int point_max_shadow_lights = 2;
+    int point_faces_per_frame_budget = 2;
+    float point_constant_bias = 0.0012f;
+    float point_slope_bias_scale = 2.0f;
+    float point_normal_bias_scale = 1.5f;
+    float point_receiver_bias_scale = 0.35f;
+    float local_light_distance_damping = 0.08f;
+    float local_light_range_falloff_exponent = 1.1f;
+    bool ao_affects_local_lights = false;
+    float local_light_directional_shadow_lift_strength = 0.85f;
 };
 
 struct DirectionalShadowCaster {
@@ -234,6 +245,21 @@ inline ResolvedDirectionalShadowSemantics ResolveDirectionalShadowSemantics(cons
     semantics.map_size = ClampRange(light.shadow.map_size, 256, 64, 2048);
     semantics.pcf_radius = ClampRange(light.shadow.pcf_radius, 1, 0, 4);
     semantics.triangle_budget = ClampRange(light.shadow.triangle_budget, 4096, 1, 65536);
+    semantics.point_map_size = ClampRange(light.shadow.point_map_size, 1024, 128, 2048);
+    semantics.point_max_shadow_lights = ClampRange(light.shadow.point_max_shadow_lights, 2, 0, 4);
+    semantics.point_faces_per_frame_budget = ClampRange(light.shadow.point_faces_per_frame_budget, 2, 1, 12);
+    semantics.point_constant_bias = ClampFinite(light.shadow.point_constant_bias, 0.0012f, 0.0f, 0.02f);
+    semantics.point_slope_bias_scale = ClampFinite(light.shadow.point_slope_bias_scale, 2.0f, 0.0f, 8.0f);
+    semantics.point_normal_bias_scale = ClampFinite(light.shadow.point_normal_bias_scale, 1.5f, 0.0f, 8.0f);
+    semantics.point_receiver_bias_scale =
+        ClampFinite(light.shadow.point_receiver_bias_scale, 0.35f, 0.0f, 4.0f);
+    semantics.local_light_distance_damping =
+        ClampFinite(light.shadow.local_light_distance_damping, 0.08f, 0.0f, 2.0f);
+    semantics.local_light_range_falloff_exponent =
+        ClampFinite(light.shadow.local_light_range_falloff_exponent, 1.1f, 0.1f, 8.0f);
+    semantics.ao_affects_local_lights = light.shadow.ao_affects_local_lights;
+    semantics.local_light_directional_shadow_lift_strength =
+        ClampFinite(light.shadow.local_light_directional_shadow_lift_strength, 0.85f, 0.0f, 4.0f);
     return semantics;
 }
 
@@ -244,7 +270,14 @@ inline bool ValidateResolvedDirectionalShadowSemantics(const ResolvedDirectional
         !std::isfinite(semantics.normal_bias_scale) ||
         !std::isfinite(semantics.raster_depth_bias) ||
         !std::isfinite(semantics.raster_slope_bias) ||
-        !std::isfinite(semantics.extent)) {
+        !std::isfinite(semantics.extent) ||
+        !std::isfinite(semantics.point_constant_bias) ||
+        !std::isfinite(semantics.point_slope_bias_scale) ||
+        !std::isfinite(semantics.point_normal_bias_scale) ||
+        !std::isfinite(semantics.point_receiver_bias_scale) ||
+        !std::isfinite(semantics.local_light_distance_damping) ||
+        !std::isfinite(semantics.local_light_range_falloff_exponent) ||
+        !std::isfinite(semantics.local_light_directional_shadow_lift_strength)) {
         return false;
     }
     if (semantics.strength < 0.0f || semantics.strength > 1.0f) {
@@ -275,6 +308,38 @@ inline bool ValidateResolvedDirectionalShadowSemantics(const ResolvedDirectional
         return false;
     }
     if (semantics.triangle_budget < 1 || semantics.triangle_budget > 65536) {
+        return false;
+    }
+    if (semantics.point_map_size < 128 || semantics.point_map_size > 2048) {
+        return false;
+    }
+    if (semantics.point_max_shadow_lights < 0 || semantics.point_max_shadow_lights > 4) {
+        return false;
+    }
+    if (semantics.point_faces_per_frame_budget < 1 || semantics.point_faces_per_frame_budget > 12) {
+        return false;
+    }
+    if (semantics.point_constant_bias < 0.0f || semantics.point_constant_bias > 0.02f) {
+        return false;
+    }
+    if (semantics.point_slope_bias_scale < 0.0f || semantics.point_slope_bias_scale > 8.0f) {
+        return false;
+    }
+    if (semantics.point_normal_bias_scale < 0.0f || semantics.point_normal_bias_scale > 8.0f) {
+        return false;
+    }
+    if (semantics.point_receiver_bias_scale < 0.0f || semantics.point_receiver_bias_scale > 4.0f) {
+        return false;
+    }
+    if (semantics.local_light_distance_damping < 0.0f || semantics.local_light_distance_damping > 2.0f) {
+        return false;
+    }
+    if (semantics.local_light_range_falloff_exponent < 0.1f ||
+        semantics.local_light_range_falloff_exponent > 8.0f) {
+        return false;
+    }
+    if (semantics.local_light_directional_shadow_lift_strength < 0.0f ||
+        semantics.local_light_directional_shadow_lift_strength > 4.0f) {
         return false;
     }
     return true;

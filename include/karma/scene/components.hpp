@@ -23,6 +23,11 @@ struct RenderComponent {
     bool casts_shadow = true;
 };
 
+struct LightComponent {
+    renderer::LightData light{};
+    bool visible = true;
+};
+
 struct HierarchyComponent {
     EntityId parent = kInvalidEntity;
     std::vector<EntityId> children{};
