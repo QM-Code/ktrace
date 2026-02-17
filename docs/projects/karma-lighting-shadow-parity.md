@@ -4,7 +4,7 @@
 - Current owner: `unassigned`
 - Status: `priority/on hold (close-out snapshot captured before external revisions; P0-S3 regression isolation restart point recorded)`
 - Upstream snapshot: `KARMA-REPO@905b63b`
-- Rewrite snapshot: `m-rewrite@405049381` (current HEAD; shadow/lighting paths locally restored to `8876e1887` behavior for regression isolation)
+- Rewrite snapshot: `origin/m-rewrite@931b5fa34` (active line) and `origin/m-rewrite-broken-shadows@405049381` (quarantined regression history)
 - Immediate next task: after external revisions land, re-run canonical baseline and isolate the residual shared seam artifact before resuming `P0-S3` incremental intake.
 - Validation gate: one assigned runtime-select renderer profile (`bgfx,diligent`), sandbox proof recipes, runtime smoke across renderer overrides, and docs lint must pass before slice acceptance.
 
@@ -52,8 +52,9 @@
 ### Close-Out State (2026-02-17)
 - Workstream is intentionally paused to allow external revisions in other project areas.
 - Recorded restart point:
-  - Current HEAD: `405049381`.
-  - Shadow/lighting behavior staging baseline: local shadow-path files restored to `8876e1887` behavior (listed above in this document).
+  - Active branch head: `origin/m-rewrite@931b5fa34`.
+  - Regression snapshot branch: `origin/m-rewrite-broken-shadows@405049381` (`shadows borked`).
+  - Known-good shadow baseline for re-intake: `8876e1887`.
 - Last operator-observed visual state before pause:
   - Shadows mostly restored in both backends under canonical sandbox recipe.
   - Residual shared diagonal seam artifact still present in both BGFX and Diligent screenshots.
@@ -61,6 +62,11 @@
   1. Rebuild `build-a5` with `./abuild.py -d build-a5 -b bgfx,diligent`.
   2. Re-run canonical sandbox commands for BGFX and Diligent (`gpu_default`) exactly as documented in Validation.
   3. Continue seam isolation first; do not resume broad P0-S3 integration until seam behavior is either fixed or bounded/documented.
+
+### Git Arrangement Update (2026-02-17)
+- `origin/m-rewrite-broken-shadows` exists specifically to preserve the broken regression commit lineage (`405049381`) for forensic diffing/reference.
+- `origin/m-rewrite` is the active project line and was force-updated to remove the broken shadow commit from the default branch history.
+- Policy for this project: do not pull renderer/shader code from `m-rewrite-broken-shadows` without a bounded, file-level intake plan plus sandbox proof.
 
 ## Mission
 Implement every lighting/shadow technique that is actively used in KARMA demo paths and still missing (or only partially implemented) in `m-rewrite`, prove each in sandbox first, then wire the proven stack into `bz3` runtime.
