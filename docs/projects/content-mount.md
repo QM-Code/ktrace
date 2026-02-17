@@ -29,8 +29,11 @@ This project enables:
 - `m-rewrite/include/karma/common/data_path_resolver.hpp`
 - `m-rewrite/src/engine/common/world_archive.*`
 - `m-rewrite/src/game/net/protocol_codec.*`
-- `m-rewrite/src/game/server/net/enet_event_source.cpp`
-- `m-rewrite/src/game/client/net/client_connection.*`
+- `m-rewrite/src/game/server/net/transport_event_source.cpp`
+- `m-rewrite/src/game/server/net/transport_event_source/*`
+- `m-rewrite/src/game/client/net/connection.hpp`
+- `m-rewrite/src/game/client/net/connection/*`
+- `m-rewrite/src/game/client/net/world_package/*`
 
 ## Interface Boundaries
 - Inputs: data-dir selection, server world selection, protocol package metadata.
@@ -69,8 +72,8 @@ This project enables:
 1. Delta policy hardening
 - delta applicability heuristics are functional but need tuning/telemetry hardening plus one bounded regression coverage addition.
 2. Deferred boundary-hygiene candidate tracking
-- Deferred extraction candidate from `engine-game-boundary-hygiene` (world/package transfer assembler path in `src/game/client/net/client_connection.cpp`) remains intentionally game-owned.
-- Revisit only via a new explicitly scoped project doc with protocol-boundary review entry criteria and acceptance gates; do not silently fold this into generic engineization work.
+- Deferred extraction candidate from `engine-game-boundary-hygiene` (world/package transfer assembler path in `src/game/client/net/connection/inbound/world_transfer.cpp`) remains intentionally game-owned.
+- Revisit via `docs/projects/engine-game-boundary-hygiene.md` with protocol-boundary review entry criteria and acceptance gates; do not silently fold this into generic engineization work.
 
 ## Execution Plan
 1. Harden delta-selection policy with trace-backed tuning and regression tests.

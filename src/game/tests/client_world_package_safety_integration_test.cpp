@@ -1,4 +1,4 @@
-#include "client/net/client_connection.hpp"
+#include "client/net/connection.hpp"
 #include "net/protocol_codec.hpp"
 #include "net/protocol.hpp"
 #include "server/net/transport_event_source.hpp"

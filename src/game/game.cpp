@@ -1,7 +1,7 @@
 #include "game.hpp"
 
 #include "client/domain/tank_drive_controller.hpp"
-#include "client/net/client_connection.hpp"
+#include "client/net/connection.hpp"
 #include "karma/geometry/mesh_loader.hpp"
 #include "karma/audio/backend.hpp"
 #include "karma/audio/audio_system.hpp"

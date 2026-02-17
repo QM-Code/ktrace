@@ -46,6 +46,22 @@ class ClientConnection {
     bool sendCreateShot();
 
  private:
+    void requestDisconnect();
+    void handleIncomingPayload(const std::vector<std::byte>& payload);
+    void handleServerMessage(const bz3::net::ServerMessage& message, size_t payload_bytes);
+    void handleJoinResponse(const bz3::net::ServerMessage& message);
+    void handleInit(const bz3::net::ServerMessage& message);
+    void handleWorldTransferBegin(const bz3::net::ServerMessage& message);
+    void handleWorldTransferChunk(const bz3::net::ServerMessage& message);
+    void handleWorldTransferEnd(const bz3::net::ServerMessage& message);
+    void handleSessionSnapshot(const bz3::net::ServerMessage& message);
+    void handlePlayerSpawn(const bz3::net::ServerMessage& message);
+    void handlePlayerDeath(const bz3::net::ServerMessage& message);
+    void handleCreateShot(const bz3::net::ServerMessage& message);
+    void handleRemoveShot(const bz3::net::ServerMessage& message);
+    void handleTransportDisconnected();
+    void handleTransportConnected();
+
     bool sendJoinRequest();
     bool sendLeave();
     bool sendPayloadReliable(const std::vector<std::byte>& payload);

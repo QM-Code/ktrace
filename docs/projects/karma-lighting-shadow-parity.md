@@ -1,12 +1,66 @@
 # KARMA Lighting + Shadow Parity
 
 ## Project Snapshot
-- Current owner: `specialist-renderer-csm-p0s1`
-- Status: `priority/in progress (P0-S1 directional CSM + P0-S2 compare-sampler intake complete; ready for P0-S3 point-shadow GPU generation)`
+- Current owner: `unassigned`
+- Status: `priority/on hold (close-out snapshot captured before external revisions; P0-S3 regression isolation restart point recorded)`
 - Upstream snapshot: `KARMA-REPO@905b63b`
-- Rewrite snapshot: `m-rewrite@7ee717f8d`
-- Immediate next task: execute `P0-S3` point-shadow GPU generation path intake.
+- Rewrite snapshot: `m-rewrite@405049381` (current HEAD; shadow/lighting paths locally restored to `8876e1887` behavior for regression isolation)
+- Immediate next task: after external revisions land, re-run canonical baseline and isolate the residual shared seam artifact before resuming `P0-S3` incremental intake.
 - Validation gate: one assigned runtime-select renderer profile (`bgfx,diligent`), sandbox proof recipes, runtime smoke across renderer overrides, and docs lint must pass before slice acceptance.
+
+### Known-Good / Known-Bad Commit Boundary (Shadows)
+- Last known-good commit for lighting/shadows (operator-verified): `8876e1887` (`renderer: complete P0-S2 compare-sampler intake`).
+- Immediately following commit with regressions: `405049381` (`shadows borked`).
+- Regression symptoms observed under canonical sandbox run (`gpu_default`, moving point lights):
+  - BGFX: point-light shadows missing or effectively not visible.
+  - Diligent: shadows rendered in incorrect placement/orientation ("wrong place"/broken).
+
+#### Proposed Fix Set Before Resuming P0-S3
+1. Rebase P0-S3 work on top of `8876e1887` (do not treat `405049381` as a stable base).
+2. Keep KARMA-parity point-face selection in sampling (`toSample = worldPos - lightPos`); do not invert this vector.
+3. Keep rewrite directional clip-space Y handling (`ResolveShadowClipYSign(...)`) unchanged for directional CSM path; do not force `clip_y_sign = 1.0f` there.
+4. Re-introduce GPU point-shadow generation in bounded increments:
+   - land backend resource creation + pass wiring first,
+   - then enable face rendering with dirty-face scheduler,
+   - validate after each increment using canonical sandbox command for BGFX and Diligent.
+5. Preserve explicit bounded fallback path while stabilizing, and capture traces proving active path (`gpu_default`) plus face update counts.
+
+### Regression Isolation Session Update (2026-02-17, post-boundary)
+- Context:
+  - `405049381` introduced broad shadow-path deltas while targeting P0-S3.
+  - Initial minimal-fix theory (`BGFX toSample sign` + `Diligent directional clip_y_sign`) did not fully recover behavior when tested alone.
+- Action taken:
+  - Restored only shadow/lighting files to known-good `8876e1887` content (no non-shadow files reverted):
+    - `data/bgfx/shaders/mesh/fs_mesh.sc`
+    - `data/bgfx/shaders/shadow/vs_shadow_depth.sc`
+    - `include/karma/renderer/types.hpp`
+    - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
+    - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+    - `src/engine/renderer/backends/directional_shadow_internal.hpp`
+  - Rebuilt `build-a5` and re-ran canonical `gpu_default` sandbox recipes.
+- Current visual outcome:
+  - BGFX and Diligent are mostly back to expected shadow behavior under canonical sandbox motion recipe.
+  - Residual artifact remains in both backends: thin straight/diagonal seam-like line across scene geometry (user screenshots labeled Image #1 and Image #2).
+  - Because artifact appears in both backends, likely source is shared sampling math path rather than backend-specific API wiring.
+- Current hypothesis for residual seam:
+  - Derivative-driven receiver-bias contribution (`dFdx/dFdy` term) causing per-triangle discontinuity in shared shadow sampling path.
+- Updated near-term plan:
+  1. Preserve current restored baseline as staging point for further isolation.
+  2. Isolate seam by toggling/scaling derivative receiver-bias term in shared directional/point sampling path and validating both backends.
+  3. After seam is resolved/characterized, resume P0-S3 re-intake incrementally (resource setup -> face render -> scheduler/fallback integration), validating after each bounded step.
+
+### Close-Out State (2026-02-17)
+- Workstream is intentionally paused to allow external revisions in other project areas.
+- Recorded restart point:
+  - Current HEAD: `405049381`.
+  - Shadow/lighting behavior staging baseline: local shadow-path files restored to `8876e1887` behavior (listed above in this document).
+- Last operator-observed visual state before pause:
+  - Shadows mostly restored in both backends under canonical sandbox recipe.
+  - Residual shared diagonal seam artifact still present in both BGFX and Diligent screenshots.
+- Resume protocol after external revisions:
+  1. Rebuild `build-a5` with `./abuild.py -d build-a5 -b bgfx,diligent`.
+  2. Re-run canonical sandbox commands for BGFX and Diligent (`gpu_default`) exactly as documented in Validation.
+  3. Continue seam isolation first; do not resume broad P0-S3 integration until seam behavior is either fixed or bounded/documented.
 
 ## Mission
 Implement every lighting/shadow technique that is actively used in KARMA demo paths and still missing (or only partially implemented) in `m-rewrite`, prove each in sandbox first, then wire the proven stack into `bz3` runtime.

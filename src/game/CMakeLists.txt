@@ -12,11 +12,32 @@ target_include_directories(bz3_proto PUBLIC
     ${CMAKE_BINARY_DIR}
 )
 
+set(BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS
+    ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source/common.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source/core.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source/receive.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source/join.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source/events.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source/send.cpp
+)
+
 add_executable(bz3
     ${PROJECT_SOURCE_DIR}/src/game/client/community_server_list.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/domain/tank_drive_controller.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/runtime.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/client/net/client_connection.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/core.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/dispatch.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/bootstrap.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/world_transfer.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/session_events.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/transport_lifecycle.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/outbound.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/primitives.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/manifest.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/cache.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/delta.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/apply.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/main.cpp
     ${PROJECT_SOURCE_DIR}/src/game/game.cpp
     ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
@@ -29,7 +50,7 @@ add_executable(bz3-server
     ${PROJECT_SOURCE_DIR}/src/game/server/domain/shot_system.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/domain/world_session.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/main.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
+    ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     ${PROJECT_SOURCE_DIR}/src/game/server/net/event_source.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/runtime.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/runtime_event_rules.cpp
@@ -78,7 +99,7 @@ if(BUILD_TESTING)
         ${PROJECT_SOURCE_DIR}/src/game/tests/server_net_contract_test.cpp
         ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
         ${PROJECT_SOURCE_DIR}/src/game/server/net/event_source.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
+        ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(server_net_contract_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
@@ -148,7 +169,7 @@ if(BUILD_TESTING)
     add_executable(transport_loopback_integration_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/transport_loopback_integration_test.cpp
         ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
+        ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(transport_loopback_integration_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
@@ -170,7 +191,7 @@ if(BUILD_TESTING)
     add_executable(transport_multiclient_loopback_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/transport_multiclient_loopback_test.cpp
         ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
+        ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(transport_multiclient_loopback_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
@@ -192,7 +213,7 @@ if(BUILD_TESTING)
     add_executable(transport_disconnect_lifecycle_integration_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/transport_disconnect_lifecycle_integration_test.cpp
         ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
+        ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(transport_disconnect_lifecycle_integration_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
@@ -213,9 +234,20 @@ if(BUILD_TESTING)
 
     add_executable(client_world_package_safety_integration_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/client_world_package_safety_integration_test.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/client/net/client_connection.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/core.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/dispatch.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/bootstrap.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/world_transfer.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/session_events.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/transport_lifecycle.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/outbound.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/primitives.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/manifest.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/cache.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/delta.cpp
+        ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/apply.cpp
         ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source.cpp
+        ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(client_world_package_safety_integration_test PRIVATE
         ${PROJECT_SOURCE_DIR}/include
