@@ -1742,10 +1742,10 @@ Texture2D s_normal;
 SamplerState s_normal_sampler;
 Texture2D s_occlusion;
 SamplerState s_occlusion_sampler;
-Texture2D s_shadow;
-SamplerState s_shadow_sampler;
-Texture2D s_pointShadow;
-SamplerState s_pointShadow_sampler;
+Texture2D<float> s_shadow;
+SamplerComparisonState s_shadow_sampler;
+Texture2D<float> s_pointShadow;
+SamplerComparisonState s_pointShadow_sampler;
 
 float shadowCascadeSplit(int cascadeIdx) {
     if (cascadeIdx == 0) return u_shadowCascadeSplits.x;
@@ -1796,8 +1796,7 @@ float sampleCascadeShadowVisibility(int cascadeIdx, float3 worldPos, float ndotl
 
     int iradius = int(clamp(floor(radius + 0.5), 0.0, 4.0));
     if (iradius <= 0) {
-        float mapDepth = s_shadow.Sample(s_shadow_sampler, shadowUv).r;
-        return step(shadowDepth - bias, mapDepth);
+        return s_shadow.SampleCmpLevelZero(s_shadow_sampler, shadowUv, shadowDepth - bias);
     }
 
     float lit = 0.0;
@@ -1806,9 +1805,8 @@ float sampleCascadeShadowVisibility(int cascadeIdx, float3 worldPos, float ndotl
         for (int oy = -1; oy <= 1; ++oy) {
             for (int ox = -1; ox <= 1; ++ox) {
                 float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
-                float mapDepth = s_shadow.Sample(s_shadow_sampler, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(shadowDepth - bias, mapDepth) * w;
+                lit += s_shadow.SampleCmpLevelZero(s_shadow_sampler, uv, shadowDepth - bias) * w;
                 count += w;
             }
         }
@@ -1816,9 +1814,8 @@ float sampleCascadeShadowVisibility(int cascadeIdx, float3 worldPos, float ndotl
         for (int oy = -2; oy <= 2; ++oy) {
             for (int ox = -2; ox <= 2; ++ox) {
                 float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
-                float mapDepth = s_shadow.Sample(s_shadow_sampler, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(shadowDepth - bias, mapDepth) * w;
+                lit += s_shadow.SampleCmpLevelZero(s_shadow_sampler, uv, shadowDepth - bias) * w;
                 count += w;
             }
         }
@@ -1826,9 +1823,8 @@ float sampleCascadeShadowVisibility(int cascadeIdx, float3 worldPos, float ndotl
         for (int oy = -3; oy <= 3; ++oy) {
             for (int ox = -3; ox <= 3; ++ox) {
                 float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
-                float mapDepth = s_shadow.Sample(s_shadow_sampler, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(shadowDepth - bias, mapDepth) * w;
+                lit += s_shadow.SampleCmpLevelZero(s_shadow_sampler, uv, shadowDepth - bias) * w;
                 count += w;
             }
         }
@@ -1836,9 +1832,8 @@ float sampleCascadeShadowVisibility(int cascadeIdx, float3 worldPos, float ndotl
         for (int oy = -4; oy <= 4; ++oy) {
             for (int ox = -4; ox <= 4; ++ox) {
                 float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
-                float mapDepth = s_shadow.Sample(s_shadow_sampler, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(shadowDepth - bias, mapDepth) * w;
+                lit += s_shadow.SampleCmpLevelZero(s_shadow_sampler, uv, shadowDepth - bias) * w;
                 count += w;
             }
         }
@@ -1938,8 +1933,10 @@ float samplePointShadowVisibility(int localIndex, float3 worldPos, float3 geomNo
 
     int radius = int(clamp(floor(u_pointShadowParams.z + 0.5), 0.0, 1.0));
     if (radius <= 0) {
-        float mapDepth = s_pointShadow.Sample(s_pointShadow_sampler, shadowUv).r;
-        return step(shadowDepth - bias, mapDepth);
+        return s_pointShadow.SampleCmpLevelZero(
+            s_pointShadow_sampler,
+            shadowUv,
+            shadowDepth - bias);
     }
 
     float2 atlasTexel = max(u_pointShadowAtlasTexel.xy, float2(0.0, 0.0));
@@ -1951,8 +1948,10 @@ float samplePointShadowVisibility(int localIndex, float3 worldPos, float3 geomNo
                 continue;
             }
             float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
-            float mapDepth = s_pointShadow.Sample(s_pointShadow_sampler, uv).r;
-            sum += step(shadowDepth - bias, mapDepth);
+            sum += s_pointShadow.SampleCmpLevelZero(
+                s_pointShadow_sampler,
+                uv,
+                shadowDepth - bias);
             count += 1;
         }
     }
@@ -2381,24 +2380,20 @@ float4 main(PSInput input) : SV_TARGET {
         sampler_desc.AddressU = Diligent::TEXTURE_ADDRESS_WRAP;
         sampler_desc.AddressV = Diligent::TEXTURE_ADDRESS_WRAP;
         sampler_desc.AddressW = Diligent::TEXTURE_ADDRESS_WRAP;
+        Diligent::SamplerDesc shadow_sampler_desc{};
+        shadow_sampler_desc.MinFilter = Diligent::FILTER_TYPE_COMPARISON_LINEAR;
+        shadow_sampler_desc.MagFilter = Diligent::FILTER_TYPE_COMPARISON_LINEAR;
+        shadow_sampler_desc.MipFilter = Diligent::FILTER_TYPE_COMPARISON_LINEAR;
+        shadow_sampler_desc.ComparisonFunc = Diligent::COMPARISON_FUNC_LESS_EQUAL;
+        shadow_sampler_desc.AddressU = Diligent::TEXTURE_ADDRESS_CLAMP;
+        shadow_sampler_desc.AddressV = Diligent::TEXTURE_ADDRESS_CLAMP;
+        shadow_sampler_desc.AddressW = Diligent::TEXTURE_ADDRESS_CLAMP;
         Diligent::ImmutableSamplerDesc samplers[] = {
             {Diligent::SHADER_TYPE_PIXEL, "s_tex_sampler", sampler_desc},
             {Diligent::SHADER_TYPE_PIXEL, "s_normal_sampler", sampler_desc},
             {Diligent::SHADER_TYPE_PIXEL, "s_occlusion_sampler", sampler_desc},
-            {Diligent::SHADER_TYPE_PIXEL, "s_shadow_sampler", {
-                 Diligent::FILTER_TYPE_LINEAR,
-                 Diligent::FILTER_TYPE_LINEAR,
-                 Diligent::FILTER_TYPE_LINEAR,
-                 Diligent::TEXTURE_ADDRESS_CLAMP,
-                 Diligent::TEXTURE_ADDRESS_CLAMP,
-                 Diligent::TEXTURE_ADDRESS_CLAMP}},
-            {Diligent::SHADER_TYPE_PIXEL, "s_pointShadow_sampler", {
-                 Diligent::FILTER_TYPE_LINEAR,
-                 Diligent::FILTER_TYPE_LINEAR,
-                 Diligent::FILTER_TYPE_LINEAR,
-                 Diligent::TEXTURE_ADDRESS_CLAMP,
-                 Diligent::TEXTURE_ADDRESS_CLAMP,
-                 Diligent::TEXTURE_ADDRESS_CLAMP}},
+            {Diligent::SHADER_TYPE_PIXEL, "s_shadow_sampler", shadow_sampler_desc},
+            {Diligent::SHADER_TYPE_PIXEL, "s_pointShadow_sampler", shadow_sampler_desc},
         };
         pso_ci.PSODesc.ResourceLayout.DefaultVariableType = Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC;
         pso_ci.PSODesc.ResourceLayout.Variables = vars;
@@ -2533,11 +2528,17 @@ float4 main(PSInput input) : SV_TARGET {
                 }
             }
             if (!created) {
-                created = create_shadow_texture(
-                    Diligent::TEX_FORMAT_R32_FLOAT,
-                    Diligent::BIND_SHADER_RESOURCE |
-                        (render_target ? Diligent::BIND_RENDER_TARGET : Diligent::BIND_NONE),
-                    false);
+                if (render_target) {
+                    created = create_shadow_texture(
+                        Diligent::TEX_FORMAT_R32_FLOAT,
+                        Diligent::BIND_SHADER_RESOURCE | Diligent::BIND_RENDER_TARGET,
+                        false);
+                } else {
+                    created = create_shadow_texture(
+                        Diligent::TEX_FORMAT_D32_FLOAT,
+                        Diligent::BIND_SHADER_RESOURCE,
+                        false);
+                }
             }
             if (!created) {
                 shadow_tex_size_ = 0u;
@@ -2573,7 +2574,7 @@ float4 main(PSInput input) : SV_TARGET {
             desc.Width = width;
             desc.Height = height;
             desc.MipLevels = 1;
-            desc.Format = Diligent::TEX_FORMAT_R32_FLOAT;
+            desc.Format = Diligent::TEX_FORMAT_D32_FLOAT;
             desc.BindFlags = Diligent::BIND_SHADER_RESOURCE;
             desc.Usage = Diligent::USAGE_DEFAULT;
             device_->CreateTexture(desc, nullptr, &point_shadow_tex_);

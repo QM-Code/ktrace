@@ -2497,11 +2497,11 @@ class BgfxBackend final : public Backend {
                 if (bgfx::isValid(s_occlusion_)) {
                     bgfx::setTexture(2, s_occlusion_, white_tex_);
                 }
-                if (bgfx::isValid(s_shadow_)) {
-                    bgfx::setTexture(3, s_shadow_, white_tex_);
+                if (bgfx::isValid(s_shadow_) && bgfx::isValid(shadow_tex_)) {
+                    bgfx::setTexture(3, s_shadow_, shadow_tex_);
                 }
-                if (bgfx::isValid(s_point_shadow_)) {
-                    bgfx::setTexture(4, s_point_shadow_, white_tex_);
+                if (bgfx::isValid(s_point_shadow_) && bgfx::isValid(point_shadow_tex_)) {
+                    bgfx::setTexture(4, s_point_shadow_, point_shadow_tex_);
                 }
             }
 
@@ -2575,7 +2575,10 @@ class BgfxBackend final : public Backend {
             shadow_tex_rt_uses_depth_ = false;
 
             const auto create_shadow_texture = [&](bgfx::TextureFormat::Enum format, bool rt_uses_depth) -> bool {
-                uint64_t flags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+                uint64_t flags =
+                    BGFX_SAMPLER_U_CLAMP |
+                    BGFX_SAMPLER_V_CLAMP |
+                    BGFX_SAMPLER_COMPARE_LEQUAL;
                 if (render_target) {
                     flags |= BGFX_TEXTURE_RT;
                 }
@@ -2616,6 +2619,9 @@ class BgfxBackend final : public Backend {
                 }
             }
             if (!created) {
+                created = create_shadow_texture(bgfx::TextureFormat::D32F, false);
+            }
+            if (!created) {
                 created = create_shadow_texture(bgfx::TextureFormat::R32F, false);
             }
             if (!created) {
@@ -2649,13 +2655,14 @@ class BgfxBackend final : public Backend {
             }
             const uint64_t flags =
                 BGFX_SAMPLER_U_CLAMP |
-                BGFX_SAMPLER_V_CLAMP;
+                BGFX_SAMPLER_V_CLAMP |
+                BGFX_SAMPLER_COMPARE_LEQUAL;
             point_shadow_tex_ = bgfx::createTexture2D(
                 width,
                 height,
                 false,
                 1,
-                bgfx::TextureFormat::R32F,
+                bgfx::TextureFormat::D32F,
                 flags,
                 nullptr);
             if (!bgfx::isValid(point_shadow_tex_)) {

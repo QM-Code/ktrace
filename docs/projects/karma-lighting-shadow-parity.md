@@ -2,10 +2,10 @@
 
 ## Project Snapshot
 - Current owner: `specialist-renderer-csm-p0s1`
-- Status: `priority/in progress (P0-S1 directional CSM intake complete; ready for P0-S2 compare-sampler intake)`
+- Status: `priority/in progress (P0-S1 directional CSM + P0-S2 compare-sampler intake complete; ready for P0-S3 point-shadow GPU generation)`
 - Upstream snapshot: `KARMA-REPO@905b63b`
 - Rewrite snapshot: `m-rewrite@7ee717f8d`
-- Immediate next task: execute `P0-S2` compare-sampler shadow sampling intake.
+- Immediate next task: execute `P0-S3` point-shadow GPU generation path intake.
 - Validation gate: one assigned runtime-select renderer profile (`bgfx,diligent`), sandbox proof recipes, runtime smoke across renderer overrides, and docs lint must pass before slice acceptance.
 
 ## Mission
@@ -81,13 +81,14 @@ Read-only comparison root:
 Legend:
 - `Missing`: not implemented in rewrite.
 - `Partial`: some plumbing exists, but behavior is not at KARMA parity.
+- `Landed`: slice parity objective is accepted for this track; regression watch continues.
 
 | Area | KARMA-REPO (active demo path) | m-rewrite state | Gap |
 |---|---|---|---|
-| Directional shadow topology | 4-cascade CSM array with split logic + transition blending (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`, `src/renderer/backends/diligent/backend_init.cpp`) | 4-cascade CSM atlas + metadata wired in rewrite shared internals and both backends (`src/engine/renderer/backends/directional_shadow_internal.hpp`, `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`, `data/bgfx/shaders/mesh/fs_mesh.sc`) | `Partial` (topology/stability landed; compare-sampler parity remains in `P0-S2`) |
+| Directional shadow topology | 4-cascade CSM array with split logic + transition blending (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`, `src/renderer/backends/diligent/backend_init.cpp`) | 4-cascade CSM atlas + metadata wired in rewrite shared internals and both backends (`src/engine/renderer/backends/directional_shadow_internal.hpp`, `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`, `data/bgfx/shaders/mesh/fs_mesh.sc`) | `Partial` (topology/stability landed; downstream quality/perf work remains) |
 | CSM stability policy | Texel-snapped cascade fit + cached matrices/splits + camera/light threshold invalidation (`src/renderer/backends/diligent/backend_render.cpp`) | Texel-snapped per-cascade fit + lambda splits + transition blending now implemented; single-map fallback retained for stabilization (`src/engine/renderer/backends/directional_shadow_internal.hpp`) | `Partial` (slice complete; later quality/parity deltas tracked in downstream slices) |
-| Directional shadow sampling | Hardware compare sampling (`SamplerComparisonState`, `SampleCmpLevelZero`) + optional PCF loop (`src/renderer/backends/diligent/backend_init.cpp`) | Manual depth sample + `step(...)` PCF kernels in BGFX and Diligent shaders (`data/bgfx/shaders/mesh/fs_mesh.sc`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`) | `Missing` |
-| Point shadow sampling | Hardware compare sampling for point shadows (`SampleCmpLevelZero` on point map) | Manual depth sample + `step(...)` for point shadows | `Missing` |
+| Directional shadow sampling | Hardware compare sampling (`SamplerComparisonState`, `SampleCmpLevelZero`) + optional PCF loop (`src/renderer/backends/diligent/backend_init.cpp`) | Hardware compare path landed in BGFX and Diligent shadow sampling flows (sampler compare state + PCF loops maintained) (`data/bgfx/shaders/mesh/fs_mesh.sc`, `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`) | `Landed` (`P0-S2`) |
+| Point shadow sampling | Hardware compare sampling for point shadows (`SampleCmpLevelZero` on point map) | Hardware compare path landed for point shadow map sampling in both backends, including compare-capable texture/sampler setup (`data/bgfx/shaders/mesh/fs_mesh.sc`, `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`) | `Landed` (`P0-S2`) |
 | Rasterizer depth/slope bias usage | Shadow raster state consumes `shadow_raster_depth_bias` + `shadow_raster_slope_bias` (`src/renderer/backends/diligent/backend_init.cpp`) | Bias values are plumbed into semantics/uniforms, but not applied as rasterizer state in rewrite backends | `Partial` |
 | Point-shadow generation path | GPU depth rendering per face with per-face DSVs + dirty-face scheduling (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`) | CPU rasterized atlas build (`BuildPointShadowMap`) then uploaded each update cycle (`src/engine/renderer/backends/directional_shadow_internal.hpp`, backend `BuildPointShadowMap` call sites) | `Missing` |
 | Local light scalability | Forward+ local light clustering (compute path + CPU fallback), runtime tile/max controls (`src/renderer/backends/diligent/backend_init.cpp`, `src/renderer/backends/diligent/backend_render.cpp`) | Fixed-size local light array (`kMaxLocalLights = 4`) in both backends; no Forward+ path or controls | `Missing` |
@@ -161,6 +162,23 @@ Legend:
 - Acceptance:
   - visible reduction in blocky penumbra/seam artifacts in both backends.
   - no detached-shadow regressions in moving-point-light sandbox.
+
+### P0-S2 Session Update (2026-02-17)
+- Ported KARMA compare-sampler flow into rewrite backend seams:
+  - BGFX shader path now uses compare samplers (`shadow2D`) for directional + point maps in base and PCF kernels.
+  - BGFX shadow/point texture creation now sets compare-capable sampler flags and uses depth-compatible formats for compare sampling.
+  - Diligent shader path now uses `SamplerComparisonState` + `SampleCmpLevelZero` for directional + point maps in base and PCF kernels.
+  - Diligent immutable samplers for shadow maps now use comparison filtering (`LESS_EQUAL`) with clamp addressing.
+- Validation status this session:
+  - `./abuild.py -c -d build-a5 -b bgfx,diligent`: pass.
+  - `./build-a5/src/engine/renderer_shadow_sandbox --backend-render bgfx ...`: pass.
+  - `SDL_VIDEODRIVER=wayland ./build-a5/src/engine/renderer_shadow_sandbox --backend-render diligent ...`: pass.
+  - `timeout -k 2s 20s ./build-a5/bz3 --backend-render bgfx ...`: expected timeout pass (`EXIT:124`) with sustained render traces.
+  - `SDL_VIDEODRIVER=wayland timeout -k 2s 20s ./build-a5/bz3 --backend-render diligent ...`: expected timeout pass (`EXIT:124`) with sustained render traces.
+  - `./docs/scripts/lint-project-docs.sh`: pass.
+- Operator visual verification during run:
+  - BGFX: shadows visible again after compare-sampler state fix.
+  - Diligent: shadows visible and stable.
 
 ### P0-S3: Point Shadow GPU Generation Path
 - Replace CPU `BuildPointShadowMap` raster path with GPU face rendering/update scheduling.
@@ -244,8 +262,8 @@ timeout -k 2s 20s ./<build-dir>/bz3 --backend-render diligent --data-dir ./data 
 5. Update `docs/projects/ASSIGNMENTS.md` status/next task.
 
 ## Open Questions
-- Should compare-sampler rollout be strictly backend-synchronized, or can Diligent lead with BGFX parity gate in next slice?
 - For CSM, should rewrite lock to 4 cascades first (KARMA parity) or expose cascade count immediately?
+- For `P0-S3`, should CPU point-shadow atlas generation remain as an explicit fallback mode during GPU-generation stabilization?
 - At what slice do we require world-asset parity captures in addition to synthetic sandbox captures?
 - For VQ4 guardrails, should enforcement be integrated into an existing wrapper immediately or shipped first as a required standalone guard command with CI follow-up?
 

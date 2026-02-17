@@ -33,8 +33,8 @@ uniform mat4 u_pointShadowUvProj[24];
 SAMPLER2D(s_tex, 0);
 SAMPLER2D(s_normal, 1);
 SAMPLER2D(s_occlusion, 2);
-SAMPLER2D(s_shadow, 3);
-SAMPLER2D(s_pointShadow, 4);
+SAMPLER2DSHADOW(s_shadow, 3);
+SAMPLER2DSHADOW(s_pointShadow, 4);
 
 float shadowCascadeSplit(int cascadeIdx) {
     if (cascadeIdx == 0) return u_shadowCascadeSplits.x;
@@ -85,8 +85,7 @@ float sampleCascadeShadowVisibility(int cascadeIdx, vec3 worldPos, float ndotl) 
 
     int iradius = int(clamp(floor(radius + 0.5), 0.0, 4.0));
     if (iradius <= 0) {
-        float mapDepth = texture2D(s_shadow, shadowUv).r;
-        return step(shadowDepth - bias, mapDepth);
+        return shadow2D(s_shadow, vec3(shadowUv, shadowDepth - bias));
     }
 
     float lit = 0.0;
@@ -95,9 +94,8 @@ float sampleCascadeShadowVisibility(int cascadeIdx, vec3 worldPos, float ndotl) 
         for (int oy = -1; oy <= 1; ++oy) {
             for (int ox = -1; ox <= 1; ++ox) {
                 vec2 uv = shadowUv + vec2(float(ox), float(oy)) * atlasTexel;
-                float mapDepth = texture2D(s_shadow, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(shadowDepth - bias, mapDepth) * w;
+                lit += shadow2D(s_shadow, vec3(uv, shadowDepth - bias)) * w;
                 count += w;
             }
         }
@@ -105,9 +103,8 @@ float sampleCascadeShadowVisibility(int cascadeIdx, vec3 worldPos, float ndotl) 
         for (int oy = -2; oy <= 2; ++oy) {
             for (int ox = -2; ox <= 2; ++ox) {
                 vec2 uv = shadowUv + vec2(float(ox), float(oy)) * atlasTexel;
-                float mapDepth = texture2D(s_shadow, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(shadowDepth - bias, mapDepth) * w;
+                lit += shadow2D(s_shadow, vec3(uv, shadowDepth - bias)) * w;
                 count += w;
             }
         }
@@ -115,9 +112,8 @@ float sampleCascadeShadowVisibility(int cascadeIdx, vec3 worldPos, float ndotl) 
         for (int oy = -3; oy <= 3; ++oy) {
             for (int ox = -3; ox <= 3; ++ox) {
                 vec2 uv = shadowUv + vec2(float(ox), float(oy)) * atlasTexel;
-                float mapDepth = texture2D(s_shadow, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(shadowDepth - bias, mapDepth) * w;
+                lit += shadow2D(s_shadow, vec3(uv, shadowDepth - bias)) * w;
                 count += w;
             }
         }
@@ -125,9 +121,8 @@ float sampleCascadeShadowVisibility(int cascadeIdx, vec3 worldPos, float ndotl) 
         for (int oy = -4; oy <= 4; ++oy) {
             for (int ox = -4; ox <= 4; ++ox) {
                 vec2 uv = shadowUv + vec2(float(ox), float(oy)) * atlasTexel;
-                float mapDepth = texture2D(s_shadow, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(shadowDepth - bias, mapDepth) * w;
+                lit += shadow2D(s_shadow, vec3(uv, shadowDepth - bias)) * w;
                 count += w;
             }
         }
@@ -230,8 +225,7 @@ float samplePointShadowVisibility(int localIndex, vec3 worldPos, vec3 geomNormal
 
     int iradius = int(clamp(floor(u_pointShadowParams.z + 0.5), 0.0, 1.0));
     if (iradius <= 0) {
-        float mapDepth = texture2D(s_pointShadow, shadowUv).r;
-        return step(shadowDepth - bias, mapDepth);
+        return shadow2D(s_pointShadow, vec3(shadowUv, shadowDepth - bias));
     }
 
     vec2 atlasTexel = max(u_pointShadowAtlasTexel.xy, vec2(0.0, 0.0));
@@ -243,8 +237,7 @@ float samplePointShadowVisibility(int localIndex, vec3 worldPos, vec3 geomNormal
                 continue;
             }
             vec2 uv = shadowUv + vec2(float(ox), float(oy)) * atlasTexel;
-            float mapDepth = texture2D(s_pointShadow, uv).r;
-            lit += step(shadowDepth - bias, mapDepth);
+            lit += shadow2D(s_pointShadow, vec3(uv, shadowDepth - bias));
             count += 1.0;
         }
     }

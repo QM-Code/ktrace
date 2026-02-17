@@ -19,7 +19,7 @@ Strategic tracking:
 | `gameplay-netcode.md` | `unassigned` | `queued` | Prepare next predicted-shot reconciliation slice (`local_shot_id`) behind current P0 renderer priorities. | `2026-02-12` |
 | `physics-backend.md` | `codex` | `in progress` | Decide and implement runtime lock mutation/query contract or explicitly lock constraints to creation-time only with parity assertions. | `2026-02-12` |
 | `renderer-backend-file-split.md` | `unassigned` | `blocked (deferred to avoid overlap with active karma-lighting-shadow-parity backend ownership)` | `shared unblocker`: resume only after active renderer parity specialist retires from backend monolith hotspot paths, then execute Phase 0 scaffolding. | `2026-02-17` |
-| `karma-lighting-shadow-parity.md` | `specialist-renderer-csm-p0s1` | `priority/in progress (P0-S1 directional CSM complete; runtime smoke command canonicalization landed)` | `KARMA intake`: execute `P0-S2` compare-sampler shadow sampling intake in both backends. | `2026-02-17` |
+| `karma-lighting-shadow-parity.md` | `specialist-renderer-csm-p0s1` | `priority/in progress (P0-S1 directional CSM + P0-S2 compare-sampler intake complete)` | `KARMA intake`: execute `P0-S3` point-shadow GPU generation path in both backends while preserving bounded fallback during stabilization. | `2026-02-17` |
 | `ui-integration.md` | `codex` | `in progress` | Execute one bounded console focus-release parity follow-up slice without backend leakage. | `2026-02-12` |
 | `webserver-unit-tests.md` | `unassigned` | `paused` | Resume only when webserver handler internals change; next slice is users/user_profile/server_edit mutation-flow tests. | `2026-02-13` |
 
