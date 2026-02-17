@@ -16,9 +16,22 @@ Port and stabilize BZ3 UI behavior in `m-rewrite` while preserving engine owners
 4. Game owns UI content/state mapping and gameplay-to-UI translation.
 
 ## Owned Paths
-- `m-rewrite/src/engine/ui/*`
+- `m-rewrite/src/engine/ui/backend.hpp`
+- `m-rewrite/src/engine/ui/system.cpp`
+- `m-rewrite/src/engine/ui/backends/*`
 - `m-rewrite/include/karma/ui/*`
 - `m-rewrite/src/game/*` (UI call sites only)
+
+## Layout + Naming Convention (Current)
+- Top-level UI runtime plumbing lives at:
+  - `m-rewrite/src/engine/ui/backend.hpp`
+  - `m-rewrite/src/engine/ui/system.cpp`
+- Backend-specific implementations live under:
+  - `m-rewrite/src/engine/ui/backends/software/*`
+  - `m-rewrite/src/engine/ui/backends/imgui/*`
+  - `m-rewrite/src/engine/ui/backends/rmlui/*`
+- Use directory-scoped filenames with no redundant `ui_` prefixes.
+- Inside backend directories, do not repeat backend names in filenames (for example use `backend.cpp`, `input.cpp`, `markup.cpp`, `cpu_renderer.cpp`, `system_interface.cpp`, `stub.cpp`).
 
 ## Interface Boundaries
 - Inputs: engine frame events + game UI intent.
@@ -33,6 +46,7 @@ Port and stabilize BZ3 UI behavior in `m-rewrite` while preserving engine owners
 3. ImGui and RmlUi software bridge paths are integrated.
 4. Cross-backend overlay behavior is functioning on BGFX/Diligent baseline paths.
 5. Game-side HUD/console state mapping now includes parity slices from `m-dev`: HUD visibility follows `connected || !consoleVisible`, console toggles/closes via global actions, and gameplay input is suppressed while console/chat-entry focus state is active.
+6. UI source layout has been normalized to backend subdirectories with directory-scoped filenames (no `ui_` filename prefix convention).
 
 ## Current Gaps
 1. Full HUD/console parity with `m-dev` is incomplete.

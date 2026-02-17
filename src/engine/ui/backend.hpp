@@ -10,7 +10,7 @@
 
 namespace karma::ui {
 
-struct UiOverlayFrame {
+struct OverlayFrame {
     const renderer::MeshData::TextureData* texture = nullptr;
     uint64_t texture_revision = 0;
     float distance = 0.75f;
@@ -21,9 +21,9 @@ struct UiOverlayFrame {
     bool allow_fallback = true;
 };
 
-class UiBackend {
+class BackendDriver {
  public:
-    virtual ~UiBackend() = default;
+    virtual ~BackendDriver() = default;
     virtual const char* name() const = 0;
     virtual bool init() = 0;
     virtual void shutdown() = 0;
@@ -31,11 +31,11 @@ class UiBackend {
     virtual void build(const std::vector<UiDrawContext::ImGuiDrawCallback>& imgui_draw_callbacks,
                        const std::vector<UiDrawContext::RmlUiDrawCallback>& rmlui_draw_callbacks,
                        const std::vector<UiDrawContext::TextPanel>& text_panels,
-                       UiOverlayFrame& out) = 0;
+                       OverlayFrame& out) = 0;
 };
 
-std::unique_ptr<UiBackend> CreateSoftwareOverlayBackend();
-std::unique_ptr<UiBackend> CreateImGuiBackend();
-std::unique_ptr<UiBackend> CreateRmlUiBackend();
+std::unique_ptr<BackendDriver> CreateSoftwareBackend();
+std::unique_ptr<BackendDriver> CreateImGuiBackend();
+std::unique_ptr<BackendDriver> CreateRmlUiBackend();
 
 } // namespace karma::ui

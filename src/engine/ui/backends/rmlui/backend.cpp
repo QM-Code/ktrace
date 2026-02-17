@@ -1,15 +1,15 @@
-#include "ui/ui_backend.hpp"
+#include "ui/backend.hpp"
 
-#include "ui/ui_rmlui_adapter.hpp"
+#include "ui/backends/rmlui/adapter.hpp"
 
 #include <memory>
 
 namespace karma::ui {
 namespace {
 
-class RmlUiBackend final : public UiBackend {
+class RmlUiBackend final : public BackendDriver {
  public:
-    RmlUiBackend() : adapter_(CreateRmlUiAdapter()) {}
+    RmlUiBackend() : adapter_(rmlui::CreateAdapter()) {}
 
     const char* name() const override {
         return "rmlui";
@@ -34,7 +34,7 @@ class RmlUiBackend final : public UiBackend {
     void build(const std::vector<UiDrawContext::ImGuiDrawCallback>& imgui_draw_callbacks,
                const std::vector<UiDrawContext::RmlUiDrawCallback>& rmlui_draw_callbacks,
                const std::vector<UiDrawContext::TextPanel>& text_panels,
-               UiOverlayFrame& out) override {
+               OverlayFrame& out) override {
         (void)imgui_draw_callbacks;
         if (adapter_) {
             adapter_->build(rmlui_draw_callbacks, text_panels, out);
@@ -42,12 +42,12 @@ class RmlUiBackend final : public UiBackend {
     }
 
  private:
-    std::unique_ptr<UiRmlUiAdapter> adapter_{};
+    std::unique_ptr<rmlui::Adapter> adapter_{};
 };
 
 } // namespace
 
-std::unique_ptr<UiBackend> CreateRmlUiBackend() {
+std::unique_ptr<BackendDriver> CreateRmlUiBackend() {
     return std::make_unique<RmlUiBackend>();
 }
 

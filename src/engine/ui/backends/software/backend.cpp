@@ -1,4 +1,4 @@
-#include "ui/ui_backend.hpp"
+#include "ui/backend.hpp"
 
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/logging.hpp"
@@ -38,7 +38,7 @@ renderer::MeshData::TextureData BuildOverlayTexture(int width, int height) {
     return tex;
 }
 
-class SoftwareOverlayBackend final : public UiBackend {
+class SoftwareOverlayBackend final : public BackendDriver {
  public:
     const char* name() const override {
         return "software-overlay";
@@ -51,14 +51,14 @@ class SoftwareOverlayBackend final : public UiBackend {
         height_ = config::ReadFloatConfig({"ui.overlayTest.Height"}, 0.7f);
 
         if (!enabled_) {
-            KARMA_TRACE("ui.system", "UiBackend[{}]: disabled via ui.overlayTest.Enabled", name());
+            KARMA_TRACE("ui.system", "Backend[{}]: disabled via ui.overlayTest.Enabled", name());
             return true;
         }
 
         texture_ = BuildOverlayTexture(128, 128);
         texture_revision_ = 1;
         KARMA_TRACE("ui.system",
-                    "UiBackend[{}]: texture ready {}x{}",
+                    "Backend[{}]: texture ready {}x{}",
                     name(),
                     texture_.width,
                     texture_.height);
@@ -75,7 +75,7 @@ class SoftwareOverlayBackend final : public UiBackend {
     void build(const std::vector<UiDrawContext::ImGuiDrawCallback>& imgui_draw_callbacks,
                const std::vector<UiDrawContext::RmlUiDrawCallback>& rmlui_draw_callbacks,
                const std::vector<UiDrawContext::TextPanel>& text_panels,
-               UiOverlayFrame& out) override {
+               OverlayFrame& out) override {
         (void)imgui_draw_callbacks;
         (void)rmlui_draw_callbacks;
         (void)text_panels;
@@ -101,7 +101,7 @@ class SoftwareOverlayBackend final : public UiBackend {
 
 } // namespace
 
-std::unique_ptr<UiBackend> CreateSoftwareOverlayBackend() {
+std::unique_ptr<BackendDriver> CreateSoftwareBackend() {
     return std::make_unique<SoftwareOverlayBackend>();
 }
 

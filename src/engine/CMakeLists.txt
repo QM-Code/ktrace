@@ -8,6 +8,9 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/common/file_utils.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/i18n.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/logging.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/content/archive.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/content/catalog.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/content/primitives.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/simulation_clock.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/stb_image_impl.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/world_archive.cpp
@@ -49,12 +52,19 @@ set(ENGINE_CLIENT_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/cli/client_app_options.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_app.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/input/input_system.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend_imgui.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_backend_rmlui.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_rmlui_adapter_rmlui.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_rmlui_adapter_stub.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/ui/ui_system.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/software/backend.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/imgui/backend.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/imgui/input.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/imgui/rasterizer.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/imgui/stub.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/rmlui/backend.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/rmlui/adapter.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/rmlui/input.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/rmlui/markup.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/rmlui/cpu_renderer.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/rmlui/system_interface.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/backends/rmlui/stub.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/ui/system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/geometry/mesh_loader.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/scene/roaming_camera.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/scene/scene_bootstrap.cpp
@@ -67,13 +77,21 @@ set(ENGINE_CLIENT_SOURCES
 
 if(KARMA_RENDER_BACKEND_BGFX_ENABLED)
     list(APPEND ENGINE_CLIENT_SOURCES
-        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/backend_bgfx.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/core.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/assets.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/textures.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/pipeline.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/contracts.cpp
     )
 endif()
 
 if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
     list(APPEND ENGINE_CLIENT_SOURCES
-        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/backend_diligent.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/core.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/assets.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/textures.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/pipeline.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/contracts.cpp
     )
 endif()
 

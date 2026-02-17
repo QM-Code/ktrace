@@ -16,9 +16,9 @@ class RenderSystem;
 
 namespace karma::ui {
 
-class UiBackend;
-struct UiBackendDeleter {
-    void operator()(UiBackend* backend) const;
+class BackendDriver;
+struct BackendDriverDeleter {
+    void operator()(BackendDriver* backend) const;
 };
 
 enum class Backend {
@@ -53,7 +53,7 @@ class UiSystem : public UiDrawContext {
 
  private:
     renderer::GraphicsDevice* graphics_ = nullptr;
-    std::unique_ptr<UiBackend, UiBackendDeleter> backend_impl_{};
+    std::unique_ptr<BackendDriver, BackendDriverDeleter> backend_impl_{};
     renderer::MeshId overlay_mesh_ = renderer::kInvalidMesh;
     renderer::MaterialId overlay_material_ = renderer::kInvalidMaterial;
     uint64_t overlay_texture_revision_ = 0;

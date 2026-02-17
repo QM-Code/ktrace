@@ -5,7 +5,7 @@
 #include "karma/renderer/device.hpp"
 #include "karma/renderer/layers.hpp"
 #include "karma/renderer/render_system.hpp"
-#include "ui/ui_backend.hpp"
+#include "ui/backend.hpp"
 
 #include <cmath>
 #include <string>
@@ -94,14 +94,14 @@ Backend ParseBackendFromConfig(Backend current) {
     return current;
 }
 
-std::unique_ptr<UiBackend, UiBackendDeleter> adopt_backend(std::unique_ptr<UiBackend> backend) {
-    return std::unique_ptr<UiBackend, UiBackendDeleter>(backend.release());
+std::unique_ptr<BackendDriver, BackendDriverDeleter> adopt_backend(std::unique_ptr<BackendDriver> backend) {
+    return std::unique_ptr<BackendDriver, BackendDriverDeleter>(backend.release());
 }
 
 } // namespace
 
 UiSystem::~UiSystem() = default;
-void UiBackendDeleter::operator()(UiBackend* backend) const { delete backend; }
+void BackendDriverDeleter::operator()(BackendDriver* backend) const { delete backend; }
 
 void UiSystem::setBackend(Backend backend) {
     backend_ = backend;
@@ -176,13 +176,13 @@ void UiSystem::init(renderer::GraphicsDevice& graphics) {
             backend_impl_ = adopt_backend(CreateRmlUiBackend());
             break;
         default:
-            backend_impl_ = adopt_backend(CreateSoftwareOverlayBackend());
+            backend_impl_ = adopt_backend(CreateSoftwareBackend());
             break;
     }
     if (backend_impl_) {
         if (!backend_impl_->init()) {
             KARMA_TRACE("ui.system", "UiSystem: backend '{}' init failed", backend_impl_->name());
-            backend_impl_ = adopt_backend(CreateSoftwareOverlayBackend());
+            backend_impl_ = adopt_backend(CreateSoftwareBackend());
             if (backend_impl_ && backend_impl_->init()) {
                 KARMA_TRACE("ui.system",
                             "UiSystem: fallback backend selected '{}'",
@@ -245,7 +245,7 @@ void UiSystem::update(renderer::RenderSystem& render) {
         return;
     }
 
-    UiOverlayFrame frame{};
+    OverlayFrame frame{};
     if (backend_impl_) {
         backend_impl_->build(imgui_draw_callbacks_, rmlui_draw_callbacks_, text_panels_, frame);
     }

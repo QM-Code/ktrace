@@ -1,13 +1,12 @@
 #include "client/net/world_package/internal.hpp"
 
+#include "karma/common/content/primitives.hpp"
+
 #include <spdlog/spdlog.h>
 
-#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <filesystem>
-#include <iomanip>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -26,49 +25,31 @@ std::filesystem::path WorldPackagesByWorldRoot(const std::filesystem::path& serv
 }
 
 uint64_t HashStringFNV1a(std::string_view value) {
-    uint64_t hash = kFNV1aOffsetBasis64;
-    for (const char ch : value) {
-        hash ^= static_cast<uint64_t>(static_cast<unsigned char>(ch));
-        hash *= 1099511628211ULL;
-    }
-    return hash;
+    return karma::content::HashStringFNV1a(value);
 }
 
 void HashStringFNV1a(uint64_t& hash, std::string_view value) {
-    for (const char ch : value) {
-        hash ^= static_cast<uint64_t>(static_cast<unsigned char>(ch));
-        hash *= 1099511628211ULL;
-    }
+    karma::content::HashStringFNV1a(hash, value);
 }
 
 void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
-    for (size_t i = 0; i < count; ++i) {
-        hash ^= static_cast<uint64_t>(std::to_integer<unsigned char>(bytes[i]));
-        hash *= 1099511628211ULL;
-    }
+    karma::content::HashBytesFNV1a(hash, bytes, count);
 }
 
 void HashBytesFNV1a(uint64_t& hash, std::string_view value) {
-    const auto* bytes = reinterpret_cast<const std::byte*>(value.data());
-    HashBytesFNV1a(hash, bytes, value.size());
+    karma::content::HashBytesFNV1a(hash, value);
 }
 
 void HashSeparatorFNV1a(uint64_t& hash) {
-    hash ^= static_cast<uint64_t>(0);
-    hash *= 1099511628211ULL;
+    karma::content::HashSeparatorFNV1a(hash);
 }
 
 std::string Hash64Hex(uint64_t hash) {
-    std::ostringstream out;
-    out << std::hex << std::setw(16) << std::setfill('0') << hash;
-    return out.str();
+    return karma::content::Hash64Hex(hash);
 }
 
 void HashChunkChainFNV1a(uint64_t& hash, uint32_t chunk_index, const std::vector<std::byte>& chunk_data) {
-    HashBytesFNV1a(hash, std::to_string(chunk_index));
-    HashSeparatorFNV1a(hash);
-    HashBytesFNV1a(hash, chunk_data.data(), chunk_data.size());
-    HashSeparatorFNV1a(hash);
+    karma::content::HashChunkChainFNV1a(hash, chunk_index, chunk_data);
 }
 
 bool InitIncludesWorldMetadata(const bz3::net::ServerMessage& message) {
@@ -85,29 +66,13 @@ bool IsChunkInTransferBounds(uint64_t total_bytes,
                              uint32_t chunk_size,
                              uint32_t chunk_index,
                              size_t chunk_bytes) {
-    if (chunk_size == 0) {
-        return false;
-    }
-    const uint64_t chunk_offset = static_cast<uint64_t>(chunk_index) * chunk_size;
-    if (chunk_offset > total_bytes) {
-        return false;
-    }
-    const uint64_t remaining_bytes = total_bytes - chunk_offset;
-    return static_cast<uint64_t>(chunk_bytes) <= remaining_bytes;
+    return karma::content::IsChunkInTransferBounds(total_bytes, chunk_size, chunk_index, chunk_bytes);
 }
 
 bool ChunkMatchesBufferedPayload(const std::vector<std::byte>& payload,
                                  size_t chunk_offset,
                                  const std::vector<std::byte>& chunk_data) {
-    if (chunk_offset > payload.size()) {
-        return false;
-    }
-    if (chunk_data.size() > (payload.size() - chunk_offset)) {
-        return false;
-    }
-    return std::equal(chunk_data.begin(),
-                      chunk_data.end(),
-                      payload.begin() + static_cast<std::ptrdiff_t>(chunk_offset));
+    return karma::content::ChunkMatchesBufferedPayload(payload, chunk_offset, chunk_data);
 }
 
 std::string SanitizeCachePathComponent(std::string_view input, std::string_view fallback_prefix) {
@@ -299,34 +264,12 @@ std::filesystem::file_time_type LastWriteTimeOrMin(const std::filesystem::path& 
 
 
 std::string ComputeWorldPackageHash(const std::vector<std::byte>& bytes) {
-    uint64_t hash = 14695981039346656037ULL;
-    for (const std::byte value : bytes) {
-        hash ^= static_cast<uint64_t>(std::to_integer<unsigned char>(value));
-        hash *= 1099511628211ULL;
-    }
-
-    std::ostringstream out;
-    out << std::hex << std::setw(16) << std::setfill('0') << hash;
-    return out.str();
+    return karma::content::ComputeWorldPackageHash(bytes);
 }
 
 
 bool NormalizeRelativePath(std::string_view raw_path, std::filesystem::path* out) {
-    if (!out || raw_path.empty()) {
-        return false;
-    }
-    std::filesystem::path normalized = std::filesystem::path(raw_path).lexically_normal();
-    if (normalized.empty() || normalized == "." || normalized.is_absolute() ||
-        normalized.has_root_path()) {
-        return false;
-    }
-    for (const auto& part : normalized) {
-        if (part == "..") {
-            return false;
-        }
-    }
-    *out = normalized;
-    return true;
+    return karma::content::NormalizeRelativePath(raw_path, out);
 }
 
 

@@ -26,7 +26,7 @@ This file supersedes:
 3. Use this file as the only project-level source for UI integration work.
 
 ## Note
-The source-material sections below are preserved verbatim for no-loss migration context and may mention retired `*_track`/`*playbook` filenames.
+The source-material sections below are preserved verbatim for no-loss migration context and may mention retired `*_track`/`*playbook` filenames and pre-refactor UI file naming (`ui_*` filenames before the `src/engine/ui/backends/*` layout).
 
 ---
 

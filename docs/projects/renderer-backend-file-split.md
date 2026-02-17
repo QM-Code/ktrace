@@ -1,9 +1,9 @@
 # Renderer Backend File Split
 
 ## Project Snapshot
-- Current owner: `unassigned`
-- Status: `blocked (deferred while active karma-lighting-shadow-parity work owns the same backend hotspot paths)`
-- Immediate next task: wait for overseer confirmation that active `karma-lighting-shadow-parity` specialist work is retired from backend monolith paths, then start Phase 0 scaffolding.
+- Current owner: `specialist-renderer-file-split`
+- Status: `in progress (Phase 3 pipeline/shader/program setup extraction landed and validated on build-a6)`
+- Immediate next task: execute Phase 4 move-only extraction by splitting shadow resource/cache/update/pass blocks into `shadow.cpp` for BGFX and Diligent.
 - Validation gate: `./abuild.py -c -d <build-dir> -b bgfx,diligent` and `./scripts/test-engine-backends.sh <build-dir>`.
 
 ## Mission
@@ -22,7 +22,7 @@ Primary objective:
 - This is a structural maintainability track and a shared unblocker for renderer work.
 - It reduces merge pressure and context overload for active renderer/shadow slices without forcing algorithm changes.
 - It can proceed as mechanical extraction with strict no-behavior-change acceptance criteria.
-- It intentionally defers while active P0 lighting/shadow parity slices are mutating the same backend implementation hotspots.
+- It was initially deferred while active P0 lighting/shadow parity slices were mutating the same backend implementation hotspots.
 
 ## Owned Paths
 - `src/engine/renderer/backends/bgfx/*`
@@ -40,8 +40,8 @@ Primary objective:
   - same `CreateBgfxBackend(...)` / `CreateDiligentBackend(...)` behavior and same runtime-visible renderer behavior.
 - Coordinate before changing:
   - `docs/projects/karma-lighting-shadow-parity.md` owned paths:
-    - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
-    - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+    - `src/engine/renderer/backends/bgfx/core.cpp`
+    - `src/engine/renderer/backends/diligent/core.cpp`
     - shadow-related shared internals and sandbox tests.
 
 ## Non-Goals
@@ -164,19 +164,65 @@ Recommended renderer smoke after each major phase:
 4. Run validation commands with assigned build dir.
 5. Update this file and `docs/projects/ASSIGNMENTS.md` in the same handoff.
 
+## Phase 0 Progress Notes
+- `2026-02-17`: Claimed `build-a6` as `specialist-renderer-file-split`; local `./vcpkg` blocker check passed.
+- `2026-02-17`: Added `src/engine/renderer/backends/bgfx/internal.hpp` and `src/engine/renderer/backends/diligent/internal.hpp` scaffolding; included both from backend `core.cpp`.
+- `2026-02-17`: Renamed `backend_bgfx.cpp` -> `core.cpp` and `backend_diligent.cpp` -> `core.cpp`; updated `src/engine/CMakeLists.txt` source wiring.
+- `2026-02-17`: Validation passed on `build-a6` via dual-backend build, wrapper tests, BGFX+Diligent sandbox smokes, and docs lint.
+- `2026-02-17`: This slice intentionally introduced no runtime behavior changes; only mechanical rename/scaffolding/build-list wiring was applied.
+
+## Phase 1 Progress Notes
+- `2026-02-17`: Added `src/engine/renderer/backends/bgfx/contracts.cpp`; moved BGFX direct-sampler integrity/manifest/trust-chain observability helpers from `bgfx/core.cpp` into `bgfx/contracts.cpp` and retained call-site behavior.
+- `2026-02-17`: Added `src/engine/renderer/backends/diligent/contracts.cpp`; moved Diligent direct-sampler contract observability setup block from constructor wiring in `diligent/core.cpp` into helper wiring in `diligent/contracts.cpp`.
+- `2026-02-17`: Updated backend internal scaffolding headers (`bgfx/internal.hpp`, `diligent/internal.hpp`) and `src/engine/CMakeLists.txt` to compile new `contracts.cpp` units.
+- `2026-02-17`: Validation status on `build-a6`:
+  - Historical note: `./abuild.py -c -d build-a6 -b bgfx,diligent` failed at the time due then-existing syntax errors in `src/engine/ui/backends/rmlui/cpu_renderer.cpp` (outside renderer backend split scope). This UI blocker was resolved later outside this project.
+  - `./scripts/test-engine-backends.sh build-a6` passed.
+  - BGFX and Diligent `renderer_shadow_sandbox` 10s smokes passed.
+  - `./docs/scripts/lint-project-docs.sh` passed.
+- `2026-02-17`: This slice intentionally introduced no renderer runtime behavior changes; extraction was limited to move-only contracts/integrity observability plus include/CMake/internal-header wiring.
+
+## Phase 2 Progress Notes
+- `2026-02-17`: Added `src/engine/renderer/backends/bgfx/textures.cpp` and moved BGFX texture helper stack (`createWhiteTexture`, `createTextureFromData`) out of `bgfx/core.cpp`.
+- `2026-02-17`: Added `src/engine/renderer/backends/bgfx/assets.cpp` and moved BGFX mesh/material lifecycle blocks (`createMesh`, `destroyMesh`, `createMaterial`, `destroyMaterial`) behind move-only helper wiring.
+- `2026-02-17`: Added `src/engine/renderer/backends/diligent/textures.cpp` and moved Diligent texture helper stack (`createWhiteTexture`, `createTextureView`) into extracted helper wiring.
+- `2026-02-17`: Added `src/engine/renderer/backends/diligent/assets.cpp` and moved Diligent mesh/material lifecycle blocks (`createMesh`, `destroyMesh`, `createMaterial`, `destroyMaterial`) behind move-only helper wiring.
+- `2026-02-17`: Updated backend internal scaffolding headers (`bgfx/internal.hpp`, `diligent/internal.hpp`) and `src/engine/CMakeLists.txt` for Phase 2 units.
+- `2026-02-17`: Validation passed on `build-a6`:
+  - `./abuild.py -c -d build-a6 -b bgfx,diligent` passed.
+  - `./scripts/test-engine-backends.sh build-a6` passed.
+  - BGFX and Diligent `renderer_shadow_sandbox` 10s smokes passed.
+  - `./docs/scripts/lint-project-docs.sh` passed.
+- `2026-02-17`: This slice intentionally introduced no renderer runtime behavior changes; extraction was move-only plus internal-header/CMake wiring adjustments.
+
+## Phase 3 Progress Notes
+- `2026-02-17`: Added `src/engine/renderer/backends/bgfx/pipeline.cpp`; moved BGFX shader/program + uniform/sampler setup blocks out of `bgfx/core.cpp` into extracted helper wiring.
+- `2026-02-17`: Added `src/engine/renderer/backends/diligent/pipeline.cpp`; moved Diligent shader/program/pipeline/uniform/sampler setup blocks out of `diligent/core.cpp` into extracted helper wiring for `createPipelineVariants`, `createShadowDepthPipeline`, `createLinePipeline`, and `createPipelineVariant`.
+- `2026-02-17`: Updated backend internal scaffolding headers (`bgfx/internal.hpp`, `diligent/internal.hpp`) and `src/engine/CMakeLists.txt` for Phase 3 units.
+- `2026-02-17`: Validation passed on `build-a6`:
+  - `./abuild.py -c -d build-a6 -b bgfx,diligent` passed.
+  - `./scripts/test-engine-backends.sh build-a6` passed.
+  - BGFX and Diligent `renderer_shadow_sandbox` 10s smokes passed.
+  - `./docs/scripts/lint-project-docs.sh` passed.
+- `2026-02-17`: This slice intentionally introduced no renderer runtime behavior changes; extraction was move-only plus include/CMake/internal-header wiring adjustments.
+
 ## Current Status
 - `2026-02-17`: project created to formalize simultaneous BGFX/Diligent monolith split strategy.
 - `2026-02-17`: naming direction locked to directory-scoped files (`core.cpp`, not `backend_<name>_core.cpp`).
 - `2026-02-17`: KARMA split approach accepted as reference for conceptual partitioning, with rewrite-specific guardrails to keep files agent-friendly and avoid one oversized `render.cpp`.
 - `2026-02-17`: execution deferred to avoid overlap with active `karma-lighting-shadow-parity` ownership on backend monolith files and adjacent shadow/render internals.
+- `2026-02-17`: Phase 0 completed: both backend monolith entrypoints renamed to `core.cpp`, per-backend `internal.hpp` scaffolding added, and validation passed on `build-a6`.
+- `2026-02-17`: Phase 1 extraction completed for backend contract/integrity observability into `contracts.cpp` for BGFX and Diligent; the temporary external UI compile blocker referenced in Phase 1 notes was resolved later outside this project.
+- `2026-02-17`: Phase 2 extraction completed for backend texture/helper and mesh/material lifecycle code into `textures.cpp` + `assets.cpp` for BGFX and Diligent; validation passed on `build-a6`.
+- `2026-02-17`: Phase 3 extraction completed for backend shader/program/pipeline/uniform/sampler setup into `pipeline.cpp` for BGFX and Diligent; validation passed on `build-a6`.
 
 ## Open Questions
 - Should `render.cpp` be further split into `render_world.cpp` and `render_debug.cpp` if either backend exceeds the hard line cap after Phase 5?
 - Should shared internal helper headers (for example shadow/material semantics internals) get a follow-up split project, or stay out of scope for this track?
 
 ## Handoff Checklist
-- [ ] Both backend directories use matching split filenames where conceptually equivalent.
-- [ ] No `backend_bgfx.cpp` / `backend_diligent.cpp` monolith files remain.
-- [ ] Build and wrapper validation are green.
-- [ ] No renderer behavior drift introduced by extraction.
-- [ ] This file and `docs/projects/ASSIGNMENTS.md` are updated.
+- [x] Both backend directories use matching split filenames where conceptually equivalent.
+- [x] No `backend_bgfx.cpp` / `backend_diligent.cpp` monolith files remain.
+- [x] Build and wrapper validation are green.
+- [x] No renderer behavior drift introduced by extraction.
+- [x] This file and `docs/projects/ASSIGNMENTS.md` are updated.

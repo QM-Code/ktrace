@@ -4,6 +4,7 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/common/config_store.hpp"
+#include "karma/common/content/primitives.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/world_archive.hpp"
 #include "network/tests/loopback_transport_fixture.hpp"
@@ -16,10 +17,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -197,30 +196,19 @@ bool WaitUntil(std::chrono::milliseconds timeout, StepFn&& step, DoneFn&& done) 
 }
 
 void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
-    for (size_t i = 0; i < count; ++i) {
-        hash ^= static_cast<uint64_t>(std::to_integer<unsigned char>(bytes[i]));
-        hash *= 1099511628211ULL;
-    }
+    karma::content::HashBytesFNV1a(hash, bytes, count);
 }
 
 void HashStringFNV1a(uint64_t& hash, std::string_view value) {
-    const auto* bytes = reinterpret_cast<const std::byte*>(value.data());
-    HashBytesFNV1a(hash, bytes, value.size());
+    karma::content::HashStringFNV1a(hash, value);
 }
 
 std::string Hash64ToHex(uint64_t hash) {
-    std::ostringstream out;
-    out << std::hex << std::setw(16) << std::setfill('0') << hash;
-    return out.str();
+    return karma::content::Hash64Hex(hash);
 }
 
 std::string ComputeWorldPackageHash(const std::vector<std::byte>& bytes) {
-    uint64_t hash = 14695981039346656037ULL;
-    for (const auto value : bytes) {
-        hash ^= static_cast<uint64_t>(std::to_integer<unsigned char>(value));
-        hash *= 1099511628211ULL;
-    }
-    return Hash64ToHex(hash);
+    return karma::content::ComputeWorldPackageHash(bytes);
 }
 
 bool WriteTextFile(const std::filesystem::path& path, const std::string& content) {

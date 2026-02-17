@@ -2,6 +2,7 @@
 
 #include "karma/cli/server_runtime_options.hpp"
 #include "karma/common/config_helpers.hpp"
+#include "karma/common/content/primitives.hpp"
 #include "karma/common/logging.hpp"
 #include "karma/common/world_archive.hpp"
 
@@ -13,8 +14,6 @@
 #include <cstdint>
 #include <exception>
 #include <fstream>
-#include <iomanip>
-#include <sstream>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -24,32 +23,19 @@ namespace bz3::server::domain {
 namespace {
 
 void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
-    for (size_t i = 0; i < count; ++i) {
-        hash ^= static_cast<uint64_t>(std::to_integer<unsigned char>(bytes[i]));
-        hash *= 1099511628211ULL;
-    }
+    karma::content::HashBytesFNV1a(hash, bytes, count);
 }
 
 void HashStringFNV1a(uint64_t& hash, std::string_view value) {
-    const auto* bytes = reinterpret_cast<const std::byte*>(value.data());
-    HashBytesFNV1a(hash, bytes, value.size());
+    karma::content::HashStringFNV1a(hash, value);
 }
 
 std::string Hash64ToHex(uint64_t hash) {
-    std::ostringstream out;
-    out << std::hex << std::setw(16) << std::setfill('0') << hash;
-    return out.str();
+    return karma::content::Hash64Hex(hash);
 }
 
 std::string ComputeWorldPackageHash(const std::vector<std::byte>& bytes) {
-    // FNV-1a 64-bit hash for package-byte identity.
-    uint64_t hash = 14695981039346656037ULL;
-    for (const std::byte value : bytes) {
-        hash ^= static_cast<uint64_t>(std::to_integer<unsigned char>(value));
-        hash *= 1099511628211ULL;
-    }
-
-    return Hash64ToHex(hash);
+    return karma::content::ComputeWorldPackageHash(bytes);
 }
 
 struct WorldManifestSummary {

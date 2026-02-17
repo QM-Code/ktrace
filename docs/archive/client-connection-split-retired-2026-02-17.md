@@ -1,10 +1,10 @@
-# Client Connection Split
+# Client Connection Split (Retired)
 
 ## Project Snapshot
-- Current owner: `codex`
-- Status: `handoff-ready (split complete; follow-up project drafted)`
-- Immediate next task: transfer ownership and archive this project after `engine-game-boundary-hygiene.md` enters active execution.
-- Validation gate: `./abuild.py -c -d <build-dir>` + `ctest --test-dir <build-dir> -R client_world_package_safety_integration_test --output-on-failure` + `./docs/scripts/lint-project-docs.sh`.
+- Current owner: `retired/archive`
+- Status: `retired/completed (split delivered; follow-up execution moved to engine-game-boundary-hygiene)`
+- Immediate next task: do not start new work here; continue active boundary extraction in `docs/projects/engine-game-boundary-hygiene.md`.
+- Validation gate: historical record retained; active validation policy is tracked in `docs/projects/engine-game-boundary-hygiene.md`.
 
 ## Mission
 Decompose the legacy client connection monolith into smaller, stable translation units with explicit boundaries between:
@@ -22,7 +22,7 @@ Decompose the legacy client connection monolith into smaller, stable translation
 `client_connection` was previously a high-churn hotspot that mixed transport lifecycle, protocol ingress dispatch, world package caching/apply behavior, and gameplay event callbacks in one file. Splitting it reduces merge pressure, review scope, and future engineization risk.
 
 ## Owned Paths
-- `docs/projects/client-connection-split.md`
+- `docs/archive/client-connection-split-retired-2026-02-17.md`
 - `docs/projects/ASSIGNMENTS.md`
 - `src/game/client/net/connection.hpp`
 - `src/game/client/net/connection/*`
@@ -131,6 +131,7 @@ ctest --test-dir <build-dir> -R client_world_package_safety_integration_test --o
 - `2026-02-17`: Cleanup rename landed: `src/game/client/net/connection/inbound.cpp` -> `src/game/client/net/connection/inbound/dispatch.cpp`.
 - `2026-02-17`: `client_world_package_safety_integration_test` remained green after inbound split in `build-a6`.
 - `2026-02-17`: engineization follow-up project drafted at `docs/projects/engine-game-boundary-hygiene.md`.
+- `2026-02-17`: project retired from active board and archived at `docs/archive/client-connection-split-retired-2026-02-17.md`.
 
 ## Open Questions
 - None in this project; extracted boundary work is now tracked in `docs/projects/engine-game-boundary-hygiene.md`.

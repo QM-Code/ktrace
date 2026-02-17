@@ -1,4 +1,4 @@
-#include "ui/ui_rmlui_adapter.hpp"
+#include "ui/backends/rmlui/adapter.hpp"
 
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/logging.hpp"
@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <string>
 
-namespace karma::ui {
+namespace karma::ui::rmlui {
 namespace {
 
 renderer::MeshData::TextureData BuildRmlDebugTexture(int width, int height) {
@@ -33,7 +33,7 @@ renderer::MeshData::TextureData BuildRmlDebugTexture(int width, int height) {
     return tex;
 }
 
-class UiRmlUiAdapterStub final : public UiRmlUiAdapter {
+class AdapterStub final : public Adapter {
  public:
     bool init() override {
         debug_overlay_ = config::ReadBoolConfig({"ui.rmlui.stub.DebugOverlay"}, false);
@@ -45,7 +45,7 @@ class UiRmlUiAdapterStub final : public UiRmlUiAdapter {
         texture_ = BuildRmlDebugTexture(256, 144);
         texture_revision_ = 1;
         KARMA_TRACE("ui.system.rmlui",
-                    "UiRmlUiAdapter[stub]: initialized debug_overlay={} allow_fallback={}",
+                    "RmlAdapter[stub]: initialized debug_overlay={} allow_fallback={}",
                     debug_overlay_,
                     allow_fallback_);
         return true;
@@ -60,7 +60,7 @@ class UiRmlUiAdapterStub final : public UiRmlUiAdapter {
 
     void build(const std::vector<UiDrawContext::RmlUiDrawCallback>& draw_callbacks,
                const std::vector<UiDrawContext::TextPanel>& text_panels,
-               UiOverlayFrame& out) override {
+               OverlayFrame& out) override {
         for (const auto& callback : draw_callbacks) {
             if (callback) {
                 callback();
@@ -71,7 +71,7 @@ class UiRmlUiAdapterStub final : public UiRmlUiAdapter {
         const size_t panel_count = text_panels.size();
         KARMA_TRACE_CHANGED("ui.system.rmlui",
                             std::to_string(callback_count) + ":" + std::to_string(panel_count),
-                            "UiRmlUiAdapter[stub]: callbacks={} text_panels={} (bridge)",
+                            "RmlAdapter[stub]: callbacks={} text_panels={} (bridge)",
                             callback_count,
                             panel_count);
 
@@ -103,10 +103,10 @@ class UiRmlUiAdapterStub final : public UiRmlUiAdapter {
 
 } // namespace
 
-std::unique_ptr<UiRmlUiAdapter> CreateRmlUiAdapter() {
-    return std::make_unique<UiRmlUiAdapterStub>();
+std::unique_ptr<Adapter> CreateAdapter() {
+    return std::make_unique<AdapterStub>();
 }
 
-} // namespace karma::ui
+} // namespace karma::ui::rmlui
 
 #endif // !defined(KARMA_HAS_RMLUI)
