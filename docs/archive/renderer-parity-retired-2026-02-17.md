@@ -92,7 +92,7 @@ R26-A delta summary:
 
 Top CPU hotspot suspects (file-level):
 1. Shared CPU shadow map build + sampling internals:
-   - `src/engine/renderer/backends/directional_shadow_internal.hpp` (`BuildDirectionalShadowMap`, `SampleDirectionalShadowVisibility`).
+   - `src/engine/renderer/backends/internal/directional_shadow.hpp` (`BuildDirectionalShadowMap`, `SampleDirectionalShadowVisibility`).
    - Why: both backends call into this path (`backend_bgfx.cpp:1290`, `backend_diligent.cpp:505`) and shadow-enable immediately increases frame cost.
 2. BGFX per-frame shadow map upload/build pressure:
    - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp` (`shadow_update_every_frames_`, `BuildDirectionalShadowMap`, shadow-map upload/trace at `1473`).
@@ -167,7 +167,7 @@ Cadence A/B (`updateEveryFrames=1` vs `2`, shadows ON):
 - Interpretation: cadence control is active and materially beneficial in Diligent, but does not remove the core CPU shadow-map cost.
 
 Top CPU hotspot suspects after slice 1 (file-level):
-1. `src/engine/renderer/backends/directional_shadow_internal.hpp`
+1. `src/engine/renderer/backends/internal/directional_shadow.hpp`
    - `BuildDirectionalShadowMap` remains the dominant ON-state cost center shared by BGFX and Diligent.
 2. `src/engine/renderer/backends/diligent/backend_diligent.cpp`
    - Remaining per-frame shadow-map build/integration work (now cadence-gated) plus per-draw binding/submit overhead keeps ON-state behind BGFX.
@@ -212,7 +212,7 @@ Slice-2 scaffolding validation:
 
 R26-B slice-3 BGFX GPU pass prototype landed (2026-02-14):
 1. Added shared shadow-projection-only helper (no CPU rasterization):
-   - `src/engine/renderer/backends/directional_shadow_internal.hpp` -> `BuildDirectionalShadowProjection(...)`.
+   - `src/engine/renderer/backends/internal/directional_shadow.hpp` -> `BuildDirectionalShadowProjection(...)`.
 2. Added BGFX shadow-depth shader pair + build wiring:
    - `data/bgfx/shaders/shadow/vs_shadow_depth.sc`
    - `data/bgfx/shaders/shadow/fs_shadow_depth.sc`
@@ -403,7 +403,7 @@ R26-B gpu_default no-shadow regression fix attempt (pending operator visual veri
 2. Root-cause hypothesis and fix:
    - GPU shadow depth-pass VS used clip-space Z mapping `depth * 2 - 1` unconditionally.
    - On Vulkan zero-to-one clip-depth paths this can clip away caster geometry and leave shadow maps effectively empty.
-   - Landed shared clip-depth transform helper in `src/engine/renderer/backends/directional_shadow_internal.hpp`:
+   - Landed shared clip-depth transform helper in `src/engine/renderer/backends/internal/directional_shadow.hpp`:
      - `ResolveShadowClipDepthTransform(homogeneous_depth)` -> `(scale,bias)`.
    - BGFX now derives `(scale,bias)` from `bgfx::getCaps()->homogeneousDepth` and passes via `u_shadowParams2.zw` in:
      - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
@@ -425,7 +425,7 @@ R26-D config-surface policy slice landed (2026-02-14):
    - contract field: `triangle_budget` in `include/karma/renderer/types.hpp`
    - runtime config plumbing in `src/game/client/main.cpp`:
      - `roamingMode.graphics.lighting.shadows.triangleBudget`
-   - semantics clamp wiring in `src/engine/renderer/backends/directional_shadow_internal.hpp`:
+   - semantics clamp wiring in `src/engine/renderer/backends/internal/directional_shadow.hpp`:
      - bounded range `[1, 65536]`, fallback `4096`.
 2. Added operator-facing defaults:
    - `data/client/config.json`
@@ -535,7 +535,7 @@ R26-D bias-model policy slice landed (2026-02-15):
      - `raster_depth_bias` (default `0.0`)
      - `raster_slope_bias` (default `0.0`)
 2. Added bounded semantics/clamp policy in shared renderer internals:
-   - `src/engine/renderer/backends/directional_shadow_internal.hpp`
+   - `src/engine/renderer/backends/internal/directional_shadow.hpp`
    - clamp ranges:
      - `receiver_bias_scale`: `[0.0, 4.0]`
      - `normal_bias_scale`: `[0.0, 8.0]`
@@ -726,10 +726,10 @@ timeout -k 2s 20s ./<build-dir>/bz3 --backend-render diligent -d ./data --strict
 - `2026-02-11`: stabilization rollback pass completed for VQ3 rejection handling: directional-shadow backend/test files were restored to pre-regression baseline to remove chunk/tessellation receiver paths, per-chunk draw amplification, and light-direction instability from this slice. Validation/build/runtime/test gates pass, and VQ3 remains in progress/not accepted pending new corrective planning and operator confirmation.
 - Cross-backend startup/rendering path is working.
 - R1 is implemented: both BGFX and Diligent now consume shared material semantics for metallic/roughness/emissive/alpha/double-sided fields plus metallic-roughness and emissive texture influence when present.
-- R2 is now landed: engine-owned `DirectionalLightData::shadow` contract fields are consumed by both BGFX and Diligent through one shared bounded shadow-map build/sample path (`directional_shadow_internal.hpp`) with deterministic per-draw light attenuation.
-- R3 is now landed: engine-owned `EnvironmentLightingData` contract is consumed by both BGFX and Diligent through shared environment semantics resolution (`environment_lighting_internal.hpp`) including sky/ground ambient IBL proxy, roughness-aware specular boost, and sky clear-color exposure policy.
-- R4 is now landed: engine-owned debug-line contract path (`DebugLineItem` + shared semantics in `debug_line_internal.hpp`) is consumed by both BGFX and Diligent with layer-aware line submission and deterministic validation coverage in `directional_shadow_contract_test.cpp`.
-- R5 material-fidelity follow-up is accepted: shared material-lighting BRDF proxy (`material_lighting_internal.hpp`) now drives direct/ambient light scaling in both BGFX and Diligent, and texture-path handling now uses representative texture sampling plus normalized RGBA expansion for non-RGBA texture channel layouts.
+- R2 is now landed: engine-owned `DirectionalLightData::shadow` contract fields are consumed by both BGFX and Diligent through one shared bounded shadow-map build/sample path (`directional_shadow.hpp`) with deterministic per-draw light attenuation.
+- R3 is now landed: engine-owned `EnvironmentLightingData` contract is consumed by both BGFX and Diligent through shared environment semantics resolution (`environment_lighting.hpp`) including sky/ground ambient IBL proxy, roughness-aware specular boost, and sky clear-color exposure policy.
+- R4 is now landed: engine-owned debug-line contract path (`DebugLineItem` + shared semantics in `debug_line.hpp`) is consumed by both BGFX and Diligent with layer-aware line submission and deterministic validation coverage in `directional_shadow_contract_test.cpp`.
+- R5 material-fidelity follow-up is accepted: shared material-lighting BRDF proxy (`material_lighting.hpp`) now drives direct/ambient light scaling in both BGFX and Diligent, and texture-path handling now uses representative texture sampling plus normalized RGBA expansion for non-RGBA texture channel layouts.
 - R6 normal/occlusion texture-set semantics slice is accepted: engine-owned `MaterialDesc` now carries normal/occlusion texture contract fields, shared material semantics resolve bounded `normal_variation` + `occlusion` terms, and both BGFX + Diligent consume those terms through shared material-lighting resolution.
 - R7 texture-set stability follow-up is accepted: normal/occlusion semantics now use deterministic quasi-random multi-sample aggregation (`kHighFrequencySampleCount = 32`) to improve higher-frequency pattern stability, with clamp-policy behavior explicitly asserted in contract tests.
 - R8 normal/detail policy refinement + occlusion edge-case parity is accepted: shared semantics now apply deadzone+variance-weighted normal-detail policy and explicit occlusion edge snapping/bias policy, with parity consumed identically by BGFX + Diligent via shared material-lighting.

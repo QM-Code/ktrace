@@ -1,6 +1,6 @@
 #include "karma/renderer/backend.hpp"
 
-#include "backends/backend_factory_internal.hpp"
+#include "backends/internal/backend_factory.hpp"
 
 #include <algorithm>
 #include <cctype>

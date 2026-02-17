@@ -1,9 +1,9 @@
-#include "renderer/backends/debug_line_internal.hpp"
-#include "renderer/backends/direct_sampler_observability_internal.hpp"
-#include "renderer/backends/directional_shadow_internal.hpp"
-#include "renderer/backends/environment_lighting_internal.hpp"
-#include "renderer/backends/material_lighting_internal.hpp"
-#include "renderer/backends/material_semantics_internal.hpp"
+#include "renderer/backends/internal/debug_line.hpp"
+#include "renderer/backends/internal/direct_sampler_observability.hpp"
+#include "renderer/backends/internal/directional_shadow.hpp"
+#include "renderer/backends/internal/environment_lighting.hpp"
+#include "renderer/backends/internal/material_lighting.hpp"
+#include "renderer/backends/internal/material_semantics.hpp"
 
 #include "karma/renderer/types.hpp"
 

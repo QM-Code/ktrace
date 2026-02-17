@@ -1,7 +1,7 @@
 #pragma once
 
-#include "environment_lighting_internal.hpp"
-#include "material_semantics_internal.hpp"
+#include "environment_lighting.hpp"
+#include "material_semantics.hpp"
 
 #include "karma/renderer/types.hpp"
 

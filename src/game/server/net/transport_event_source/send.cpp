@@ -2,11 +2,11 @@
 
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/logging.hpp"
+#include "karma/network/content/transfer_sender.hpp"
 #include "net/protocol_codec.hpp"
 #include "net/protocol.hpp"
 
 #include <algorithm>
-#include <cstddef>
 #include <string>
 
 namespace bz3::server::net::detail {
@@ -167,10 +167,6 @@ bool TransportServerEventSource::sendWorldPackageChunked(karma::network::PeerTok
                                                          std::string_view delta_base_world_revision,
                                                          std::string_view delta_base_world_hash,
                                                          std::string_view delta_base_world_content_hash) {
-    if (world_package.empty()) {
-        return true;
-    }
-
     const uint32_t configured_chunk_size = static_cast<uint32_t>(
         karma::config::ReadUInt16Config({"network.WorldTransferChunkBytes"},
                                         static_cast<uint16_t>(16 * 1024)));
@@ -179,114 +175,69 @@ bool TransportServerEventSource::sendWorldPackageChunked(karma::network::PeerTok
         karma::config::ReadUInt16Config({"network.WorldTransferRetryAttempts"},
                                         static_cast<uint16_t>(2)));
     const std::string transfer_id = std::to_string(client_id) + "-" + std::to_string(next_transfer_id_++);
-    const uint32_t total_chunk_count =
-        static_cast<uint32_t>((world_package.size() + chunk_size - 1) / chunk_size);
 
-    size_t next_offset = 0;
-    uint32_t next_chunk_index = 0;
-    for (uint32_t attempt = 0; attempt <= max_retry_attempts; ++attempt) {
-        const uint32_t resume_chunk_index = next_chunk_index;
-        const size_t resume_offset = next_offset;
-        if (!sendWorldTransferBegin(peer,
-                                    transfer_id,
-                                    world_id,
-                                    world_revision,
-                                    world_package.size(),
-                                    chunk_size,
-                                    world_hash,
-                                    world_content_hash,
-                                    is_delta,
-                                    delta_base_world_id,
-                                    delta_base_world_revision,
-                                    delta_base_world_hash,
-                                    delta_base_world_content_hash)) {
-            KARMA_TRACE("net.server",
-                        "ServerEventSource: world transfer begin send failed client_id={} transfer_id='{}' attempt={}/{} resume_chunk={}",
-                        client_id,
-                        transfer_id,
-                        attempt + 1,
-                        max_retry_attempts + 1,
-                        resume_chunk_index);
-            if (attempt == max_retry_attempts) {
-                return false;
-            }
-            continue;
-        }
+    karma::network::content::TransferSenderRequest request{};
+    request.client_id = client_id;
+    request.transfer_id = transfer_id;
+    request.world_id = world_id;
+    request.world_revision = world_revision;
+    request.world_hash = world_hash;
+    request.world_content_hash = world_content_hash;
+    request.is_delta = is_delta;
+    request.delta_base_world_id = delta_base_world_id;
+    request.delta_base_world_revision = delta_base_world_revision;
+    request.delta_base_world_hash = delta_base_world_hash;
+    request.delta_base_world_content_hash = delta_base_world_content_hash;
+    request.world_package = &world_package;
+    request.chunk_size = chunk_size;
+    request.max_retry_attempts = max_retry_attempts;
 
-        bool chunk_send_failed = false;
-        while (next_offset < world_package.size()) {
-            const size_t remaining = world_package.size() - next_offset;
-            const size_t this_chunk_size = std::min<size_t>(remaining, chunk_size);
-            std::vector<std::byte> chunk{};
-            chunk.insert(chunk.end(),
-                         world_package.begin() + static_cast<std::ptrdiff_t>(next_offset),
-                         world_package.begin() + static_cast<std::ptrdiff_t>(next_offset + this_chunk_size));
-            if (!sendWorldTransferChunk(peer, transfer_id, next_chunk_index, chunk)) {
-                chunk_send_failed = true;
-                KARMA_TRACE("net.server",
-                            "ServerEventSource: world transfer chunk send failed client_id={} transfer_id='{}' attempt={}/{} chunk_index={} chunk_bytes={}",
-                            client_id,
-                            transfer_id,
-                            attempt + 1,
-                            max_retry_attempts + 1,
-                            next_chunk_index,
-                            chunk.size());
-                break;
-            }
-            next_offset += this_chunk_size;
-            ++next_chunk_index;
-        }
+    karma::network::content::TransferSenderCallbacks callbacks{};
+    callbacks.send_begin = [this, peer](std::string_view cb_transfer_id,
+                                        std::string_view cb_world_id,
+                                        std::string_view cb_world_revision,
+                                        uint64_t cb_total_bytes,
+                                        uint32_t cb_chunk_size,
+                                        std::string_view cb_world_hash,
+                                        std::string_view cb_world_content_hash,
+                                        bool cb_is_delta,
+                                        std::string_view cb_delta_base_world_id,
+                                        std::string_view cb_delta_base_world_revision,
+                                        std::string_view cb_delta_base_world_hash,
+                                        std::string_view cb_delta_base_world_content_hash) {
+        return sendWorldTransferBegin(peer,
+                                      cb_transfer_id,
+                                      cb_world_id,
+                                      cb_world_revision,
+                                      cb_total_bytes,
+                                      cb_chunk_size,
+                                      cb_world_hash,
+                                      cb_world_content_hash,
+                                      cb_is_delta,
+                                      cb_delta_base_world_id,
+                                      cb_delta_base_world_revision,
+                                      cb_delta_base_world_hash,
+                                      cb_delta_base_world_content_hash);
+    };
+    callbacks.send_chunk = [this, peer](std::string_view cb_transfer_id,
+                                        uint32_t cb_chunk_index,
+                                        const std::vector<std::byte>& cb_chunk_data) {
+        return sendWorldTransferChunk(peer, cb_transfer_id, cb_chunk_index, cb_chunk_data);
+    };
+    callbacks.send_end = [this, peer](std::string_view cb_transfer_id,
+                                      uint32_t cb_chunk_count,
+                                      uint64_t cb_total_bytes,
+                                      std::string_view cb_world_hash,
+                                      std::string_view cb_world_content_hash) {
+        return sendWorldTransferEnd(peer,
+                                    cb_transfer_id,
+                                    cb_chunk_count,
+                                    cb_total_bytes,
+                                    cb_world_hash,
+                                    cb_world_content_hash);
+    };
 
-        if (chunk_send_failed) {
-            if (attempt == max_retry_attempts) {
-                return false;
-            }
-            KARMA_TRACE("net.server",
-                        "ServerEventSource: world transfer retry scheduled client_id={} transfer_id='{}' next_chunk={} sent_chunks={} bytes_sent={} attempt={}/{}",
-                        client_id,
-                        transfer_id,
-                        next_chunk_index,
-                        next_chunk_index - resume_chunk_index,
-                        next_offset - resume_offset,
-                        attempt + 1,
-                        max_retry_attempts + 1);
-            continue;
-        }
-
-        if (!sendWorldTransferEnd(peer,
-                                  transfer_id,
-                                  total_chunk_count,
-                                  world_package.size(),
-                                  world_hash,
-                                  world_content_hash)) {
-            KARMA_TRACE("net.server",
-                        "ServerEventSource: world transfer end send failed client_id={} transfer_id='{}' attempt={}/{} total_chunks={}",
-                        client_id,
-                        transfer_id,
-                        attempt + 1,
-                        max_retry_attempts + 1,
-                        total_chunk_count);
-            if (attempt == max_retry_attempts) {
-                return false;
-            }
-            continue;
-        }
-
-        KARMA_TRACE("net.server",
-                    "ServerEventSource: world transfer sent client_id={} transfer_id='{}' mode={} chunks={} bytes={} chunk_size={} retries={} base_id='{}' base_rev='{}'",
-                    client_id,
-                    transfer_id,
-                    is_delta ? "delta" : "full",
-                    total_chunk_count,
-                    world_package.size(),
-                    chunk_size,
-                    attempt,
-                    delta_base_world_id.empty() ? "-" : std::string(delta_base_world_id),
-                    delta_base_world_revision.empty() ? "-" : std::string(delta_base_world_revision));
-        return true;
-    }
-
-    return false;
+    return karma::network::content::SendWorldPackageChunked(request, callbacks, "ServerEventSource");
 }
 
 } // namespace bz3::server::net::detail

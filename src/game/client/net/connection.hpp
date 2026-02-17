@@ -1,5 +1,6 @@
 #pragma once
 
+#include "karma/network/content/transfer_receiver.hpp"
 #include "net/protocol_codec.hpp"
 
 #include <cstddef>
@@ -96,25 +97,8 @@ class ClientConnection {
         uint64_t world_size = 0;
         std::vector<bz3::net::WorldManifestEntry> world_manifest{};
     };
-    struct ActiveWorldTransferState {
-        bool active = false;
-        std::string transfer_id{};
-        std::string transfer_world_hash{};
-        std::string transfer_world_content_hash{};
-        bool is_delta = false;
-        std::string delta_base_world_id{};
-        std::string delta_base_world_revision{};
-        std::string delta_base_world_hash{};
-        std::string delta_base_world_content_hash{};
-        uint64_t total_bytes_expected = 0;
-        uint32_t chunk_size = 0;
-        uint32_t next_chunk_index = 0;
-        uint64_t payload_hash = 0;
-        uint64_t chunk_chain_hash = 0;
-        std::vector<std::byte> payload{};
-    };
     PendingWorldPackageState pending_world_package_{};
-    ActiveWorldTransferState active_world_transfer_{};
+    karma::network::content::TransferReceiverState active_world_transfer_{};
     AudioEventCallback audio_event_callback_{};
     uint32_t next_local_shot_id_ = 1;
 };

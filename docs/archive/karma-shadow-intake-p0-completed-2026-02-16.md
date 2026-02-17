@@ -43,7 +43,7 @@ Defer (not P0 in this track):
 ## Owned Paths
 - `m-rewrite/docs/archive/karma-shadow-intake-p0-completed-2026-02-16.md` (archived snapshot; active project path retired)
 - `m-rewrite/docs/projects/ASSIGNMENTS.md`
-- `m-rewrite/src/engine/renderer/backends/directional_shadow_internal.hpp`
+- `m-rewrite/src/engine/renderer/backends/internal/directional_shadow.hpp`
 - `m-rewrite/src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
 - `m-rewrite/src/engine/renderer/backends/diligent/backend_diligent.cpp`
 - `m-rewrite/include/karma/renderer/types.hpp`
@@ -156,7 +156,7 @@ timeout -k 2s 20s ./<build-dir>/bz3 --backend-render diligent --data-dir ./data 
     - Diligent: `budget=1 -> 3.82 FPS`, `budget=2 -> 3.56 FPS`, `budget=4 -> 3.56 FPS`
   - policy lock for P0 defaults: keep `point_faces_per_frame_budget=2` (retains higher per-frame refresh cadence than `budget=1` without introducing clear cross-backend perf wins from `budget=4` in the bounded sweep window).
   - bounded map-size checkpoint landed:
-    - `pointMapSize=2048` with `pointLights=2` fails deterministically in both backends with `reason=point_shadow_map_build_failed` (`/tmp/point-shadow-budget-sweep-20260216T141704Z/summary.csv`), matching the atlas-size guard in `directional_shadow_internal.hpp` (`kMaxPointShadowPixels`).
+    - `pointMapSize=2048` with `pointLights=2` fails deterministically in both backends with `reason=point_shadow_map_build_failed` (`/tmp/point-shadow-budget-sweep-20260216T141704Z/summary.csv`), matching the atlas-size guard in `directional_shadow.hpp` (`kMaxPointShadowPixels`).
     - `pointMapSize=2048` with `pointLights=1` is functional (`reason=point_shadow_faces_updated`) but substantially slower (`BGFX 2.20 FPS`, `Diligent 1.92 FPS`) in this bounded stress window (`/tmp/point-shadow-budget-sweep-20260216T141732Z/summary.csv`).
   - policy lock for P0 defaults: keep `point_map_size=1024` and `point_max_shadow_lights=2` as the viable bounded default pair.
 - `2026-02-16`: `KS4.2` operator-closeout runner landed (visual-signoff assist):

@@ -7,7 +7,7 @@
 #include "karma/renderer/render_system.hpp"
 #include "karma/scene/components.hpp"
 #include "karma/scene/scene.hpp"
-#include "renderer/backends/directional_shadow_internal.hpp"
+#include "renderer/backends/internal/directional_shadow.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <spdlog/spdlog.h>

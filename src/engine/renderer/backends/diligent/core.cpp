@@ -1,13 +1,12 @@
 #include "karma/renderer/backend.hpp"
 #include "internal.hpp"
 
-#include "../backend_factory_internal.hpp"
-#include "../direct_sampler_observability_internal.hpp"
-#include "../debug_line_internal.hpp"
-#include "../directional_shadow_internal.hpp"
-#include "../environment_lighting_internal.hpp"
-#include "../material_lighting_internal.hpp"
-#include "../material_semantics_internal.hpp"
+#include "../internal/backend_factory.hpp"
+#include "../internal/direct_sampler_observability.hpp"
+#include "../internal/debug_line.hpp"
+#include "../internal/directional_shadow.hpp"
+#include "../internal/environment_lighting.hpp"
+#include "../internal/material_semantics.hpp"
 
 #include "karma/common/logging.hpp"
 #include "karma/platform/window.hpp"
@@ -25,14 +24,13 @@
 #include <DiligentCore/Graphics/GraphicsEngine/interface/Shader.h>
 #include <DiligentCore/Graphics/GraphicsEngine/interface/Buffer.h>
 #include <DiligentCore/Graphics/GraphicsEngine/interface/GraphicsTypes.h>
-#include <DiligentCore/Graphics/GraphicsTools/interface/MapHelper.hpp>
 #include <DiligentCore/Platforms/interface/NativeWindow.h>
 
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -46,123 +44,15 @@ namespace karma::renderer_backend {
 namespace {
 
 constexpr std::size_t kDirectionalShadowCascadeCount =
-    static_cast<std::size_t>(detail::kDirectionalShadowCascadeCount);
-constexpr std::size_t kMaxLocalLights = 4u;
-constexpr std::size_t kMaxPointShadowLights = kMaxLocalLights;
-constexpr std::size_t kPointShadowFaceCount = static_cast<std::size_t>(detail::kPointShadowFaceCount);
-constexpr std::size_t kPointShadowMatrixCount = kMaxPointShadowLights * kPointShadowFaceCount;
+    kDiligentDirectionalShadowCascadeCount;
+constexpr std::size_t kMaxLocalLights = kDiligentMaxLocalLights;
+constexpr std::size_t kMaxPointShadowLights = kDiligentMaxPointShadowLights;
+constexpr std::size_t kPointShadowMatrixCount = kDiligentPointShadowMatrixCount;
 
 using Mesh = DiligentMesh;
 using Material = DiligentMaterial;
 
-struct Constants {
-    glm::mat4 u_modelViewProj;
-    glm::mat4 u_model;
-    glm::vec4 u_color;
-    glm::vec4 u_lightDir;
-    glm::vec4 u_lightColor;
-    glm::vec4 u_ambientColor;
-    glm::vec4 u_unlit;
-    glm::vec4 u_textureMode;
-    glm::vec4 u_shadowParams0;
-    glm::vec4 u_shadowParams1;
-    glm::vec4 u_shadowParams2;
-    glm::vec4 u_shadowBiasParams;
-    glm::vec4 u_shadowAxisRight;
-    glm::vec4 u_shadowAxisUp;
-    glm::vec4 u_shadowAxisForward;
-    glm::vec4 u_shadowCascadeSplits;
-    glm::vec4 u_shadowCascadeWorldTexel;
-    glm::vec4 u_shadowCascadeParams;
-    glm::vec4 u_shadowCameraPosition;
-    glm::vec4 u_shadowCameraForward;
-    std::array<glm::mat4, kDirectionalShadowCascadeCount> u_shadowCascadeUvProj;
-    glm::vec4 u_localLightCount;
-    glm::vec4 u_localLightParams;
-    std::array<glm::vec4, kMaxLocalLights> u_localLightPosRange;
-    std::array<glm::vec4, kMaxLocalLights> u_localLightColorIntensity;
-    std::array<glm::vec4, kMaxLocalLights> u_localLightShadowSlot;
-    glm::vec4 u_pointShadowParams;
-    glm::vec4 u_pointShadowAtlasTexel;
-    glm::vec4 u_pointShadowTuning;
-    std::array<glm::mat4, kPointShadowMatrixCount> u_pointShadowUvProj;
-};
-
-struct LineVertex {
-    float x;
-    float y;
-    float z;
-    float nx;
-    float ny;
-    float nz;
-    float u;
-    float v;
-};
-
-struct RenderableDraw {
-    const renderer::DrawItem* item = nullptr;
-    Mesh* mesh = nullptr;
-    Material* material = nullptr;
-};
-
-bool directionChangedBeyondThreshold(const glm::vec3& a, const glm::vec3& b, float threshold_deg) {
-    const float a_len = glm::length(a);
-    const float b_len = glm::length(b);
-    if (!std::isfinite(a_len) || !std::isfinite(b_len) || a_len <= 1e-6f || b_len <= 1e-6f) {
-        return true;
-    }
-    const glm::vec3 an = a / a_len;
-    const glm::vec3 bn = b / b_len;
-    const float cos_threshold = std::cos(glm::radians(std::max(0.0f, threshold_deg)));
-    const float dot_v = glm::dot(an, bn);
-    return dot_v < cos_threshold;
-}
-
-bool matrixChangedBeyondEpsilon(const glm::mat4& a, const glm::mat4& b, float eps = 1e-5f) {
-    for (int col = 0; col < 4; ++col) {
-        for (int row = 0; row < 4; ++row) {
-            if (std::abs(a[col][row] - b[col][row]) > eps) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-glm::vec3 resolveCameraForward(const renderer::CameraData& camera) {
-    const glm::vec3 forward = camera.target - camera.position;
-    const float len = glm::length(forward);
-    if (!std::isfinite(len) || len <= 1e-6f) {
-        return glm::vec3{0.0f, 0.0f, -1.0f};
-    }
-    return forward / len;
-}
-
-glm::vec3 normalizeDirectionOrFallback(const glm::vec3& value, const glm::vec3& fallback) {
-    const float len = glm::length(value);
-    if (!std::isfinite(len) || len <= 1e-6f) {
-        return fallback;
-    }
-    return value / len;
-}
-
-float maxTransformScale(const glm::mat4& transform) {
-    const float sx = glm::length(glm::vec3(transform[0]));
-    const float sy = glm::length(glm::vec3(transform[1]));
-    const float sz = glm::length(glm::vec3(transform[2]));
-    return std::max(sx, std::max(sy, sz));
-}
-
-void computeWorldShadowSphere(const glm::mat4& transform,
-                              const glm::vec3& local_center,
-                              float local_radius,
-                              glm::vec3& out_center,
-                              float& out_radius) {
-    const glm::vec4 world_center = transform * glm::vec4(local_center, 1.0f);
-    out_center = glm::vec3(world_center);
-    const float scale = maxTransformScale(transform);
-    out_radius = std::max(0.0f, local_radius * std::max(scale, 0.0f));
-}
+using RenderableDraw = DiligentRenderableDraw;
 
 void DILIGENT_CALL_TYPE DiligentMessageCallback(Diligent::DEBUG_MESSAGE_SEVERITY severity,
                                                 const Diligent::Char* message,
@@ -318,7 +208,29 @@ class DiligentBackend final : public Backend {
         if (swapchain_) {
             swapchain_->Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
         }
-        resetShadowResources();
+        DiligentShadowState shadow_state{};
+        shadow_state.shadow_tex = std::addressof(shadow_tex_);
+        shadow_state.shadow_srv = std::addressof(shadow_srv_);
+        shadow_state.shadow_rtv = std::addressof(shadow_rtv_);
+        shadow_state.shadow_dsv = std::addressof(shadow_dsv_);
+        shadow_state.point_shadow_tex = std::addressof(point_shadow_tex_);
+        shadow_state.point_shadow_srv = std::addressof(point_shadow_srv_);
+        shadow_state.shadow_tex_size = &shadow_tex_size_;
+        shadow_state.point_shadow_tex_width = &point_shadow_tex_width_;
+        shadow_state.point_shadow_tex_height = &point_shadow_tex_height_;
+        shadow_state.shadow_tex_is_rt = &shadow_tex_is_rt_;
+        shadow_state.shadow_tex_rt_uses_depth = &shadow_tex_rt_uses_depth_;
+        shadow_state.shadow_tex_ready = &shadow_tex_ready_;
+        shadow_state.point_shadow_tex_ready = &point_shadow_tex_ready_;
+        shadow_state.cached_point_shadow_map = &cached_point_shadow_map_;
+        shadow_state.point_shadow_frames_until_update = &point_shadow_frames_until_update_;
+        shadow_state.point_shadow_slot_source_index = &point_shadow_slot_source_index_;
+        shadow_state.point_shadow_slot_position = &point_shadow_slot_position_;
+        shadow_state.point_shadow_slot_range = &point_shadow_slot_range_;
+        shadow_state.point_shadow_face_dirty = &point_shadow_face_dirty_;
+        shadow_state.point_shadow_face_cursor = &point_shadow_face_cursor_;
+        shadow_state.point_shadow_cache_initialized = &point_shadow_cache_initialized_;
+        ResetDiligentShadowResources(shadow_state);
         shadow_frames_until_update_ = 0;
         KARMA_TRACE_CHANGED(
             "render.diligent",
@@ -394,7 +306,10 @@ class DiligentBackend final : public Backend {
         auto* rtv = swapchain_->GetCurrentBackBufferRTV();
         auto* dsv = swapchain_->GetDepthBufferDSV();
         context_->SetRenderTargets(1, &rtv, dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        setViewport(static_cast<uint32_t>(std::max(1, width_)), static_cast<uint32_t>(std::max(1, height_)));
+        SetDiligentViewport(
+            context_,
+            static_cast<uint32_t>(std::max(1, width_)),
+            static_cast<uint32_t>(std::max(1, height_)));
         if (!frame_cleared_) {
             const detail::ResolvedEnvironmentLightingSemantics environment_semantics =
                 detail::ResolveEnvironmentLightingSemantics(environment_);
@@ -455,230 +370,78 @@ class DiligentBackend final : public Backend {
             camera_,
             aspect,
         };
-        const int requested_update_every_frames = std::max(1, light_.shadow.update_every_frames);
-        if (shadow_update_every_frames_ != requested_update_every_frames) {
-            shadow_update_every_frames_ = requested_update_every_frames;
-            shadow_frames_until_update_ = 0;
-            point_shadow_frames_until_update_ = 0;
-            KARMA_TRACE_CHANGED(
-                "render.diligent",
-                std::to_string(shadow_update_every_frames_),
-                "shadow update cadence everyFrames={}",
-                shadow_update_every_frames_);
-        }
-        const glm::vec3 current_camera_forward = resolveCameraForward(camera_);
-        const glm::vec3 current_light_direction =
-            normalizeDirectionOrFallback(light_.direction, cached_shadow_light_direction_);
-        bool shadow_inputs_changed = false;
-        bool point_shadow_structural_change = false;
-        std::vector<glm::vec4> moved_point_shadow_caster_bounds{};
-        if (world_layer) {
-            if (!shadow_cache_inputs_valid_) {
-                shadow_inputs_changed = true;
-                point_shadow_structural_change = true;
-            } else if (glm::length(camera_.position - cached_shadow_camera_position_) >
-                       directional_shadow_position_threshold_) {
-                shadow_inputs_changed = true;
-            } else if (directionChangedBeyondThreshold(
-                           current_camera_forward,
-                           cached_shadow_camera_forward_,
-                           directional_shadow_angle_threshold_deg_)) {
-                shadow_inputs_changed = true;
-            } else if (directionChangedBeyondThreshold(
-                           current_light_direction,
-                           cached_shadow_light_direction_,
-                           directional_shadow_angle_threshold_deg_)) {
-                shadow_inputs_changed = true;
-            } else if (std::abs(aspect - cached_shadow_camera_aspect_) > 1e-3f) {
-                shadow_inputs_changed = true;
-            } else if (std::abs(camera_.fov_y_degrees - cached_shadow_camera_fov_y_degrees_) > 1e-3f) {
-                shadow_inputs_changed = true;
-            } else if (std::abs(camera_.near_clip - cached_shadow_camera_near_) > 1e-4f) {
-                shadow_inputs_changed = true;
-            } else if (std::abs(camera_.far_clip - cached_shadow_camera_far_) > 1e-2f) {
-                shadow_inputs_changed = true;
-            } else if (current_shadow_items.size() != previous_shadow_items_.size()) {
-                shadow_inputs_changed = true;
-                point_shadow_structural_change = true;
-            } else {
-                for (std::size_t i = 0; i < current_shadow_items.size(); ++i) {
-                    const renderer::DrawItem& curr = current_shadow_items[i];
-                    const renderer::DrawItem& prev = previous_shadow_items_[i];
-                    if (curr.mesh != prev.mesh ||
-                        curr.material != prev.material ||
-                        curr.layer != prev.layer ||
-                        curr.casts_shadow != prev.casts_shadow) {
-                        shadow_inputs_changed = true;
-                        point_shadow_structural_change = true;
-                        break;
-                    }
-                    if (matrixChangedBeyondEpsilon(curr.transform, prev.transform)) {
-                        shadow_inputs_changed = true;
-                        if (!curr.casts_shadow) {
-                            continue;
-                        }
-                        auto mesh_it = meshes_.find(curr.mesh);
-                        auto mat_it = materials_.find(curr.material);
-                        if (mesh_it == meshes_.end() ||
-                            mat_it == materials_.end() ||
-                            mat_it->second.semantics.alpha_blend ||
-                            mesh_it->second.shadow_radius <= 0.0f) {
-                            point_shadow_structural_change = true;
-                            continue;
-                        }
-                        glm::vec3 world_center{0.0f, 0.0f, 0.0f};
-                        float world_radius = 0.0f;
-                        computeWorldShadowSphere(
-                            curr.transform,
-                            mesh_it->second.shadow_center,
-                            mesh_it->second.shadow_radius,
-                            world_center,
-                            world_radius);
-                        moved_point_shadow_caster_bounds.emplace_back(world_center, world_radius);
-                    }
-                }
-            }
-        }
-        if (world_layer &&
-            shadow_cache_inputs_valid_ &&
-            current_shadow_items.size() == previous_shadow_items_.size() &&
-            moved_point_shadow_caster_bounds.empty() &&
-            !point_shadow_structural_change) {
-            for (std::size_t i = 0; i < current_shadow_items.size(); ++i) {
-                const renderer::DrawItem& curr = current_shadow_items[i];
-                const renderer::DrawItem& prev = previous_shadow_items_[i];
-                if (curr.mesh != prev.mesh ||
-                    curr.material != prev.material ||
-                    curr.layer != prev.layer ||
-                    curr.casts_shadow != prev.casts_shadow) {
-                    point_shadow_structural_change = true;
-                    break;
-                }
-                if (!matrixChangedBeyondEpsilon(curr.transform, prev.transform) ||
-                    !curr.casts_shadow) {
-                    continue;
-                }
-                auto mesh_it = meshes_.find(curr.mesh);
-                auto mat_it = materials_.find(curr.material);
-                if (mesh_it == meshes_.end() ||
-                    mat_it == materials_.end() ||
-                    mat_it->second.semantics.alpha_blend ||
-                    mesh_it->second.shadow_radius <= 0.0f) {
-                    point_shadow_structural_change = true;
-                    continue;
-                }
-                glm::vec3 world_center{0.0f, 0.0f, 0.0f};
-                float world_radius = 0.0f;
-                computeWorldShadowSphere(
-                    curr.transform,
-                    mesh_it->second.shadow_center,
-                    mesh_it->second.shadow_radius,
-                    world_center,
-                    world_radius);
-                moved_point_shadow_caster_bounds.emplace_back(world_center, world_radius);
-            }
-        }
-        if (world_layer &&
-            (!shadow_cache_inputs_valid_ ||
-             current_shadow_items.size() != previous_shadow_items_.size())) {
-            point_shadow_structural_change = true;
-        }
-        const bool gpu_shadow_capable =
-            shadow_depth_pso_ && world_layer && !shadow_casters.empty();
-        const bool use_gpu_shadow_path =
-            gpu_shadow_requested && shadow_semantics.enabled && gpu_shadow_capable;
-        if (gpu_shadow_requested && shadow_semantics.enabled && world_layer && !use_gpu_shadow_path) {
-            const char* reason = "gpu_shadow_pass_not_implemented";
-            if (!shadow_depth_pso_) {
-                reason = "gpu_shadow_pipeline_unavailable";
-            } else if (shadow_casters.empty()) {
-                reason = "gpu_shadow_no_casters";
-            }
-            KARMA_TRACE_CHANGED(
-                "render.diligent",
-                std::to_string(layer) + ":" + reason,
-                "shadow execution mode requested={} active={} reason={}",
-                renderer::DirectionalLightData::ShadowExecutionModeToken(light_.shadow.execution_mode),
-                renderer::DirectionalLightData::ShadowExecutionModeToken(
-                    renderer::DirectionalLightData::ShadowExecutionMode::CpuReference),
-                reason);
-        }
-        if (!shadow_semantics.enabled) {
-            shadow_frames_until_update_ = 0;
-            cached_shadow_map_ = detail::DirectionalShadowMap{};
-            cached_shadow_cascades_ = detail::DirectionalShadowCascadeSet{};
-            shadow_tex_ready_ = false;
-            shadow_cache_inputs_valid_ = false;
-            previous_shadow_items_.clear();
-        } else if (world_layer && shadow_casters.empty()) {
-            shadow_frames_until_update_ = 0;
-            cached_shadow_map_ = detail::DirectionalShadowMap{};
-            cached_shadow_cascades_ = detail::DirectionalShadowCascadeSet{};
-            shadow_tex_ready_ = false;
-            shadow_cache_inputs_valid_ = false;
-            previous_shadow_items_.clear();
-        } else if (world_layer && !shadow_casters.empty()) {
-            if (shadow_frames_until_update_ <= 0 ||
-                shadow_inputs_changed ||
-                !cached_shadow_map_.ready ||
-                cached_shadow_map_.size != shadow_semantics.map_size) {
-                if (use_gpu_shadow_path) {
-                    cached_shadow_cascades_ = detail::BuildDirectionalShadowCascades(
-                        shadow_semantics,
-                        light_.direction,
-                        shadow_casters,
-                        shadow_view);
-                    shadow_tex_ready_ = renderGpuShadowMap(cached_shadow_cascades_, renderables);
-                    if (!shadow_tex_ready_) {
-                        KARMA_TRACE_CHANGED(
-                            "render.diligent",
-                            std::to_string(layer) + ":gpu_shadow_render_failed",
-                            "shadow execution mode requested={} active={} reason={}",
-                            renderer::DirectionalLightData::ShadowExecutionModeToken(light_.shadow.execution_mode),
-                            renderer::DirectionalLightData::ShadowExecutionModeToken(
-                                renderer::DirectionalLightData::ShadowExecutionMode::CpuReference),
-                            "gpu_shadow_render_failed");
-                        cached_shadow_map_ = detail::BuildDirectionalShadowMap(
-                            shadow_semantics,
-                            light_.direction,
-                            shadow_casters,
-                            &shadow_view);
-                        updateShadowTexture(cached_shadow_map_);
-                        cached_shadow_cascades_ =
-                            detail::BuildDirectionalShadowCascadeSetFromSingleMap(cached_shadow_map_);
-                    } else {
-                        cached_shadow_map_ = detail::BuildDirectionalShadowProjection(
-                            shadow_semantics,
-                            light_.direction,
-                            shadow_casters,
-                            &shadow_view);
-                    }
-                } else {
-                    cached_shadow_map_ = detail::BuildDirectionalShadowMap(
-                        shadow_semantics,
-                        light_.direction,
-                        shadow_casters,
-                        &shadow_view);
-                    updateShadowTexture(cached_shadow_map_);
-                    cached_shadow_cascades_ =
-                        detail::BuildDirectionalShadowCascadeSetFromSingleMap(cached_shadow_map_);
-                }
-                shadow_frames_until_update_ = shadow_update_every_frames_ - 1;
-            } else {
-                --shadow_frames_until_update_;
-            }
-            previous_shadow_items_ = std::move(current_shadow_items);
-            cached_shadow_camera_position_ = camera_.position;
-            cached_shadow_camera_forward_ = current_camera_forward;
-            cached_shadow_light_direction_ = current_light_direction;
-            cached_shadow_camera_aspect_ = aspect;
-            cached_shadow_camera_fov_y_degrees_ = camera_.fov_y_degrees;
-            cached_shadow_camera_near_ = camera_.near_clip;
-            cached_shadow_camera_far_ = camera_.far_clip;
-            shadow_cache_inputs_valid_ = true;
-        }
+        DiligentShadowState shadow_state{};
+        shadow_state.device = device_;
+        shadow_state.context = context_;
+        shadow_state.shadow_depth_pso = shadow_depth_pso_;
+        shadow_state.shadow_depth_srb = shadow_depth_srb_;
+        shadow_state.constant_buffer = constant_buffer_;
+        shadow_state.shadow_tex = std::addressof(shadow_tex_);
+        shadow_state.shadow_srv = std::addressof(shadow_srv_);
+        shadow_state.shadow_rtv = std::addressof(shadow_rtv_);
+        shadow_state.shadow_dsv = std::addressof(shadow_dsv_);
+        shadow_state.point_shadow_tex = std::addressof(point_shadow_tex_);
+        shadow_state.point_shadow_srv = std::addressof(point_shadow_srv_);
+        shadow_state.shadow_tex_size = &shadow_tex_size_;
+        shadow_state.point_shadow_tex_width = &point_shadow_tex_width_;
+        shadow_state.point_shadow_tex_height = &point_shadow_tex_height_;
+        shadow_state.shadow_tex_is_rt = &shadow_tex_is_rt_;
+        shadow_state.shadow_tex_rt_uses_depth = &shadow_tex_rt_uses_depth_;
+        shadow_state.shadow_tex_ready = &shadow_tex_ready_;
+        shadow_state.point_shadow_tex_ready = &point_shadow_tex_ready_;
+        shadow_state.cached_shadow_map = &cached_shadow_map_;
+        shadow_state.cached_shadow_cascades = &cached_shadow_cascades_;
+        shadow_state.cached_point_shadow_map = &cached_point_shadow_map_;
+        shadow_state.shadow_update_every_frames = &shadow_update_every_frames_;
+        shadow_state.shadow_frames_until_update = &shadow_frames_until_update_;
+        shadow_state.point_shadow_frames_until_update = &point_shadow_frames_until_update_;
+        shadow_state.point_shadow_slot_source_index = &point_shadow_slot_source_index_;
+        shadow_state.point_shadow_slot_position = &point_shadow_slot_position_;
+        shadow_state.point_shadow_slot_range = &point_shadow_slot_range_;
+        shadow_state.point_shadow_face_dirty = &point_shadow_face_dirty_;
+        shadow_state.point_shadow_face_cursor = &point_shadow_face_cursor_;
+        shadow_state.point_shadow_cache_initialized = &point_shadow_cache_initialized_;
+        shadow_state.point_shadow_position_threshold = point_shadow_position_threshold_;
+        shadow_state.point_shadow_range_threshold = point_shadow_range_threshold_;
+        shadow_state.previous_shadow_items = &previous_shadow_items_;
+        shadow_state.shadow_cache_inputs_valid = &shadow_cache_inputs_valid_;
+        shadow_state.cached_shadow_camera_position = &cached_shadow_camera_position_;
+        shadow_state.cached_shadow_camera_forward = &cached_shadow_camera_forward_;
+        shadow_state.cached_shadow_light_direction = &cached_shadow_light_direction_;
+        shadow_state.cached_shadow_camera_aspect = &cached_shadow_camera_aspect_;
+        shadow_state.cached_shadow_camera_fov_y_degrees = &cached_shadow_camera_fov_y_degrees_;
+        shadow_state.cached_shadow_camera_near = &cached_shadow_camera_near_;
+        shadow_state.cached_shadow_camera_far = &cached_shadow_camera_far_;
+        shadow_state.directional_shadow_position_threshold = directional_shadow_position_threshold_;
+        shadow_state.directional_shadow_angle_threshold_deg = directional_shadow_angle_threshold_deg_;
+
+        const DiligentDirectionalShadowUpdateResult directional_shadow_update =
+            UpdateDiligentDirectionalShadowCache(
+                shadow_state,
+                layer,
+                camera_,
+                light_,
+                world_layer,
+                gpu_shadow_requested,
+                shadow_semantics,
+                aspect,
+                shadow_view,
+                renderables,
+                shadow_casters,
+                current_shadow_items,
+                meshes_,
+                materials_);
+        const glm::vec3 current_camera_forward = directional_shadow_update.current_camera_forward;
+        const bool point_shadow_structural_change =
+            directional_shadow_update.point_shadow_structural_change;
+        const std::vector<glm::vec4>& moved_point_shadow_caster_bounds =
+            directional_shadow_update.moved_point_shadow_caster_bounds;
+
         context_->SetRenderTargets(1, &rtv, dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        setViewport(static_cast<uint32_t>(std::max(1, width_)), static_cast<uint32_t>(std::max(1, height_)));
+        SetDiligentViewport(
+            context_,
+            static_cast<uint32_t>(std::max(1, width_)),
+            static_cast<uint32_t>(std::max(1, height_)));
         const detail::DirectionalShadowCascadeSet active_shadow_cascades =
             cached_shadow_cascades_.ready
                 ? cached_shadow_cascades_
@@ -820,169 +583,21 @@ class DiligentBackend final : public Backend {
         }
         const std::vector<int> point_shadow_selected_indices =
             detail::SelectPointShadowLightIndices(shadow_semantics, lights_);
-        const int point_shadow_selected = static_cast<int>(point_shadow_selected_indices.size());
-        std::array<uint8_t, kPointShadowMatrixCount> point_shadow_faces_to_update{};
-        point_shadow_faces_to_update.fill(0u);
-        int point_shadow_dirty_faces = 0;
-        int point_shadow_updated_faces = 0;
-        const int point_shadow_budget = std::clamp(shadow_semantics.point_faces_per_frame_budget, 1, 24);
-        bool point_shadow_full_refresh = false;
-        if (!shadow_semantics.enabled ||
-            shadow_semantics.point_max_shadow_lights <= 0 ||
-            point_shadow_selected <= 0 ||
-            (world_layer && shadow_casters.empty())) {
-            resetPointShadowCacheState();
-        } else if (world_layer) {
-            const int active_face_count = point_shadow_selected * detail::kPointShadowFaceCount;
-            const bool layout_compatible = detail::IsPointShadowMapLayoutCompatible(
-                cached_point_shadow_map_,
-                shadow_semantics.point_map_size,
-                point_shadow_selected_indices);
-            if (!layout_compatible) {
-                point_shadow_cache_initialized_ = false;
-                point_shadow_face_dirty_.fill(1u);
-                point_shadow_full_refresh = true;
-            }
-
-            auto mark_point_shadow_slot_dirty = [&](int slot) {
-                if (slot < 0 || slot >= static_cast<int>(kMaxPointShadowLights)) {
-                    return;
-                }
-                const int face_base = slot * detail::kPointShadowFaceCount;
-                for (int face = 0; face < detail::kPointShadowFaceCount; ++face) {
-                    const int matrix_idx = face_base + face;
-                    if (matrix_idx < 0 ||
-                        matrix_idx >= static_cast<int>(kPointShadowMatrixCount)) {
-                        continue;
-                    }
-                    point_shadow_face_dirty_[static_cast<std::size_t>(matrix_idx)] = 1u;
-                }
-            };
-
-            for (int slot = 0; slot < point_shadow_selected; ++slot) {
-                const int source_idx = point_shadow_selected_indices[static_cast<std::size_t>(slot)];
-                if (source_idx < 0 || source_idx >= static_cast<int>(lights_.size())) {
-                    continue;
-                }
-                const renderer::LightData& light = lights_[static_cast<std::size_t>(source_idx)];
-                const bool slot_identity_changed =
-                    point_shadow_slot_source_index_[static_cast<std::size_t>(slot)] != source_idx;
-                const bool slot_position_changed =
-                    glm::length(light.position - point_shadow_slot_position_[static_cast<std::size_t>(slot)]) >
-                    point_shadow_position_threshold_;
-                const bool slot_range_changed =
-                    std::fabs(light.range - point_shadow_slot_range_[static_cast<std::size_t>(slot)]) >
-                    point_shadow_range_threshold_;
-                if (!point_shadow_cache_initialized_ || slot_identity_changed) {
-                    mark_point_shadow_slot_dirty(slot);
-                    point_shadow_full_refresh = true;
-                } else if (slot_position_changed || slot_range_changed) {
-                    mark_point_shadow_slot_dirty(slot);
-                }
-                point_shadow_slot_source_index_[static_cast<std::size_t>(slot)] = source_idx;
-                point_shadow_slot_position_[static_cast<std::size_t>(slot)] = light.position;
-                point_shadow_slot_range_[static_cast<std::size_t>(slot)] = light.range;
-            }
-            for (int slot = point_shadow_selected;
-                 slot < static_cast<int>(kMaxPointShadowLights);
-                 ++slot) {
-                point_shadow_slot_source_index_[static_cast<std::size_t>(slot)] = -1;
-                point_shadow_slot_position_[static_cast<std::size_t>(slot)] = glm::vec3(0.0f, 0.0f, 0.0f);
-                point_shadow_slot_range_[static_cast<std::size_t>(slot)] = 0.0f;
-            }
-
-            if (point_shadow_structural_change) {
-                point_shadow_full_refresh = true;
-                for (int slot = 0; slot < point_shadow_selected; ++slot) {
-                    mark_point_shadow_slot_dirty(slot);
-                }
-            } else if (!moved_point_shadow_caster_bounds.empty()) {
-                for (int slot = 0; slot < point_shadow_selected; ++slot) {
-                    const int source_idx =
-                        point_shadow_selected_indices[static_cast<std::size_t>(slot)];
-                    if (source_idx < 0 || source_idx >= static_cast<int>(lights_.size())) {
-                        continue;
-                    }
-                    const renderer::LightData& point_light =
-                        lights_[static_cast<std::size_t>(source_idx)];
-                    const float light_range = std::max(point_light.range, 0.0f);
-                    bool affects_slot = false;
-                    for (const glm::vec4& caster_sphere : moved_point_shadow_caster_bounds) {
-                        const glm::vec3 delta = glm::vec3(caster_sphere) - point_light.position;
-                        const float influence_radius = light_range + std::max(caster_sphere.w, 0.0f);
-                        if (influence_radius <= 0.0f) {
-                            continue;
-                        }
-                        if (glm::dot(delta, delta) <= influence_radius * influence_radius) {
-                            affects_slot = true;
-                            break;
-                        }
-                    }
-                    if (affects_slot) {
-                        mark_point_shadow_slot_dirty(slot);
-                    }
-                }
-            }
-
-            for (int idx = 0; idx < active_face_count; ++idx) {
-                point_shadow_dirty_faces +=
-                    point_shadow_face_dirty_[static_cast<std::size_t>(idx)] != 0u ? 1 : 0;
-            }
-
-            if (point_shadow_full_refresh) {
-                for (int idx = 0; idx < active_face_count; ++idx) {
-                    if (point_shadow_face_dirty_[static_cast<std::size_t>(idx)] == 0u) {
-                        continue;
-                    }
-                    point_shadow_faces_to_update[static_cast<std::size_t>(idx)] = 1u;
-                    ++point_shadow_updated_faces;
-                }
-            } else {
-                int visited = 0;
-                const uint32_t cursor_mod =
-                    static_cast<uint32_t>(std::max(active_face_count, 1));
-                while (point_shadow_updated_faces < point_shadow_budget &&
-                       visited < active_face_count) {
-                    const int matrix_idx =
-                        static_cast<int>(point_shadow_face_cursor_ % cursor_mod);
-                    point_shadow_face_cursor_ = (point_shadow_face_cursor_ + 1u) % cursor_mod;
-                    ++visited;
-                    if (point_shadow_face_dirty_[static_cast<std::size_t>(matrix_idx)] == 0u) {
-                        continue;
-                    }
-                    point_shadow_faces_to_update[static_cast<std::size_t>(matrix_idx)] = 1u;
-                    ++point_shadow_updated_faces;
-                }
-            }
-
-            if (!layout_compatible ||
-                point_shadow_updated_faces > 0 ||
-                !point_shadow_cache_initialized_) {
-                std::vector<uint8_t> face_update_mask(
-                    static_cast<std::size_t>(active_face_count), 0u);
-                for (int idx = 0; idx < active_face_count; ++idx) {
-                    face_update_mask[static_cast<std::size_t>(idx)] =
-                        point_shadow_faces_to_update[static_cast<std::size_t>(idx)];
-                }
-                cached_point_shadow_map_ = detail::BuildPointShadowMap(
-                    shadow_semantics,
-                    lights_,
-                    shadow_casters,
-                    layout_compatible ? &cached_point_shadow_map_ : nullptr,
-                    &face_update_mask);
-                updatePointShadowTexture(cached_point_shadow_map_);
-                if (cached_point_shadow_map_.ready && point_shadow_tex_ready_) {
-                    for (int idx = 0; idx < active_face_count; ++idx) {
-                        if (face_update_mask[static_cast<std::size_t>(idx)] != 0u) {
-                            point_shadow_face_dirty_[static_cast<std::size_t>(idx)] = 0u;
-                        }
-                    }
-                    point_shadow_cache_initialized_ = true;
-                } else {
-                    point_shadow_cache_initialized_ = false;
-                }
-            }
-        }
+        const DiligentPointShadowUpdateResult point_shadow_update =
+            UpdateDiligentPointShadowCache(
+                shadow_state,
+                shadow_semantics,
+                world_layer,
+                lights_,
+                shadow_casters,
+                point_shadow_selected_indices,
+                point_shadow_structural_change,
+                moved_point_shadow_caster_bounds);
+        const int point_shadow_selected = point_shadow_update.point_shadow_selected;
+        const int point_shadow_dirty_faces = point_shadow_update.point_shadow_dirty_faces;
+        const int point_shadow_updated_faces = point_shadow_update.point_shadow_updated_faces;
+        const int point_shadow_budget = point_shadow_update.point_shadow_budget;
+        const bool point_shadow_full_refresh = point_shadow_update.point_shadow_full_refresh;
         int point_shadow_active = 0;
         std::array<glm::mat4, kPointShadowMatrixCount> point_shadow_uv_proj{};
         for (glm::mat4& matrix : point_shadow_uv_proj) {
@@ -1105,295 +720,51 @@ class DiligentBackend final : public Backend {
             point_shadow_full_refresh ? 1 : 0,
             point_shadow_structural_change ? 1 : 0,
             moved_point_shadow_caster_bounds.size());
-        int shadow_covered = -1;
-        if (shadow_map.ready && !shadow_map.depth.empty()) {
-            int covered = 0;
-            for (float value : shadow_map.depth) {
-                if (std::isfinite(value) && value < 0.999f) {
-                    ++covered;
-                }
-            }
-            shadow_covered = covered;
-        }
-        std::size_t direct_sampler_draws = 0u;
-        std::size_t fallback_sampler_draws = 0u;
-        std::size_t direct_contract_draws = 0u;
-        std::size_t forced_fallback_draws = 0u;
-        std::size_t unexpected_direct_draws = 0u;
-
-        for (const RenderableDraw& renderable : renderables) {
-            const auto& item = *renderable.item;
-            const auto& mesh = *renderable.mesh;
-            const auto& mat = *renderable.material;
-            const auto& semantics = mat.semantics;
-
-            auto* pipeline = pipelineForMaterial(semantics);
-            if (!pipeline || !pipeline->pso || !pipeline->srb) {
-                continue;
-            }
-            context_->SetPipelineState(pipeline->pso);
-
-            float aspect = (height_ > 0) ? float(width_) / float(height_) : 1.0f;
-            glm::mat4 view = glm::lookAt(camera_.position, camera_.target, glm::vec3(0.0f, 1.0f, 0.0f));
-            glm::mat4 proj = glm::perspective(glm::radians(camera_.fov_y_degrees), aspect, camera_.near_clip, camera_.far_clip);
-            Constants constants{};
-            constants.u_modelViewProj = proj * view * item.transform;
-            constants.u_model = item.transform;
-            const detail::ResolvedMaterialLighting lighting =
-                detail::ResolveMaterialLighting(semantics, light_, environment_semantics, 1.0f);
-            if (!detail::ValidateResolvedMaterialLighting(lighting)) {
-                continue;
-            }
-            constants.u_color = lighting.color;
-            const glm::vec3 lighting_direction = -light_.direction;
-            constants.u_lightDir = glm::vec4(lighting_direction, 0.0f);
-            constants.u_lightColor = lighting.light_color;
-            constants.u_ambientColor = lighting.ambient_color;
-            constants.u_unlit = glm::vec4(light_.unlit, 0.0f, 0.0f, 0.0f);
-            constants.u_shadowParams0 = shadow_params0;
-            constants.u_shadowParams1 = shadow_params1;
-            constants.u_shadowParams2 = shadow_params2;
-            constants.u_shadowBiasParams = shadow_bias_params;
-            constants.u_shadowAxisRight = shadow_axis_right;
-            constants.u_shadowAxisUp = shadow_axis_up;
-            constants.u_shadowAxisForward = shadow_axis_forward;
-            constants.u_shadowCascadeSplits = shadow_cascade_splits_uniform;
-            constants.u_shadowCascadeWorldTexel = shadow_cascade_world_texel_uniform;
-            constants.u_shadowCascadeParams = shadow_cascade_params_uniform;
-            constants.u_shadowCameraPosition = shadow_camera_position;
-            constants.u_shadowCameraForward = shadow_camera_forward;
-            constants.u_shadowCascadeUvProj = shadow_cascade_uv_proj;
-            constants.u_localLightCount = local_light_count_uniform;
-            constants.u_localLightParams = local_light_params_uniform;
-            constants.u_localLightPosRange = local_light_pos_range;
-            constants.u_localLightColorIntensity = local_light_color_intensity;
-            constants.u_localLightShadowSlot = local_light_shadow_slot;
-            constants.u_pointShadowParams = point_shadow_params_uniform;
-            constants.u_pointShadowAtlasTexel = point_shadow_atlas_texel_uniform;
-            constants.u_pointShadowTuning = point_shadow_tuning_uniform;
-            constants.u_pointShadowUvProj = point_shadow_uv_proj;
-            if (semantics.alpha_blend) {
-                constants.u_shadowParams0.x = 0.0f;
-                constants.u_pointShadowParams.x = 0.0f;
-                constants.u_pointShadowParams.w = 0.0f;
-            }
-
-            const bool use_direct_sampler_path =
-                supports_direct_multi_sampler_inputs_ &&
-                mat.shader_input_path == detail::MaterialShaderTextureInputPath::DirectMultiSampler;
-            const bool contract_requests_direct =
-                mat.shader_input_path == detail::MaterialShaderTextureInputPath::DirectMultiSampler;
-            if (contract_requests_direct) {
-                ++direct_contract_draws;
-            }
-            if (use_direct_sampler_path) {
-                ++direct_sampler_draws;
-            } else {
-                ++fallback_sampler_draws;
-            }
-            if (use_direct_sampler_path && !contract_requests_direct) {
-                ++unexpected_direct_draws;
-            }
-            if (!use_direct_sampler_path && contract_requests_direct) {
-                ++forced_fallback_draws;
-            }
-            constants.u_textureMode = glm::vec4(
-                (use_direct_sampler_path && mat.shader_uses_normal_input) ? 1.0f : 0.0f,
-                (use_direct_sampler_path && mat.shader_uses_occlusion_input) ? 1.0f : 0.0f,
-                0.0f,
-                0.0f);
-
-            Diligent::MapHelper<Constants> cb_data(context_, constant_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
-            *cb_data = constants;
-
-            if (pipeline->srb) {
-                if (auto* texVar = pipeline->srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_tex")) {
-                    auto texture_view = use_direct_sampler_path
-                        ? (mat.srv ? mat.srv : white_srv_)
-                        : (mat.srv ? mat.srv : mesh.srv);
-                    if (!texture_view) {
-                        texture_view = white_srv_;
-                    }
-                    texVar->Set(texture_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
-                }
-                if (auto* normalVar = pipeline->srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_normal")) {
-                    auto normal_view = (use_direct_sampler_path && mat.normal_srv) ? mat.normal_srv : white_srv_;
-                    if (!normal_view) {
-                        normal_view = white_srv_;
-                    }
-                    normalVar->Set(normal_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
-                }
-                if (auto* occlusionVar = pipeline->srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_occlusion")) {
-                    auto occlusion_view = (use_direct_sampler_path && mat.occlusion_srv) ? mat.occlusion_srv : white_srv_;
-                    if (!occlusion_view) {
-                        occlusion_view = white_srv_;
-                    }
-                    occlusionVar->Set(occlusion_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
-                }
-                if (auto* shadowVar = pipeline->srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_shadow")) {
-                    auto shadow_view = shadow_tex_ready_ ? shadow_srv_ : white_srv_;
-                    if (!shadow_view) {
-                        shadow_view = white_srv_;
-                    }
-                    shadowVar->Set(shadow_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
-                }
-                if (auto* pointShadowVar =
-                        pipeline->srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_pointShadow")) {
-                    auto point_shadow_view = point_shadow_tex_ready_ ? point_shadow_srv_ : white_srv_;
-                    if (!point_shadow_view) {
-                        point_shadow_view = white_srv_;
-                    }
-                    pointShadowVar->Set(
-                        point_shadow_view,
-                        Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
-                }
-            }
-            context_->CommitShaderResources(pipeline->srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-            const uint64_t offsets[] = {0};
-            Diligent::IBuffer* vbs[] = {mesh.vb};
-            context_->SetVertexBuffers(0, 1, vbs, offsets, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION, Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
-            context_->SetIndexBuffer(mesh.ib, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-            Diligent::DrawIndexedAttribs draw{};
-            draw.IndexType = Diligent::VT_UINT32;
-            draw.NumIndices = mesh.num_indices;
-            draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
-            context_->DrawIndexed(draw);
-        }
-        if (shadow_map.ready) {
-            const char* shadow_source = shadow_map.depth.empty() ? "gpu_projection" : "cpu_raster";
-            KARMA_TRACE_CHANGED(
-                "render.diligent",
-                std::to_string(layer) + ":" +
-                    std::to_string(shadow_map.ready ? 1 : 0) + ":" +
-                    shadow_source + ":" +
-                    std::to_string(shadow_covered) + ":" +
-                    std::to_string(shadow_map.size) + ":" +
-                    std::to_string(shadow_tex_ready_ ? 1 : 0),
-                "shadow map layer={} source={} mapReady={} covered={} size={} extent={:.1f} uploaded={}",
-                layer,
-                shadow_source,
-                shadow_map.ready ? 1 : 0,
-                shadow_covered,
-                shadow_map.size,
-                shadow_map.extent,
-                shadow_tex_ready_ ? 1 : 0);
-        }
-        KARMA_TRACE_CHANGED(
-            "render.diligent",
-            std::to_string(layer) + ":" +
-                std::to_string(renderables.size()) + ":" +
-                std::to_string(direct_sampler_draws) + ":" +
-                std::to_string(fallback_sampler_draws) + ":" +
-                std::to_string(supports_direct_multi_sampler_inputs_ ? 1 : 0) + ":" +
-                direct_sampler_disable_reason_,
-            "direct sampler frame layer={} draws={} direct={} fallback={} enabled={} reason={}",
-            layer,
-            renderables.size(),
-            direct_sampler_draws,
-            fallback_sampler_draws,
-            supports_direct_multi_sampler_inputs_ ? 1 : 0,
-            direct_sampler_disable_reason_);
-        const detail::DirectSamplerDrawInvariantReport draw_invariants =
-            detail::EvaluateDirectSamplerDrawInvariants(
-                detail::DirectSamplerDrawInvariantInput{
-                    supports_direct_multi_sampler_inputs_,
-                    renderables.size(),
-                    direct_contract_draws,
-                    direct_sampler_draws,
-                    fallback_sampler_draws,
-                    forced_fallback_draws,
-                    unexpected_direct_draws,
-                });
-        if (!draw_invariants.ok) {
-            spdlog::error(
-                "Diligent: direct sampler assertion failed (enabled={}, directContract={}, directDraws={}, fallbackDraws={}, forcedFallback={}, unexpectedDirect={}, reason={}, invariant={})",
-                supports_direct_multi_sampler_inputs_ ? 1 : 0,
-                direct_contract_draws,
-                direct_sampler_draws,
-                fallback_sampler_draws,
-                forced_fallback_draws,
-                unexpected_direct_draws,
-                direct_sampler_disable_reason_,
-                draw_invariants.reason);
-        }
-        KARMA_TRACE_CHANGED(
-            "render.diligent",
-            std::to_string(layer) + ":" +
-                std::to_string(renderables.size()) + ":" +
-                std::to_string(direct_contract_draws) + ":" +
-                std::to_string(direct_sampler_draws) + ":" +
-                std::to_string(fallback_sampler_draws) + ":" +
-                std::to_string(forced_fallback_draws) + ":" +
-                std::to_string(unexpected_direct_draws) + ":" +
-                std::to_string(draw_invariants.ok ? 1 : 0) + ":" +
-                draw_invariants.reason,
-            "direct sampler assertions layer={} draws={} contractDirect={} actualDirect={} fallback={} forcedFallback={} unexpectedDirect={} ok={} enabled={} reason={} invariant={}",
-            layer,
-            renderables.size(),
-            direct_contract_draws,
-            direct_sampler_draws,
-            fallback_sampler_draws,
-            forced_fallback_draws,
-            unexpected_direct_draws,
-            draw_invariants.ok ? 1 : 0,
-            supports_direct_multi_sampler_inputs_ ? 1 : 0,
-            direct_sampler_disable_reason_,
-            draw_invariants.reason);
-
-        if (line_pipeline_.pso && line_pipeline_.srb && line_vertex_buffer_) {
-            float aspect = (height_ > 0) ? float(width_) / float(height_) : 1.0f;
-            glm::mat4 view = glm::lookAt(camera_.position, camera_.target, glm::vec3(0.0f, 1.0f, 0.0f));
-            glm::mat4 proj = glm::perspective(glm::radians(camera_.fov_y_degrees), aspect, camera_.near_clip, camera_.far_clip);
-
-            for (const auto& line : debug_lines_) {
-                if (line.layer != layer) {
-                    continue;
-                }
-
-                context_->SetPipelineState(line_pipeline_.pso);
-                {
-                    Diligent::MapHelper<LineVertex> line_data(context_, line_vertex_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
-                    line_data[0] = LineVertex{line.start.x, line.start.y, line.start.z, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
-                    line_data[1] = LineVertex{line.end.x, line.end.y, line.end.z, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
-                }
-
-                Constants line_constants{};
-                line_constants.u_modelViewProj = proj * view;
-                line_constants.u_color = line.color;
-                line_constants.u_lightDir = glm::vec4(0.0f);
-                line_constants.u_lightColor = glm::vec4(0.0f);
-                line_constants.u_ambientColor = glm::vec4(0.0f);
-                line_constants.u_unlit = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
-                line_constants.u_textureMode = glm::vec4(0.0f);
-                Diligent::MapHelper<Constants> cb_data(context_, constant_buffer_, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD);
-                *cb_data = line_constants;
-
-                if (auto* tex_var = line_pipeline_.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_tex")) {
-                    tex_var->Set(white_srv_, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
-                }
-                if (auto* tex_var = line_pipeline_.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_normal")) {
-                    tex_var->Set(white_srv_, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
-                }
-                if (auto* tex_var = line_pipeline_.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "s_occlusion")) {
-                    tex_var->Set(white_srv_, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
-                }
-                context_->CommitShaderResources(line_pipeline_.srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-                const uint64_t offsets[] = {0};
-                Diligent::IBuffer* vbs[] = {line_vertex_buffer_};
-                context_->SetVertexBuffers(0, 1, vbs, offsets,
-                                           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-                                           Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
-                context_->SetIndexBuffer(nullptr, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-                Diligent::DrawAttribs draw{};
-                draw.NumVertices = 2;
-                draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
-                context_->Draw(draw);
-            }
-        }
+        DiligentRenderSubmissionInput render_input{};
+        render_input.layer = layer;
+        render_input.camera = &camera_;
+        render_input.width = width_;
+        render_input.height = height_;
+        render_input.light = &light_;
+        render_input.environment_semantics = &environment_semantics;
+        render_input.renderables = &renderables;
+        render_input.debug_lines = &debug_lines_;
+        render_input.shadow_map = &shadow_map;
+        render_input.supports_direct_multi_sampler_inputs = supports_direct_multi_sampler_inputs_;
+        render_input.direct_sampler_disable_reason = &direct_sampler_disable_reason_;
+        render_input.context = context_;
+        render_input.pipeline_variants = &pipeline_variants_;
+        render_input.line_pipeline = &line_pipeline_;
+        render_input.constant_buffer = constant_buffer_;
+        render_input.line_vertex_buffer = line_vertex_buffer_;
+        render_input.white_srv = std::addressof(white_srv_);
+        render_input.shadow_srv = std::addressof(shadow_srv_);
+        render_input.shadow_tex_ready = shadow_tex_ready_;
+        render_input.point_shadow_srv = std::addressof(point_shadow_srv_);
+        render_input.point_shadow_tex_ready = point_shadow_tex_ready_;
+        render_input.shadow_params0 = &shadow_params0;
+        render_input.shadow_params1 = &shadow_params1;
+        render_input.shadow_params2 = &shadow_params2;
+        render_input.shadow_bias_params = &shadow_bias_params;
+        render_input.shadow_axis_right = &shadow_axis_right;
+        render_input.shadow_axis_up = &shadow_axis_up;
+        render_input.shadow_axis_forward = &shadow_axis_forward;
+        render_input.shadow_cascade_splits_uniform = &shadow_cascade_splits_uniform;
+        render_input.shadow_cascade_world_texel_uniform = &shadow_cascade_world_texel_uniform;
+        render_input.shadow_cascade_params_uniform = &shadow_cascade_params_uniform;
+        render_input.shadow_camera_position = &shadow_camera_position;
+        render_input.shadow_camera_forward = &shadow_camera_forward;
+        render_input.shadow_cascade_uv_proj = &shadow_cascade_uv_proj;
+        render_input.local_light_count_uniform = &local_light_count_uniform;
+        render_input.local_light_params_uniform = &local_light_params_uniform;
+        render_input.local_light_pos_range = &local_light_pos_range;
+        render_input.local_light_color_intensity = &local_light_color_intensity;
+        render_input.local_light_shadow_slot = &local_light_shadow_slot;
+        render_input.point_shadow_params_uniform = &point_shadow_params_uniform;
+        render_input.point_shadow_atlas_texel_uniform = &point_shadow_atlas_texel_uniform;
+        render_input.point_shadow_tuning_uniform = &point_shadow_tuning_uniform;
+        render_input.point_shadow_uv_proj = &point_shadow_uv_proj;
+        SubmitDiligentRenderLayerDraws(render_input);
 
     }
 
@@ -1418,26 +789,12 @@ class DiligentBackend final : public Backend {
     }
 
  private:
-    struct PipelineVariant {
-        Diligent::RefCntAutoPtr<Diligent::IPipelineState> pso;
-        Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb;
-    };
-
-    struct LinePipeline {
-        Diligent::RefCntAutoPtr<Diligent::IPipelineState> pso;
-        Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb;
-    };
-
     static constexpr std::size_t kPipelineVariantCount = 4;
     static_assert(kPipelineVariantCount == detail::kDiligentMaterialVariantCount,
                   "pipeline variant count must match direct sampler observability contract");
 
     static std::size_t PipelineVariantIndex(bool alpha_blend, bool double_sided) {
         return (alpha_blend ? 2u : 0u) + (double_sided ? 1u : 0u);
-    }
-
-    PipelineVariant* pipelineForMaterial(const detail::ResolvedMaterialSemantics& semantics) {
-        return &pipeline_variants_[PipelineVariantIndex(semantics.alpha_blend, semantics.double_sided)];
     }
 
     bool hasReadyPipelines() const {
@@ -1459,28 +816,12 @@ class DiligentBackend final : public Backend {
                srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, name);
     }
 
-    void setViewport(uint32_t width, uint32_t height) {
-        if (!context_) {
-            return;
-        }
-        const uint32_t clamped_width = std::max(1u, width);
-        const uint32_t clamped_height = std::max(1u, height);
-        Diligent::Viewport viewport{};
-        viewport.TopLeftX = 0.0f;
-        viewport.TopLeftY = 0.0f;
-        viewport.Width = static_cast<float>(clamped_width);
-        viewport.Height = static_cast<float>(clamped_height);
-        viewport.MinDepth = 0.0f;
-        viewport.MaxDepth = 1.0f;
-        context_->SetViewports(1, &viewport, clamped_width, clamped_height);
-    }
-
     void createPipelineVariants() {
         Diligent::RefCntAutoPtr<Diligent::IShader> vs;
         Diligent::RefCntAutoPtr<Diligent::IShader> ps;
         if (!CreateDiligentMainPipelineShadersAndConstants(
                 device_.RawPtr(),
-                static_cast<uint32_t>(sizeof(Constants)),
+                static_cast<uint32_t>(sizeof(DiligentRenderConstants)),
                 constant_buffer_,
                 vs,
                 ps)) {
@@ -1510,7 +851,7 @@ class DiligentBackend final : public Backend {
             device_.RawPtr(),
             swapchain_.RawPtr(),
             constant_buffer_.RawPtr(),
-            static_cast<uint32_t>(sizeof(LineVertex)),
+            static_cast<uint32_t>(sizeof(DiligentLineVertex)),
             line_pipeline_.pso,
             line_pipeline_.srb,
             line_vertex_buffer_);
@@ -1521,7 +862,7 @@ class DiligentBackend final : public Backend {
                                Diligent::IShader* ps,
                                bool alpha_blend,
                                bool double_sided,
-                               PipelineVariant& out_variant) {
+                               DiligentPipelineVariant& out_variant) {
         CreateDiligentPipelineVariant(
             device_.RawPtr(),
             swapchain_.RawPtr(),
@@ -1539,452 +880,11 @@ class DiligentBackend final : public Backend {
         return CreateDiligentWhiteTexture(device_);
     }
 
-    void resetPointShadowCacheState() {
-        cached_point_shadow_map_ = detail::PointShadowMap{};
-        point_shadow_tex_ready_ = false;
-        point_shadow_frames_until_update_ = 0;
-        point_shadow_cache_initialized_ = false;
-        point_shadow_face_cursor_ = 0u;
-        point_shadow_face_dirty_.fill(1u);
-        point_shadow_slot_source_index_.fill(-1);
-        point_shadow_slot_position_.fill(glm::vec3(0.0f, 0.0f, 0.0f));
-        point_shadow_slot_range_.fill(0.0f);
-    }
-
-    bool ensureShadowTexture(uint32_t size, bool render_target) {
-        if (!device_ || size == 0u) {
-            return false;
-        }
-        const bool needs_recreate =
-            !shadow_tex_ || shadow_tex_size_ != size || shadow_tex_is_rt_ != render_target;
-        if (needs_recreate) {
-            shadow_tex_ = nullptr;
-            shadow_srv_ = nullptr;
-            shadow_rtv_ = nullptr;
-            shadow_dsv_ = nullptr;
-            shadow_tex_rt_uses_depth_ = false;
-
-            const auto create_shadow_texture =
-                [&](Diligent::TEXTURE_FORMAT format,
-                    Diligent::BIND_FLAGS bind_flags,
-                    bool rt_uses_depth) -> bool {
-                Diligent::TextureDesc desc{};
-                desc.Name = "shadow_depth_tex";
-                desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
-                desc.Width = size;
-                desc.Height = size;
-                desc.MipLevels = 1;
-                desc.Format = format;
-                desc.BindFlags = bind_flags;
-                desc.Usage = Diligent::USAGE_DEFAULT;
-                device_->CreateTexture(desc, nullptr, &shadow_tex_);
-                if (!shadow_tex_) {
-                    return false;
-                }
-                shadow_srv_ = shadow_tex_->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
-                if (render_target) {
-                    if (rt_uses_depth) {
-                        shadow_dsv_ = shadow_tex_->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
-                    } else {
-                        shadow_rtv_ = shadow_tex_->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
-                    }
-                }
-                const bool views_ready =
-                    shadow_srv_ &&
-                    (!render_target ||
-                     (rt_uses_depth ? static_cast<bool>(shadow_dsv_) : static_cast<bool>(shadow_rtv_)));
-                if (!views_ready) {
-                    shadow_tex_ = nullptr;
-                    shadow_srv_ = nullptr;
-                    shadow_rtv_ = nullptr;
-                    shadow_dsv_ = nullptr;
-                    return false;
-                }
-                shadow_tex_size_ = size;
-                shadow_tex_is_rt_ = render_target;
-                shadow_tex_rt_uses_depth_ = render_target && rt_uses_depth;
-                return true;
-            };
-
-            bool created = false;
-            if (render_target) {
-                created = create_shadow_texture(
-                    Diligent::TEX_FORMAT_D32_FLOAT,
-                    Diligent::BIND_SHADER_RESOURCE | Diligent::BIND_DEPTH_STENCIL,
-                    true);
-                if (!created) {
-                    KARMA_TRACE("render.diligent", "shadow depth attachment create failed; using color-min fallback");
-                }
-            }
-            if (!created) {
-                if (render_target) {
-                    created = create_shadow_texture(
-                        Diligent::TEX_FORMAT_R32_FLOAT,
-                        Diligent::BIND_SHADER_RESOURCE | Diligent::BIND_RENDER_TARGET,
-                        false);
-                } else {
-                    created = create_shadow_texture(
-                        Diligent::TEX_FORMAT_D32_FLOAT,
-                        Diligent::BIND_SHADER_RESOURCE,
-                        false);
-                }
-            }
-            if (!created) {
-                shadow_tex_size_ = 0u;
-                shadow_tex_is_rt_ = false;
-                shadow_tex_rt_uses_depth_ = false;
-            }
-        }
-
-        if (!shadow_tex_ || !shadow_srv_) {
-            return false;
-        }
-        if (render_target && !shadow_rtv_ && !shadow_dsv_) {
-            return false;
-        }
-        return true;
-    }
-
-    bool ensurePointShadowTexture(uint32_t width, uint32_t height) {
-        if (!device_ || width == 0u || height == 0u) {
-            return false;
-        }
-        const bool needs_recreate =
-            !point_shadow_tex_ ||
-            point_shadow_tex_width_ != width ||
-            point_shadow_tex_height_ != height;
-        if (needs_recreate) {
-            point_shadow_tex_ = nullptr;
-            point_shadow_srv_ = nullptr;
-
-            Diligent::TextureDesc desc{};
-            desc.Name = "point_shadow_atlas_tex";
-            desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
-            desc.Width = width;
-            desc.Height = height;
-            desc.MipLevels = 1;
-            desc.Format = Diligent::TEX_FORMAT_D32_FLOAT;
-            desc.BindFlags = Diligent::BIND_SHADER_RESOURCE;
-            desc.Usage = Diligent::USAGE_DEFAULT;
-            device_->CreateTexture(desc, nullptr, &point_shadow_tex_);
-            if (!point_shadow_tex_) {
-                point_shadow_tex_width_ = 0u;
-                point_shadow_tex_height_ = 0u;
-                return false;
-            }
-            point_shadow_srv_ = point_shadow_tex_->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
-            if (!point_shadow_srv_) {
-                point_shadow_tex_ = nullptr;
-                point_shadow_tex_width_ = 0u;
-                point_shadow_tex_height_ = 0u;
-                return false;
-            }
-            point_shadow_tex_width_ = width;
-            point_shadow_tex_height_ = height;
-        }
-        return point_shadow_tex_ && point_shadow_srv_;
-    }
-
-    bool renderGpuShadowMap(const detail::DirectionalShadowCascadeSet& cascades,
-                            const std::vector<RenderableDraw>& renderables) {
-        if (!context_ ||
-            !cascades.ready ||
-            cascades.map_size <= 0 ||
-            cascades.atlas_size <= 0 ||
-            !shadow_depth_pso_) {
-            return false;
-        }
-        const uint32_t cascade_size = static_cast<uint32_t>(cascades.map_size);
-        const uint32_t atlas_size = static_cast<uint32_t>(cascades.atlas_size);
-        if (!ensureShadowTexture(atlas_size, true)) {
-            return false;
-        }
-
-        const bool depth_attachment = shadow_tex_rt_uses_depth_;
-        if (depth_attachment) {
-            auto* shadow_dsv = shadow_dsv_.RawPtr();
-            context_->SetRenderTargets(0, nullptr, shadow_dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-            context_->ClearDepthStencil(
-                shadow_dsv,
-                Diligent::CLEAR_DEPTH_FLAG,
-                1.0f,
-                0,
-                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        } else {
-            auto* shadow_rtv = shadow_rtv_.RawPtr();
-            context_->SetRenderTargets(1, &shadow_rtv, nullptr, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-            const float clear[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-            context_->ClearRenderTarget(shadow_rtv, clear, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        }
-        context_->SetPipelineState(shadow_depth_pso_);
-        if (shadow_depth_srb_) {
-            context_->CommitShaderResources(shadow_depth_srb_, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        }
-
-        const detail::ShadowClipDepthTransform clip_depth =
-            detail::ResolveShadowClipDepthTransform(false);
-        const float clip_y_sign = detail::ResolveShadowClipYSign(false);
-        const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
-            detail::ResolveDirectionalShadowSemantics(light_);
-        const glm::vec4 shadow_bias_params{
-            shadow_semantics.receiver_bias_scale,
-            shadow_semantics.normal_bias_scale,
-            shadow_semantics.raster_depth_bias,
-            shadow_semantics.raster_slope_bias,
-        };
-        const glm::vec4 shadow_axis_right{
-            cascades.axis_right.x,
-            cascades.axis_right.y,
-            cascades.axis_right.z,
-            0.0f,
-        };
-        const glm::vec4 shadow_axis_up{
-            cascades.axis_up.x,
-            cascades.axis_up.y,
-            cascades.axis_up.z,
-            clip_y_sign,
-        };
-        const glm::vec4 shadow_axis_forward{
-            cascades.axis_forward.x,
-            cascades.axis_forward.y,
-            cascades.axis_forward.z,
-            0.0f,
-        };
-        const int cascade_count = std::clamp(
-            cascades.cascade_count,
-            1,
-            static_cast<int>(kDirectionalShadowCascadeCount));
-
-        std::size_t submitted = 0u;
-        std::size_t culled = 0u;
-        for (int cascade_idx = 0; cascade_idx < cascade_count; ++cascade_idx) {
-            const detail::DirectionalShadowCascade& cascade =
-                cascades.cascades[static_cast<std::size_t>(cascade_idx)];
-            if (!cascade.ready) {
-                continue;
-            }
-
-            Diligent::Viewport shadow_viewport{};
-            shadow_viewport.TopLeftX = std::floor(cascade.atlas_offset.x * static_cast<float>(atlas_size) + 0.5f);
-            shadow_viewport.TopLeftY = std::floor(cascade.atlas_offset.y * static_cast<float>(atlas_size) + 0.5f);
-            shadow_viewport.Width = static_cast<float>(cascade_size);
-            shadow_viewport.Height = static_cast<float>(cascade_size);
-            shadow_viewport.MinDepth = 0.0f;
-            shadow_viewport.MaxDepth = 1.0f;
-            context_->SetViewports(1, &shadow_viewport, atlas_size, atlas_size);
-
-            const float inv_depth_range =
-                cascade.depth_range > 1e-6f ? (1.0f / cascade.depth_range) : 1.0f;
-            const glm::vec4 shadow_params0{
-                1.0f,
-                cascades.strength,
-                cascades.bias,
-                cascades.map_size > 0
-                    ? (1.0f / static_cast<float>(cascades.map_size))
-                    : 0.0f,
-            };
-            const glm::vec4 shadow_params1{
-                cascade.extent,
-                cascade.center_x,
-                cascade.center_y,
-                cascade.min_depth,
-            };
-            const glm::vec4 shadow_params2{
-                inv_depth_range,
-                static_cast<float>(cascades.pcf_radius),
-                clip_depth.scale,
-                clip_depth.bias,
-            };
-
-            for (const RenderableDraw& renderable : renderables) {
-                const auto& item = *renderable.item;
-                const auto& semantics = renderable.material->semantics;
-                if (!item.casts_shadow || semantics.alpha_blend || !semantics.draw) {
-                    continue;
-                }
-                if (renderable.mesh->shadow_radius > 0.0f) {
-                    glm::vec3 world_center{0.0f, 0.0f, 0.0f};
-                    float world_radius = 0.0f;
-                    computeWorldShadowSphere(
-                        item.transform,
-                        renderable.mesh->shadow_center,
-                        renderable.mesh->shadow_radius,
-                        world_center,
-                        world_radius);
-                    if (!detail::IntersectsDirectionalShadowCascade(
-                            cascades,
-                            cascade_idx,
-                            world_center,
-                            world_radius)) {
-                        ++culled;
-                        continue;
-                    }
-                }
-
-                Constants constants{};
-                constants.u_model = item.transform;
-                constants.u_shadowParams0 = shadow_params0;
-                constants.u_shadowParams1 = shadow_params1;
-                constants.u_shadowParams2 = shadow_params2;
-                constants.u_shadowBiasParams = shadow_bias_params;
-                constants.u_shadowAxisRight = shadow_axis_right;
-                constants.u_shadowAxisUp = shadow_axis_up;
-                constants.u_shadowAxisForward = shadow_axis_forward;
-                Diligent::MapHelper<Constants> cb_data(
-                    context_,
-                    constant_buffer_,
-                    Diligent::MAP_WRITE,
-                    Diligent::MAP_FLAG_DISCARD);
-                *cb_data = constants;
-
-                const uint64_t offsets[] = {0};
-                Diligent::IBuffer* vbs[] = {renderable.mesh->vb};
-                context_->SetVertexBuffers(
-                    0,
-                    1,
-                    vbs,
-                    offsets,
-                    Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-                    Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
-                context_->SetIndexBuffer(renderable.mesh->ib, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-                Diligent::DrawIndexedAttribs draw{};
-                draw.IndexType = Diligent::VT_UINT32;
-                draw.NumIndices = renderable.mesh->num_indices;
-                draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
-                context_->DrawIndexed(draw);
-                ++submitted;
-            }
-        }
-
-        if (shadow_tex_) {
-            Diligent::StateTransitionDesc barrier{};
-            barrier.pResource = shadow_tex_;
-            barrier.OldState = depth_attachment
-                ? Diligent::RESOURCE_STATE_DEPTH_WRITE
-                : Diligent::RESOURCE_STATE_RENDER_TARGET;
-            barrier.NewState = Diligent::RESOURCE_STATE_SHADER_RESOURCE;
-            barrier.Flags = Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE;
-            context_->TransitionResourceStates(1, &barrier);
-        }
-
-        KARMA_TRACE_CHANGED(
-            "render.diligent",
-            std::to_string(cascades.map_size) + ":" +
-                std::to_string(cascade_count) + ":" +
-                std::to_string(submitted) + ":" +
-                std::to_string(culled) + ":" +
-                (depth_attachment ? "depth" : "color_min"),
-            "gpu shadow pass size={} cascades={} draws={} culled={} attachment={}",
-            cascades.map_size,
-            cascade_count,
-            submitted,
-            culled,
-            depth_attachment ? "depth" : "color_min");
-        return submitted > 0u;
-    }
-
-    void updateShadowTexture(const detail::DirectionalShadowMap& map) {
-        shadow_tex_ready_ = false;
-        if (!context_ || !map.ready || map.size <= 0 || map.depth.empty()) {
-            return;
-        }
-        const uint32_t size = static_cast<uint32_t>(map.size);
-        if (!ensureShadowTexture(size, false)) {
-            return;
-        }
-        const std::size_t expected = static_cast<std::size_t>(size) * static_cast<std::size_t>(size);
-        std::vector<float> upload_data(expected, 1.0f);
-        for (std::size_t i = 0; i < std::min(expected, map.depth.size()); ++i) {
-            const float value = map.depth[i];
-            upload_data[i] = std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : 1.0f;
-        }
-
-        Diligent::TextureSubResData subres{};
-        subres.pData = upload_data.data();
-        subres.Stride = static_cast<Diligent::Uint64>(size * sizeof(float));
-        Diligent::Box box{};
-        box.MinX = 0;
-        box.MinY = 0;
-        box.MinZ = 0;
-        box.MaxX = size;
-        box.MaxY = size;
-        box.MaxZ = 1;
-        context_->UpdateTexture(
-            shadow_tex_,
-            0,
-            0,
-            box,
-            subres,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        shadow_tex_ready_ = true;
-    }
-
-    void updatePointShadowTexture(const detail::PointShadowMap& map) {
-        point_shadow_tex_ready_ = false;
-        if (!context_ || !map.ready || map.atlas_width <= 0 || map.atlas_height <= 0 || map.depth.empty()) {
-            return;
-        }
-        const uint32_t width = static_cast<uint32_t>(map.atlas_width);
-        const uint32_t height = static_cast<uint32_t>(map.atlas_height);
-        if (!ensurePointShadowTexture(width, height)) {
-            return;
-        }
-        const std::size_t expected =
-            static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
-        std::vector<float> upload_data(expected, 1.0f);
-        for (std::size_t i = 0; i < std::min(expected, map.depth.size()); ++i) {
-            const float value = map.depth[i];
-            upload_data[i] = std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : 1.0f;
-        }
-
-        Diligent::TextureSubResData subres{};
-        subres.pData = upload_data.data();
-        subres.Stride = static_cast<Diligent::Uint64>(width * sizeof(float));
-        Diligent::Box box{};
-        box.MinX = 0;
-        box.MinY = 0;
-        box.MinZ = 0;
-        box.MaxX = width;
-        box.MaxY = height;
-        box.MaxZ = 1;
-        context_->UpdateTexture(
-            point_shadow_tex_,
-            0,
-            0,
-            box,
-            subres,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-        point_shadow_tex_ready_ = true;
-    }
-
-    void resetShadowResources() {
-        shadow_tex_ = nullptr;
-        shadow_srv_ = nullptr;
-        shadow_rtv_ = nullptr;
-        shadow_dsv_ = nullptr;
-        shadow_tex_size_ = 0u;
-        shadow_tex_is_rt_ = false;
-        shadow_tex_rt_uses_depth_ = false;
-        shadow_tex_ready_ = false;
-        point_shadow_tex_ = nullptr;
-        point_shadow_srv_ = nullptr;
-        point_shadow_tex_width_ = 0u;
-        point_shadow_tex_height_ = 0u;
-        resetPointShadowCacheState();
-    }
-
-    Diligent::RefCntAutoPtr<Diligent::ITextureView> createTextureView(const renderer::MeshData::TextureData& tex) {
-        return CreateDiligentTextureView(device_, tex);
-    }
-
     Diligent::RefCntAutoPtr<Diligent::IRenderDevice> device_;
     Diligent::RefCntAutoPtr<Diligent::IDeviceContext> context_;
     Diligent::RefCntAutoPtr<Diligent::ISwapChain> swapchain_;
-    std::array<PipelineVariant, kPipelineVariantCount> pipeline_variants_{};
-    LinePipeline line_pipeline_{};
+    std::array<DiligentPipelineVariant, kPipelineVariantCount> pipeline_variants_{};
+    DiligentLinePipeline line_pipeline_{};
     Diligent::RefCntAutoPtr<Diligent::IPipelineState> shadow_depth_pso_;
     Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> shadow_depth_srb_;
     Diligent::RefCntAutoPtr<Diligent::IBuffer> constant_buffer_;

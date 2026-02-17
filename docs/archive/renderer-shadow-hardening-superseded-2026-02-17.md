@@ -15,7 +15,7 @@ Shadow defects are currently the primary visual blocker and are cross-cutting (r
 
 ## Owned Paths
 - `docs/projects/renderer-shadow-hardening.md`
-- `src/engine/renderer/backends/directional_shadow_internal.hpp`
+- `src/engine/renderer/backends/internal/directional_shadow.hpp`
 - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
 - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
 - `data/bgfx/shaders/mesh/fs_mesh.sc`
@@ -158,7 +158,7 @@ Reference root: `/home/karmak/dev/bz3-rewrite/KARMA-REPO`
 ### Deep Difference Map (KARMA vs m-rewrite, Code-Level)
 | Topic | KARMA-REPO implementation | m-rewrite implementation | Why this matters |
 |---|---|---|---|
-| Shadow topology | 4-cascade texture-array CSM in Diligent (`kShadowCascadeCount = 4`) | Single directional shadow map (`directional_shadow_internal.hpp`) | Single-map is simpler but less robust across near/far ranges. |
+| Shadow topology | 4-cascade texture-array CSM in Diligent (`kShadowCascadeCount = 4`) | Single directional shadow map (`directional_shadow.hpp`) | Single-map is simpler but less robust across near/far ranges. |
 | Per-pixel shadowing | Diligent pixel shader performs compare-sampled shadow lookup | BGFX + Diligent now both run per-pixel GPU sampling in `gpu_default`; CPU reference remains available for deterministic fallback/debug | Backend parity gap for primary path is closed; visual-closeout risk is now quality tuning, not architecture mismatch. |
 | Bias model | Constant + raster + receiver + normal controls are runtime-plumbed | Same control family is now present and runtime-plumbed in rewrite (`receiver/normal/raster` + base bias) | Tuning space now matches intended parity posture; remaining work is default quality/signoff. |
 | Runtime control plane | `setShadowSettings` contract exists and is called from debug overlay | Backend interface has no `setShadowSettings`; only light struct fields and CLI/sandbox knobs | Harder to iterate safely in live runtime and easier to end up with dead/no-op config fields. |

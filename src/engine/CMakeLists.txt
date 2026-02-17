@@ -31,6 +31,8 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/network/client_reconnect_policy.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/community_heartbeat.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/heartbeat_client.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/network/content/transfer_receiver.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/network/content/transfer_sender.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/server_join_runtime.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/server_preauth.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/server_session_hooks.cpp
@@ -85,6 +87,8 @@ if(KARMA_RENDER_BACKEND_BGFX_ENABLED)
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/assets.cpp
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/textures.cpp
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/pipeline.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/shadow.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/render.cpp
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/bgfx/contracts.cpp
     )
 endif()
@@ -95,6 +99,8 @@ if(KARMA_RENDER_BACKEND_DILIGENT_ENABLED)
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/assets.cpp
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/textures.cpp
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/pipeline.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/shadow.cpp
+        ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/render.cpp
         ${PROJECT_SOURCE_DIR}/src/engine/renderer/backends/diligent/contracts.cpp
     )
 endif()

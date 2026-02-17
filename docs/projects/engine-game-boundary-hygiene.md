@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-engine-boundary-e2`
-- Status: `in progress (E0.6/E1/E2/E3 landed on build-a1; delta/package-apply extraction moved to engine content modules with thin game wrappers)`
-- Immediate next task: execute E4 by extracting transfer sender/receiver state-machine logic into engine `network/content` modules while preserving protocol adapter behavior.
+- Status: `in progress (E0.6/E1/E2/E3/E4 landed on build-a1; transfer sender/receiver extraction moved to engine network content modules with thin game wrappers)`
+- Immediate next task: execute E5 by adding an optional engine default content-sync facade and hardening BZ3 adapter adoption paths.
 - Validation gate: `./abuild.py -c -d <build-dir>` + `./scripts/test-server-net.sh <build-dir>` + `./scripts/test-engine-backends.sh <build-dir>` + `ctest --test-dir <build-dir> -R client_world_package_safety_integration_test --output-on-failure` + `./docs/scripts/lint-project-docs.sh`.
 
 ## Mission
@@ -281,6 +281,13 @@ ctest --test-dir <build-dir> -R client_world_package_safety_integration_test --o
   - `./scripts/test-engine-backends.sh build-a1` *(pass)*
   - `ctest --test-dir build-a1 -R client_world_package_safety_integration_test --output-on-failure` *(pass)*
   - `./docs/scripts/lint-project-docs.sh` *(pass)*
+- `2026-02-17`: E4 landed: extracted transfer sender/receiver state-machine logic to `include/karma/network/content/{transfer_sender,transfer_receiver}.hpp` and `src/engine/network/content/{transfer_sender,transfer_receiver}.cpp`; migrated `src/game/server/net/transport_event_source/send.cpp` and `src/game/client/net/connection/inbound/world_transfer.cpp` to thin protocol adapters over engine transfer APIs.
+- `2026-02-17`: E4 validation on `build-a1`:
+  - `./abuild.py -c -d build-a1` *(pass)*
+  - `./scripts/test-server-net.sh build-a1` *(pass)*
+  - `./scripts/test-engine-backends.sh build-a1` *(pass)*
+  - `ctest --test-dir build-a1 -R client_world_package_safety_integration_test --output-on-failure` *(pass)*
+  - `./docs/scripts/lint-project-docs.sh` *(pass)*
 
 ## Open Questions
 - Should `world::*` namespace be retained as compatibility shims only during migration, with target APIs moving to `karma::content`?
@@ -296,3 +303,4 @@ ctest --test-dir <build-dir> -R client_world_package_safety_integration_test --o
 - [x] E1 primitive extraction implemented and validated.
 - [x] E2 manifest/cache extraction implemented with engine-owned modules and thin game wrappers.
 - [x] E3 delta/package-apply extraction implemented with engine-owned modules and thin game wrappers.
+- [x] E4 transfer sender/receiver extraction implemented with engine-owned modules and thin game wrappers.

@@ -34,9 +34,9 @@
     - `data/bgfx/shaders/mesh/fs_mesh.sc`
     - `data/bgfx/shaders/shadow/vs_shadow_depth.sc`
     - `include/karma/renderer/types.hpp`
-    - `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
-    - `src/engine/renderer/backends/diligent/backend_diligent.cpp`
-    - `src/engine/renderer/backends/directional_shadow_internal.hpp`
+    - `src/engine/renderer/backends/bgfx/core.cpp`
+    - `src/engine/renderer/backends/diligent/core.cpp`
+    - `src/engine/renderer/backends/internal/directional_shadow.hpp`
   - Rebuilt `build-a5` and re-ran canonical `gpu_default` sandbox recipes.
 - Current visual outcome:
   - BGFX and Diligent are mostly back to expected shadow behavior under canonical sandbox motion recipe.
@@ -103,9 +103,9 @@ Implement every lighting/shadow technique that is actively used in KARMA demo pa
 
 ## Owned Paths
 - `docs/projects/karma-lighting-shadow-parity.md`
-- `src/engine/renderer/backends/directional_shadow_internal.hpp`
-- `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`
-- `src/engine/renderer/backends/diligent/backend_diligent.cpp`
+- `src/engine/renderer/backends/internal/directional_shadow.hpp`
+- `src/engine/renderer/backends/bgfx/core.cpp`
+- `src/engine/renderer/backends/diligent/core.cpp`
 - `data/bgfx/shaders/mesh/fs_mesh.sc`
 - `src/engine/renderer/tests/renderer_shadow_sandbox.cpp`
 - `src/engine/renderer/render_system.cpp`
@@ -145,14 +145,14 @@ Legend:
 
 | Area | KARMA-REPO (active demo path) | m-rewrite state | Gap |
 |---|---|---|---|
-| Directional shadow topology | 4-cascade CSM array with split logic + transition blending (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`, `src/renderer/backends/diligent/backend_init.cpp`) | 4-cascade CSM atlas + metadata wired in rewrite shared internals and both backends (`src/engine/renderer/backends/directional_shadow_internal.hpp`, `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`, `data/bgfx/shaders/mesh/fs_mesh.sc`) | `Partial` (topology/stability landed; downstream quality/perf work remains) |
-| CSM stability policy | Texel-snapped cascade fit + cached matrices/splits + camera/light threshold invalidation (`src/renderer/backends/diligent/backend_render.cpp`) | Texel-snapped per-cascade fit + lambda splits + transition blending now implemented; single-map fallback retained for stabilization (`src/engine/renderer/backends/directional_shadow_internal.hpp`) | `Partial` (slice complete; later quality/parity deltas tracked in downstream slices) |
-| Directional shadow sampling | Hardware compare sampling (`SamplerComparisonState`, `SampleCmpLevelZero`) + optional PCF loop (`src/renderer/backends/diligent/backend_init.cpp`) | Hardware compare path landed in BGFX and Diligent shadow sampling flows (sampler compare state + PCF loops maintained) (`data/bgfx/shaders/mesh/fs_mesh.sc`, `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`) | `Landed` (`P0-S2`) |
-| Point shadow sampling | Hardware compare sampling for point shadows (`SampleCmpLevelZero` on point map) | Hardware compare path landed for point shadow map sampling in both backends, including compare-capable texture/sampler setup (`data/bgfx/shaders/mesh/fs_mesh.sc`, `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`) | `Landed` (`P0-S2`) |
+| Directional shadow topology | 4-cascade CSM array with split logic + transition blending (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`, `src/renderer/backends/diligent/backend_init.cpp`) | 4-cascade CSM atlas + metadata wired in rewrite shared internals and both backends (`src/engine/renderer/backends/internal/directional_shadow.hpp`, `src/engine/renderer/backends/bgfx/core.cpp`, `src/engine/renderer/backends/diligent/core.cpp`, `data/bgfx/shaders/mesh/fs_mesh.sc`) | `Partial` (topology/stability landed; downstream quality/perf work remains) |
+| CSM stability policy | Texel-snapped cascade fit + cached matrices/splits + camera/light threshold invalidation (`src/renderer/backends/diligent/backend_render.cpp`) | Texel-snapped per-cascade fit + lambda splits + transition blending now implemented; single-map fallback retained for stabilization (`src/engine/renderer/backends/internal/directional_shadow.hpp`) | `Partial` (slice complete; later quality/parity deltas tracked in downstream slices) |
+| Directional shadow sampling | Hardware compare sampling (`SamplerComparisonState`, `SampleCmpLevelZero`) + optional PCF loop (`src/renderer/backends/diligent/backend_init.cpp`) | Hardware compare path landed in BGFX and Diligent shadow sampling flows (sampler compare state + PCF loops maintained) (`data/bgfx/shaders/mesh/fs_mesh.sc`, `src/engine/renderer/backends/bgfx/core.cpp`, `src/engine/renderer/backends/diligent/core.cpp`) | `Landed` (`P0-S2`) |
+| Point shadow sampling | Hardware compare sampling for point shadows (`SampleCmpLevelZero` on point map) | Hardware compare path landed for point shadow map sampling in both backends, including compare-capable texture/sampler setup (`data/bgfx/shaders/mesh/fs_mesh.sc`, `src/engine/renderer/backends/bgfx/core.cpp`, `src/engine/renderer/backends/diligent/core.cpp`) | `Landed` (`P0-S2`) |
 | Rasterizer depth/slope bias usage | Shadow raster state consumes `shadow_raster_depth_bias` + `shadow_raster_slope_bias` (`src/renderer/backends/diligent/backend_init.cpp`) | Bias values are plumbed into semantics/uniforms, but not applied as rasterizer state in rewrite backends | `Partial` |
-| Point-shadow generation path | GPU depth rendering per face with per-face DSVs + dirty-face scheduling (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`) | CPU rasterized atlas build (`BuildPointShadowMap`) then uploaded each update cycle (`src/engine/renderer/backends/directional_shadow_internal.hpp`, backend `BuildPointShadowMap` call sites) | `Missing` |
+| Point-shadow generation path | GPU depth rendering per face with per-face DSVs + dirty-face scheduling (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`) | CPU rasterized atlas build (`BuildPointShadowMap`) then uploaded each update cycle (`src/engine/renderer/backends/internal/directional_shadow.hpp`, backend `BuildPointShadowMap` call sites) | `Missing` |
 | Local light scalability | Forward+ local light clustering (compute path + CPU fallback), runtime tile/max controls (`src/renderer/backends/diligent/backend_init.cpp`, `src/renderer/backends/diligent/backend_render.cpp`) | Fixed-size local light array (`kMaxLocalLights = 4`) in both backends; no Forward+ path or controls | `Missing` |
-| Environment lighting source | HDR environment-map pipeline: equirect -> cubemap, irradiance, prefilter, BRDF LUT, skybox render (`src/renderer/backends/diligent/backend_render.cpp`, `backend_mesh.cpp`) | Hemispherical sky/ground ambient approximation only; no env map ingestion/prefilter/BRDF LUT pipeline (`src/engine/renderer/backends/environment_lighting_internal.hpp`) | `Missing` |
+| Environment lighting source | HDR environment-map pipeline: equirect -> cubemap, irradiance, prefilter, BRDF LUT, skybox render (`src/renderer/backends/diligent/backend_render.cpp`, `backend_mesh.cpp`) | Hemispherical sky/ground ambient approximation only; no env map ingestion/prefilter/BRDF LUT pipeline (`src/engine/renderer/backends/internal/environment_lighting.hpp`) | `Missing` |
 | PBR + IBL shading | Shader path uses full material + IBL textures and tone mapping (`src/renderer/backends/diligent/backend_init.cpp`) | Simplified shading path; no KARMA-equivalent IBL integration | `Missing` |
 | Exposure control | Runtime `setExposure` API wired from EngineConfig + debug overlay (`include/karma/renderer/backend.hpp`, `src/app/engine_app.cpp`, `src/debug/debug_overlay.cpp`) | No exposure API in rewrite backend/device interface; no exposure control plumbing | `Missing` |
 | Renderer runtime control plane | `setGenerateMips`, `setEnvironmentMap`, `setAnisotropy`, `setForwardPlusSettings`, `setShadowSettings`, `setPointShadowSettings`, `setLocalLightingSettings`, `setExposure` are backend/device contracts | Rewrite interface only exposes camera, directional light, local lights, environment-lighting struct (`include/karma/renderer/backend.hpp`, `include/karma/renderer/device.hpp`) | `Missing` |

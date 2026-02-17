@@ -1,6 +1,6 @@
 #include "internal.hpp"
 
-#include "../direct_sampler_observability_internal.hpp"
+#include "../internal/direct_sampler_observability.hpp"
 
 #include "karma/common/data_path_resolver.hpp"
 

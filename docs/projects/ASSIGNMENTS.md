@@ -15,18 +15,16 @@ Strategic tracking:
 |---|---|---|---|---|
 | `content-mount.md` | `unassigned` | `queued (handoff-ready; shared unblocker slices landed)` | `shared unblocker`: harden delta-selection policy with trace-backed tuning and one bounded regression. | `2026-02-16` |
 | `core-engine-infrastructure.md` | `overseer` | `in progress` | Keep implementation sequencing aligned to `docs/foundation/architecture/core-engine-contracts.md` as active tracks land. | `2026-02-12` |
-| `engine-game-boundary-hygiene.md` | `specialist-engine-boundary-e2` | `in progress (E0.6/E1/E2/E3 landed on build-a1; delta/package-apply extraction moved to engine modules with thin wrappers)` | `shared unblocker`: execute E4 transfer sender/receiver state-machine extraction into `network/content` while keeping game protocol wrappers thin. | `2026-02-17` |
+| `engine-game-boundary-hygiene.md` | `specialist-engine-boundary-e2` | `in progress (E0.6/E1/E2/E3/E4 landed on build-a1; transfer sender/receiver extraction moved to engine modules with thin wrappers)` | `shared unblocker`: execute E5 optional engine default content-sync facade and BZ3 adapter hardening while preserving protocol boundaries. | `2026-02-17` |
 | `engine-network-module-hygiene.md` | `unassigned` | `queued (taxonomy locked; execution not started)` | `shared unblocker`: execute N0 by landing one bounded transport move with compatibility wrappers to validate the migration pattern. | `2026-02-17` |
 | `gameplay-migration.md` | `overseer` | `in progress (D1 hardening landed)` | Execute D2 movement replication slice: wire client `PlayerLocation` intent path to rewrite server authority for tank drive state. | `2026-02-14` |
 | `gameplay-netcode.md` | `unassigned` | `queued` | Prepare next predicted-shot reconciliation slice (`local_shot_id`) behind current P0 renderer priorities. | `2026-02-12` |
 | `physics-refactor.md` | `codex` | `in progress (new KARMA-alignment foundation track)` | `KARMA intake`: execute Phase 0/1 contract reset and scaffold KARMA-style world/controller/collider API layers. | `2026-02-17` |
-| `renderer-backend-file-split.md` | `specialist-renderer-file-split` | `in progress (Phase 5 render extraction landed and validated on build-a6)` | `shared unblocker`: execute Phase 6 final convergence cleanup and remove any residual monolith-style helpers while preserving behavior parity. | `2026-02-17` |
 | `karma-lighting-shadow-parity.md` | `unassigned` | `priority/on hold (close-out snapshot captured; awaiting external revisions)` | `KARMA intake`: after external revisions, rerun canonical BGFX/Diligent baseline, resolve/characterize shared seam artifact, then resume bounded P0-S3 re-intake. | `2026-02-17` |
 | `ui-integration.md` | `codex` | `in progress` | Execute one bounded console focus-release parity follow-up slice without backend leakage. | `2026-02-12` |
 | `webserver-unit-tests.md` | `unassigned` | `paused` | Resume only when webserver handler internals change; next slice is users/user_profile/server_edit mutation-flow tests. | `2026-02-13` |
 
 ## Active Specialist Roster
-- `specialist-renderer-file-split` -> `build-a6` (`renderer-backend-file-split.md`)
 
 ## Build Policy Lock
 - Use `./abuild.py -c -d <build-dir>` for configure/build/test workflows (`-d` required; omit `-c` only when intentionally reusing an already configured dir).
