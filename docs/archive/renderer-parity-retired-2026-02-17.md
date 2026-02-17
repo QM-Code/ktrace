@@ -1,10 +1,10 @@
-# Renderer Parity
+# Renderer Parity (Retired)
 
 ## Project Snapshot
-- Current owner: `specialist-renderer-parity`
-- Status: `priority/in progress (R1-R25 accepted; VQ1-VQ2 accepted; VQ3 active implementation moved to karma-lighting-shadow-parity track; VQ4 queued; R26-A baseline matrix complete; R26-B slice 1 landed; R26-B slice 2 scaffolding landed; R26-B slice 3 BGFX GPU pass prototype landed; R26-B slice 4 Diligent GPU pass prototype landed; R26-B slice 5 lifecycle/fallback hardening landed; R26-B visual closeout checkpoint captured with Diligent screenshot tooling blocker documented; R26-B gpu_default no-shadow regression fix landed and operator-verified; R26-B depth-attachment GPU shadow slice landed; R26-C intake matrix landed; R26-D config-policy slice landed; R26-D bias-model policy slice landed)`
-- Immediate next task: execute operator visual checkpoints for the locked bias defaults (`gpu_default`) and open only the smallest follow-up adjustment needed for contact edge quality.
-- Validation gate: assigned renderer build dir configured as runtime-select (`bgfx,diligent`) plus both client runs listed in this file; run docs lint whenever this project doc or assignment board is updated.
+- Current owner: `retired/archive`
+- Status: `retired/superseded (active renderer/shadow execution consolidated into docs/projects/karma-lighting-shadow-parity.md on 2026-02-17)`
+- Immediate next task: do not start new work here; execute active slices in `docs/projects/karma-lighting-shadow-parity.md`.
+- Validation gate: historical ledger retained for reference; active validation policy is in `docs/projects/karma-lighting-shadow-parity.md` and foundation governance docs.
 
 ## Mission
 Expand renderer capability toward BGFX/Diligent parity behind stable engine contracts, then convert those capability gains into visible runtime quality improvements (shadow visibility + stable distance texture quality).
@@ -924,12 +924,12 @@ VQ3 closeout decision (`2026-02-11`, current state):
 24. R25 BGFX source-absent integrity signature-model hardening slice: codify canonical asymmetric-signature verification contract inputs/validation boundaries for signed-envelope metadata (without introducing external trust-store rotation tooling yet), preserving deterministic disable reasons and accepted R1/R2/R3/R4/R5/R6/R7/R8/R9/R10/R11/R12/R13/R14/R15/R16/R17/R18/R19/R20/R21/R22/R23/R24 behavior. `Accepted 2026-02-11` (canonical verification-input boundary checks + deterministic `...verification_inputs_invalid` propagation).
 25. VQ1 visual-quality diagnostics baseline slice: capture deterministic repro settings and concrete acceptance thresholds for distant texture aliasing/grain and obvious shadow caster/receiver visibility in roaming scenes. `Accepted 2026-02-11` (deterministic repro recipe + phased camera-path scoring rubric + explicit VQ2/VQ3 thresholds).
 26. VQ2 texture minification quality slice: add mip-chain generation/upload plus trilinear/anisotropic sampler policy across BGFX + Diligent material texture paths (including fallback/composite paths) with parity guardrails. `Accepted 2026-02-11` (manual worksheet TA scores: BGFX `0/0`, Diligent `0/0`, parity deltas `0/0`, all VQ2 rules passed).
-27. VQ3 visible directional shadowing slice: evolve bounded directional shadow path toward backend-parity projected shadow-map pass with per-pixel depth sampling (bias + bounded PCF), preserving deterministic fallback policy and contract boundaries. `In progress 2026-02-12` (active implementation + KARMA-intake execution moved to `docs/projects/karma-lighting-shadow-parity.md`; mirror only accepted outcomes back into this parity ledger, including final VQ3 worksheet closeout).
+27. VQ3 visible directional shadowing slice: evolve bounded directional shadow path toward backend-parity projected shadow-map pass with per-pixel depth sampling (bias + bounded PCF), preserving deterministic fallback policy and contract boundaries. `Accepted 2026-02-17` (active implementation moved to `docs/projects/karma-lighting-shadow-parity.md`; operator confirmed contact-edge closeout on locked `gpu_default` defaults; mirror follow-up accepted outcomes into this parity ledger).
 28. VQ4 visual regression guardrail slice: add deterministic visual-quality assertions/metrics and align wrapper/testing docs with new renderer quality expectations. `Queued 2026-02-11`
 29. R26-A baseline matrix slice (`shared unblocker`): record roaming-mode FPS/frame-time matrix across BGFX+Diligent with shadows on/off, including trace evidence for top CPU bottlenecks. `Queued 2026-02-14`
 30. R26-B GPU shadow parity intake slice (`KARMA intake`): replace rewrite default CPU shadow-map generation/sampling path with GPU-pass-based shadow map generation and GPU sampling parity across active backends. `Queued 2026-02-14`
 31. R26-C legacy renderer intake slice (`m-dev parity`): audit `m-dev` renderer offload techniques, classify adopt-now/later/reject, and attach concrete implementation follow-ups for adopt-now items. `Queued 2026-02-14`
-32. R26-D renderer config-surface policy slice (`shared unblocker`): ensure newly introduced performance-sensitive renderer techniques are exposed as bounded config options (or explicitly documented as fixed-policy decisions) in `data/client/config.json` and runtime plumbing. `In progress 2026-02-16` (`triangleBudget` + receiver/normal/raster bias controls landed; bounded sweep/default-lock evidence captured; visual closeout still pending`)
+32. R26-D renderer config-surface policy slice (`shared unblocker`): ensure newly introduced performance-sensitive renderer techniques are exposed as bounded config options (or explicitly documented as fixed-policy decisions) in `data/client/config.json` and runtime plumbing. `In progress 2026-02-17` (`triangleBudget` + receiver/normal/raster bias controls landed; bounded sweep/default-lock evidence captured; operator visual closeout accepted`)
 
 ## Active Specialist Packet (R2)
 ```text
@@ -1055,6 +1055,6 @@ Handoff must include:
 - [x] VQ2 kickoff landed: shared mip-chain generation/upload + sampler-policy parity wiring for BGFX/Diligent is in place (acceptance closeout still pending).
 - [x] VQ2 evidence runner/worksheet is in place (`scripts/run-renderer-vq2-evidence.sh`) for deterministic closeout capture.
 - [x] VQ2 texture minification quality improvements completed with BGFX/Diligent parity. (`Accepted 2026-02-11`: TA scores BGFX `0/0`, Diligent `0/0`, parity deltas `0/0`.)
-- [ ] VQ3 visible directional shadowing improvements completed with BGFX/Diligent parity. (In progress: rejection-correction follow-up restored light-direction contract, reduced ground chunking to 16 chunk draws with localized=1 diagnostics on BGFX+Diligent, and improved BGFX frame-time spikes; acceptance remains blocked pending operator-visible ground-shadow + hitching confirmation and SV worksheet scoring.)
+- [x] VQ3 visible directional shadowing improvements completed with BGFX/Diligent parity. (`Accepted 2026-02-17`: operator confirmed contact-edge closeout for locked `gpu_default` defaults; no follow-up adjustment required in this parity ledger slice.)
 - [ ] VQ4 deterministic visual regression guardrails + wrapper/docs updates completed.
 - [x] Post-R3 deferrals are explicitly documented.

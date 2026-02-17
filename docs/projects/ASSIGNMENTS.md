@@ -13,22 +13,18 @@ Strategic tracking:
 
 | Project | Owner | Status | Next Task | Last Update |
 |---|---|---|---|---|
-| `abuild-documentation.md` | `codex` | `in progress` | Sweep active project docs for stale `abuild.py` examples and normalize to explicit lock/slot + `-c -d` usage. | `2026-02-17` |
 | `content-mount.md` | `unassigned` | `queued (handoff-ready; shared unblocker slices landed)` | `shared unblocker`: harden delta-selection policy with trace-backed tuning and one bounded regression. | `2026-02-16` |
 | `core-engine-infrastructure.md` | `overseer` | `in progress` | Keep implementation sequencing aligned to `docs/foundation/architecture/core-engine-contracts.md` as active tracks land. | `2026-02-12` |
 | `gameplay-migration.md` | `overseer` | `in progress (D1 hardening landed)` | Execute D2 movement replication slice: wire client `PlayerLocation` intent path to rewrite server authority for tank drive state. | `2026-02-14` |
 | `gameplay-netcode.md` | `unassigned` | `queued` | Prepare next predicted-shot reconciliation slice (`local_shot_id`) behind current P0 renderer priorities. | `2026-02-12` |
 | `physics-backend.md` | `codex` | `in progress` | Decide and implement runtime lock mutation/query contract or explicitly lock constraints to creation-time only with parity assertions. | `2026-02-12` |
-| `karma-lighting-shadow-parity.md` | `codex` | `priority/in progress (canonical KARMA intake + shadow/lighting parity track)` | `KARMA intake`: execute `P0-S1` first vertical slice (directional CSM topology + sandbox proof gates). | `2026-02-17` |
-| `renderer-parity.md` | `specialist-renderer-parity` | `priority/in progress (R26-A complete; R26-B slice 1 landed; R26-B slice 2 scaffolding landed; R26-B slice 3 BGFX GPU prototype landed; R26-B slice 4 Diligent GPU prototype landed; R26-B slice 5 lifecycle/fallback hardening landed; R26-B visual closeout checkpoint captured with Diligent screenshot tooling blocker documented; R26-B gpu_default no-shadow fix landed and operator-verified; R26-B depth-attachment GPU shadow slice landed; R26-C intake matrix landed; R26-D config policy slice landed; R26-D bias-model policy slice landed; R26-D bounded bias sweep/default-lock evidence landed)` | Execute operator visual closeout for locked bias defaults (`gpu_default`) and open one minimal follow-up adjustment only if contact-edge artifacts persist. | `2026-02-16` |
+| `renderer-backend-file-split.md` | `unassigned` | `blocked (deferred to avoid overlap with active karma-lighting-shadow-parity backend ownership)` | `shared unblocker`: resume only after active renderer parity specialist retires from backend monolith hotspot paths, then execute Phase 0 scaffolding. | `2026-02-17` |
+| `karma-lighting-shadow-parity.md` | `specialist-renderer-csm-p0s1` | `priority/in progress (P0-S1 directional CSM complete; runtime smoke command canonicalization landed)` | `KARMA intake`: execute `P0-S2` compare-sampler shadow sampling intake in both backends. | `2026-02-17` |
 | `ui-integration.md` | `codex` | `in progress` | Execute one bounded console focus-release parity follow-up slice without backend leakage. | `2026-02-12` |
 | `webserver-unit-tests.md` | `unassigned` | `paused` | Resume only when webserver handler internals change; next slice is users/user_profile/server_edit mutation-flow tests. | `2026-02-13` |
 
 ## Active Specialist Roster
-- `specialist-renderer-parity` -> `docs/projects/renderer-parity.md`
-  - Build dirs:
-    - `build-a5`
-    - `build-a8`
+- `specialist-renderer-csm-p0s1` -> `karma-lighting-shadow-parity.md` (`build-a5`)
 
 ## Build Policy Lock
 - Use `./abuild.py -c -d <build-dir>` for configure/build/test workflows (`-d` required; omit `-c` only when intentionally reusing an already configured dir).

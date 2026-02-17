@@ -45,6 +45,8 @@ namespace karma::renderer_backend {
 namespace {
 
 constexpr uint32_t kDiligentMaterialMaxAnisotropy = 8u;
+constexpr std::size_t kDirectionalShadowCascadeCount =
+    static_cast<std::size_t>(detail::kDirectionalShadowCascadeCount);
 constexpr std::size_t kMaxLocalLights = 4u;
 constexpr std::size_t kMaxPointShadowLights = kMaxLocalLights;
 constexpr std::size_t kPointShadowFaceCount = static_cast<std::size_t>(detail::kPointShadowFaceCount);
@@ -88,6 +90,12 @@ struct Constants {
     glm::vec4 u_shadowAxisRight;
     glm::vec4 u_shadowAxisUp;
     glm::vec4 u_shadowAxisForward;
+    glm::vec4 u_shadowCascadeSplits;
+    glm::vec4 u_shadowCascadeWorldTexel;
+    glm::vec4 u_shadowCascadeParams;
+    glm::vec4 u_shadowCameraPosition;
+    glm::vec4 u_shadowCameraForward;
+    std::array<glm::mat4, kDirectionalShadowCascadeCount> u_shadowCascadeUvProj;
     glm::vec4 u_localLightCount;
     glm::vec4 u_localLightParams;
     std::array<glm::vec4, kMaxLocalLights> u_localLightPosRange;
@@ -173,30 +181,6 @@ void computeWorldShadowSphere(const glm::mat4& transform,
     out_center = glm::vec3(world_center);
     const float scale = maxTransformScale(transform);
     out_radius = std::max(0.0f, local_radius * std::max(scale, 0.0f));
-}
-
-bool intersectsDirectionalShadowMap(const detail::DirectionalShadowMap& map,
-                                    const glm::vec3& center,
-                                    float radius) {
-    if (!map.ready) {
-        return true;
-    }
-    const float lx = glm::dot(center, map.axis_right);
-    const float ly = glm::dot(center, map.axis_up);
-    const float lz = glm::dot(center, map.axis_forward);
-    const float padded_extent = map.extent + std::max(radius, 0.0f);
-    if (std::fabs(lx - map.center_x) > padded_extent ||
-        std::fabs(ly - map.center_y) > padded_extent) {
-        return false;
-    }
-    if (map.depth_range > 1e-6f) {
-        const float min_depth = map.min_depth - std::max(radius, 0.0f);
-        const float max_depth = map.min_depth + map.depth_range + std::max(radius, 0.0f);
-        if (lz < min_depth || lz > max_depth) {
-            return false;
-        }
-    }
-    return true;
 }
 
 void DILIGENT_CALL_TYPE DiligentMessageCallback(Diligent::DEBUG_MESSAGE_SEVERITY severity,
@@ -785,12 +769,14 @@ class DiligentBackend final : public Backend {
         if (!shadow_semantics.enabled) {
             shadow_frames_until_update_ = 0;
             cached_shadow_map_ = detail::DirectionalShadowMap{};
+            cached_shadow_cascades_ = detail::DirectionalShadowCascadeSet{};
             shadow_tex_ready_ = false;
             shadow_cache_inputs_valid_ = false;
             previous_shadow_items_.clear();
         } else if (world_layer && shadow_casters.empty()) {
             shadow_frames_until_update_ = 0;
             cached_shadow_map_ = detail::DirectionalShadowMap{};
+            cached_shadow_cascades_ = detail::DirectionalShadowCascadeSet{};
             shadow_tex_ready_ = false;
             shadow_cache_inputs_valid_ = false;
             previous_shadow_items_.clear();
@@ -800,12 +786,12 @@ class DiligentBackend final : public Backend {
                 !cached_shadow_map_.ready ||
                 cached_shadow_map_.size != shadow_semantics.map_size) {
                 if (use_gpu_shadow_path) {
-                    cached_shadow_map_ = detail::BuildDirectionalShadowProjection(
+                    cached_shadow_cascades_ = detail::BuildDirectionalShadowCascades(
                         shadow_semantics,
                         light_.direction,
                         shadow_casters,
-                        &shadow_view);
-                    shadow_tex_ready_ = renderGpuShadowMap(cached_shadow_map_, renderables);
+                        shadow_view);
+                    shadow_tex_ready_ = renderGpuShadowMap(cached_shadow_cascades_, renderables);
                     if (!shadow_tex_ready_) {
                         KARMA_TRACE_CHANGED(
                             "render.diligent",
@@ -821,6 +807,14 @@ class DiligentBackend final : public Backend {
                             shadow_casters,
                             &shadow_view);
                         updateShadowTexture(cached_shadow_map_);
+                        cached_shadow_cascades_ =
+                            detail::BuildDirectionalShadowCascadeSetFromSingleMap(cached_shadow_map_);
+                    } else {
+                        cached_shadow_map_ = detail::BuildDirectionalShadowProjection(
+                            shadow_semantics,
+                            light_.direction,
+                            shadow_casters,
+                            &shadow_view);
                     }
                 } else {
                     cached_shadow_map_ = detail::BuildDirectionalShadowMap(
@@ -829,6 +823,8 @@ class DiligentBackend final : public Backend {
                         shadow_casters,
                         &shadow_view);
                     updateShadowTexture(cached_shadow_map_);
+                    cached_shadow_cascades_ =
+                        detail::BuildDirectionalShadowCascadeSetFromSingleMap(cached_shadow_map_);
                 }
                 shadow_frames_until_update_ = shadow_update_every_frames_ - 1;
             } else {
@@ -846,27 +842,56 @@ class DiligentBackend final : public Backend {
         }
         context_->SetRenderTargets(1, &rtv, dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         setViewport(static_cast<uint32_t>(std::max(1, width_)), static_cast<uint32_t>(std::max(1, height_)));
+        const detail::DirectionalShadowCascadeSet active_shadow_cascades =
+            cached_shadow_cascades_.ready
+                ? cached_shadow_cascades_
+                : detail::BuildDirectionalShadowCascadeSetFromSingleMap(cached_shadow_map_);
         const detail::DirectionalShadowMap& shadow_map = cached_shadow_map_;
+        const detail::DirectionalShadowCascade& primary_cascade =
+            active_shadow_cascades.cascades[0];
         const detail::ShadowClipDepthTransform clip_depth =
             detail::ResolveShadowClipDepthTransform(false);
-        const float inv_depth_range = shadow_map.depth_range > 1e-6f
-            ? (1.0f / shadow_map.depth_range)
+        const float inv_depth_range = primary_cascade.depth_range > 1e-6f
+            ? (1.0f / primary_cascade.depth_range)
             : 0.0f;
+        std::array<glm::mat4, kDirectionalShadowCascadeCount> shadow_cascade_uv_proj{};
+        for (glm::mat4& matrix : shadow_cascade_uv_proj) {
+            matrix = glm::mat4(1.0f);
+        }
+        std::array<float, kDirectionalShadowCascadeCount> shadow_cascade_splits{};
+        shadow_cascade_splits.fill(std::numeric_limits<float>::max());
+        std::array<float, kDirectionalShadowCascadeCount> shadow_cascade_world_texel{};
+        shadow_cascade_world_texel.fill(0.0f);
+        for (std::size_t cascade_idx = 0; cascade_idx < kDirectionalShadowCascadeCount; ++cascade_idx) {
+            const detail::DirectionalShadowCascade& cascade =
+                active_shadow_cascades.cascades[cascade_idx];
+            if (cascade.ready) {
+                shadow_cascade_uv_proj[cascade_idx] = cascade.shadow_uv_proj;
+                shadow_cascade_world_texel[cascade_idx] = cascade.world_texel;
+            }
+            shadow_cascade_splits[cascade_idx] = active_shadow_cascades.splits[cascade_idx];
+        }
+        const float active_shadow_atlas_inv_size =
+            active_shadow_cascades.atlas_size > 0
+                ? (1.0f / static_cast<float>(active_shadow_cascades.atlas_size))
+                : 0.0f;
         const glm::vec4 shadow_params0{
-            shadow_tex_ready_ ? 1.0f : 0.0f,
-            shadow_map.strength,
-            shadow_map.bias,
-            shadow_map.size > 0 ? (1.0f / static_cast<float>(shadow_map.size)) : 0.0f,
+            shadow_tex_ready_ && active_shadow_cascades.ready ? 1.0f : 0.0f,
+            active_shadow_cascades.strength,
+            active_shadow_cascades.bias,
+            active_shadow_cascades.map_size > 0
+                ? (1.0f / static_cast<float>(active_shadow_cascades.map_size))
+                : 0.0f,
         };
         const glm::vec4 shadow_params1{
-            shadow_map.extent,
-            shadow_map.center_x,
-            shadow_map.center_y,
-            shadow_map.min_depth,
+            primary_cascade.extent,
+            primary_cascade.center_x,
+            primary_cascade.center_y,
+            primary_cascade.min_depth,
         };
         const glm::vec4 shadow_params2{
             inv_depth_range,
-            static_cast<float>(shadow_map.pcf_radius),
+            static_cast<float>(active_shadow_cascades.pcf_radius),
             clip_depth.scale,
             clip_depth.bias,
         };
@@ -877,21 +902,51 @@ class DiligentBackend final : public Backend {
             shadow_semantics.raster_slope_bias,
         };
         const glm::vec4 shadow_axis_right{
-            shadow_map.axis_right.x,
-            shadow_map.axis_right.y,
-            shadow_map.axis_right.z,
+            active_shadow_cascades.axis_right.x,
+            active_shadow_cascades.axis_right.y,
+            active_shadow_cascades.axis_right.z,
             0.0f,
         };
         const glm::vec4 shadow_axis_up{
-            shadow_map.axis_up.x,
-            shadow_map.axis_up.y,
-            shadow_map.axis_up.z,
+            active_shadow_cascades.axis_up.x,
+            active_shadow_cascades.axis_up.y,
+            active_shadow_cascades.axis_up.z,
             0.0f,
         };
         const glm::vec4 shadow_axis_forward{
-            shadow_map.axis_forward.x,
-            shadow_map.axis_forward.y,
-            shadow_map.axis_forward.z,
+            active_shadow_cascades.axis_forward.x,
+            active_shadow_cascades.axis_forward.y,
+            active_shadow_cascades.axis_forward.z,
+            0.0f,
+        };
+        const glm::vec4 shadow_cascade_splits_uniform{
+            shadow_cascade_splits[0],
+            shadow_cascade_splits[1],
+            shadow_cascade_splits[2],
+            shadow_cascade_splits[3],
+        };
+        const glm::vec4 shadow_cascade_world_texel_uniform{
+            shadow_cascade_world_texel[0],
+            shadow_cascade_world_texel[1],
+            shadow_cascade_world_texel[2],
+            shadow_cascade_world_texel[3],
+        };
+        const glm::vec4 shadow_cascade_params_uniform{
+            active_shadow_cascades.transition_fraction,
+            static_cast<float>(std::max(active_shadow_cascades.cascade_count, 1)),
+            active_shadow_atlas_inv_size,
+            0.0f,
+        };
+        const glm::vec4 shadow_camera_position{
+            camera_.position.x,
+            camera_.position.y,
+            camera_.position.z,
+            0.0f,
+        };
+        const glm::vec4 shadow_camera_forward{
+            current_camera_forward.x,
+            current_camera_forward.y,
+            current_camera_forward.z,
             0.0f,
         };
         std::array<glm::vec4, kMaxLocalLights> local_light_pos_range{};
@@ -1265,6 +1320,12 @@ class DiligentBackend final : public Backend {
             constants.u_shadowAxisRight = shadow_axis_right;
             constants.u_shadowAxisUp = shadow_axis_up;
             constants.u_shadowAxisForward = shadow_axis_forward;
+            constants.u_shadowCascadeSplits = shadow_cascade_splits_uniform;
+            constants.u_shadowCascadeWorldTexel = shadow_cascade_world_texel_uniform;
+            constants.u_shadowCascadeParams = shadow_cascade_params_uniform;
+            constants.u_shadowCameraPosition = shadow_camera_position;
+            constants.u_shadowCameraForward = shadow_camera_forward;
+            constants.u_shadowCascadeUvProj = shadow_cascade_uv_proj;
             constants.u_localLightCount = local_light_count_uniform;
             constants.u_localLightParams = local_light_params_uniform;
             constants.u_localLightPosRange = local_light_pos_range;
@@ -1609,6 +1670,12 @@ cbuffer Constants {
     float4 u_shadowAxisRight;
     float4 u_shadowAxisUp;
     float4 u_shadowAxisForward;
+    float4 u_shadowCascadeSplits;
+    float4 u_shadowCascadeWorldTexel;
+    float4 u_shadowCascadeParams;
+    float4 u_shadowCameraPosition;
+    float4 u_shadowCameraForward;
+    float4x4 u_shadowCascadeUvProj[4];
     float4 u_localLightCount;
     float4 u_localLightParams;
     float4 u_localLightPosRange[4];
@@ -1653,6 +1720,12 @@ cbuffer Constants {
     float4 u_shadowAxisRight;
     float4 u_shadowAxisUp;
     float4 u_shadowAxisForward;
+    float4 u_shadowCascadeSplits;
+    float4 u_shadowCascadeWorldTexel;
+    float4 u_shadowCascadeParams;
+    float4 u_shadowCameraPosition;
+    float4 u_shadowCameraForward;
+    float4x4 u_shadowCascadeUvProj[4];
     float4 u_localLightCount;
     float4 u_localLightParams;
     float4 u_localLightPosRange[4];
@@ -1674,43 +1747,57 @@ SamplerState s_shadow_sampler;
 Texture2D s_pointShadow;
 SamplerState s_pointShadow_sampler;
 
-float sampleShadowVisibility(float3 worldPos, float ndotl) {
-    if (u_shadowParams0.x < 0.5) {
-        return 1.0;
-    }
-    if (ndotl <= 0.0001) {
+float shadowCascadeSplit(int cascadeIdx) {
+    if (cascadeIdx == 0) return u_shadowCascadeSplits.x;
+    if (cascadeIdx == 1) return u_shadowCascadeSplits.y;
+    if (cascadeIdx == 2) return u_shadowCascadeSplits.z;
+    return u_shadowCascadeSplits.w;
+}
+
+float shadowCascadeWorldTexel(int cascadeIdx) {
+    if (cascadeIdx == 0) return u_shadowCascadeWorldTexel.x;
+    if (cascadeIdx == 1) return u_shadowCascadeWorldTexel.y;
+    if (cascadeIdx == 2) return u_shadowCascadeWorldTexel.z;
+    return u_shadowCascadeWorldTexel.w;
+}
+
+float4x4 shadowCascadeUvProjection(int cascadeIdx) {
+    if (cascadeIdx == 1) return u_shadowCascadeUvProj[1];
+    if (cascadeIdx == 2) return u_shadowCascadeUvProj[2];
+    if (cascadeIdx == 3) return u_shadowCascadeUvProj[3];
+    return u_shadowCascadeUvProj[0];
+}
+
+float sampleCascadeShadowVisibility(int cascadeIdx, float3 worldPos, float ndotl) {
+    if (cascadeIdx < 0 || cascadeIdx > 3) {
         return 1.0;
     }
 
-    float extent = max(u_shadowParams1.x, 0.001);
-    float centerX = u_shadowParams1.y;
-    float centerY = u_shadowParams1.z;
-    float minDepth = u_shadowParams1.w;
-    float invDepthRange = max(u_shadowParams2.x, 0.0001);
+    float4x4 uvProj = shadowCascadeUvProjection(cascadeIdx);
+    float4 shadowUvDepth = mul(uvProj, float4(worldPos, 1.0));
+    shadowUvDepth.xyz /= max(shadowUvDepth.w, 1e-7);
+    float2 shadowUv = shadowUvDepth.xy;
+    float shadowDepth = shadowUvDepth.z;
+    if (shadowUv.x < 0.0 || shadowUv.x > 1.0 ||
+        shadowUv.y < 0.0 || shadowUv.y > 1.0 ||
+        shadowDepth < 0.0 || shadowDepth > 1.0) {
+        return 1.0;
+    }
+
     float radius = clamp(u_shadowParams2.y, 0.0, 4.0);
-    float invMapSize = max(u_shadowParams0.w, 0.0);
+    float atlasTexel = max(u_shadowCascadeParams.z, 0.0);
+    float worldTexel = max(shadowCascadeWorldTexel(cascadeIdx), 0.0);
     float slope = clamp(1.0 - ndotl, 0.0, 1.0);
     float bias = clamp(
         u_shadowParams0.z +
-            (u_shadowParams0.w * (u_shadowBiasParams.x + (u_shadowBiasParams.y * slope))),
+            (worldTexel * (u_shadowBiasParams.x + (u_shadowBiasParams.y * slope))),
         0.0,
         0.02);
 
-    float lx = dot(worldPos, u_shadowAxisRight.xyz);
-    float ly = dot(worldPos, u_shadowAxisUp.xyz);
-    float lz = dot(worldPos, u_shadowAxisForward.xyz);
-    float u = 0.5 + ((lx - centerX) / (2.0 * extent));
-    float v = 0.5 + ((ly - centerY) / (2.0 * extent));
-    float depth = (lz - minDepth) * invDepthRange;
-
-    if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0 || depth < 0.0 || depth > 1.0) {
-        return 1.0;
-    }
-
     int iradius = int(clamp(floor(radius + 0.5), 0.0, 4.0));
     if (iradius <= 0) {
-        float mapDepth = s_shadow.Sample(s_shadow_sampler, float2(u, v)).r;
-        return step(depth - bias, mapDepth);
+        float mapDepth = s_shadow.Sample(s_shadow_sampler, shadowUv).r;
+        return step(shadowDepth - bias, mapDepth);
     }
 
     float lit = 0.0;
@@ -1718,40 +1805,40 @@ float sampleShadowVisibility(float3 worldPos, float ndotl) {
     if (iradius == 1) {
         for (int oy = -1; oy <= 1; ++oy) {
             for (int ox = -1; ox <= 1; ++ox) {
-                float2 uv = float2(u, v) + float2(float(ox), float(oy)) * invMapSize;
+                float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
                 float mapDepth = s_shadow.Sample(s_shadow_sampler, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(depth - bias, mapDepth) * w;
+                lit += step(shadowDepth - bias, mapDepth) * w;
                 count += w;
             }
         }
     } else if (iradius == 2) {
         for (int oy = -2; oy <= 2; ++oy) {
             for (int ox = -2; ox <= 2; ++ox) {
-                float2 uv = float2(u, v) + float2(float(ox), float(oy)) * invMapSize;
+                float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
                 float mapDepth = s_shadow.Sample(s_shadow_sampler, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(depth - bias, mapDepth) * w;
+                lit += step(shadowDepth - bias, mapDepth) * w;
                 count += w;
             }
         }
     } else if (iradius == 3) {
         for (int oy = -3; oy <= 3; ++oy) {
             for (int ox = -3; ox <= 3; ++ox) {
-                float2 uv = float2(u, v) + float2(float(ox), float(oy)) * invMapSize;
+                float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
                 float mapDepth = s_shadow.Sample(s_shadow_sampler, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(depth - bias, mapDepth) * w;
+                lit += step(shadowDepth - bias, mapDepth) * w;
                 count += w;
             }
         }
     } else {
         for (int oy = -4; oy <= 4; ++oy) {
             for (int ox = -4; ox <= 4; ++ox) {
-                float2 uv = float2(u, v) + float2(float(ox), float(oy)) * invMapSize;
+                float2 uv = shadowUv + float2(float(ox), float(oy)) * atlasTexel;
                 float mapDepth = s_shadow.Sample(s_shadow_sampler, uv).r;
                 float w = 1.0 / (1.0 + float((ox * ox) + (oy * oy)));
-                lit += step(depth - bias, mapDepth) * w;
+                lit += step(shadowDepth - bias, mapDepth) * w;
                 count += w;
             }
         }
@@ -1760,6 +1847,44 @@ float sampleShadowVisibility(float3 worldPos, float ndotl) {
         return 1.0;
     }
     return lit / count;
+}
+
+float sampleShadowVisibility(float3 worldPos, float ndotl) {
+    if (u_shadowParams0.x < 0.5) {
+        return 1.0;
+    }
+    if (ndotl <= 0.0001) {
+        return 1.0;
+    }
+
+    int cascadeCount = int(clamp(floor(u_shadowCascadeParams.y + 0.5), 1.0, 4.0));
+    float3 cameraForward = u_shadowCameraForward.xyz;
+    float cameraForwardLen = length(cameraForward);
+    if (cameraForwardLen <= 1e-6) {
+        cameraForward = float3(0.0, 0.0, -1.0);
+    } else {
+        cameraForward /= cameraForwardLen;
+    }
+    float viewDepth = max(dot(worldPos - u_shadowCameraPosition.xyz, cameraForward), 0.0);
+
+    int cascadeIdx = 0;
+    if (cascadeCount > 1 && viewDepth > shadowCascadeSplit(0)) cascadeIdx = 1;
+    if (cascadeCount > 2 && viewDepth > shadowCascadeSplit(1)) cascadeIdx = 2;
+    if (cascadeCount > 3 && viewDepth > shadowCascadeSplit(2)) cascadeIdx = 3;
+
+    float shadow = sampleCascadeShadowVisibility(cascadeIdx, worldPos, ndotl);
+    if (cascadeIdx + 1 < cascadeCount) {
+        float splitDepth = shadowCascadeSplit(cascadeIdx);
+        float transitionFraction = max(u_shadowCascadeParams.x, 0.0);
+        float transitionRange = max(splitDepth * transitionFraction, 0.25);
+        float blend = saturate((viewDepth - (splitDepth - transitionRange)) /
+                               max(transitionRange, 1e-4));
+        if (blend > 0.0) {
+            float shadowNext = sampleCascadeShadowVisibility(cascadeIdx + 1, worldPos, ndotl);
+            shadow = lerp(shadow, shadowNext, blend);
+        }
+    }
+    return shadow;
 }
 
 int selectPointShadowFace(float3 dirWs) {
@@ -2470,12 +2595,18 @@ float4 main(PSInput input) : SV_TARGET {
         return point_shadow_tex_ && point_shadow_srv_;
     }
 
-    bool renderGpuShadowMap(const detail::DirectionalShadowMap& map, const std::vector<RenderableDraw>& renderables) {
-        if (!context_ || !map.ready || map.size <= 0 || !shadow_depth_pso_) {
+    bool renderGpuShadowMap(const detail::DirectionalShadowCascadeSet& cascades,
+                            const std::vector<RenderableDraw>& renderables) {
+        if (!context_ ||
+            !cascades.ready ||
+            cascades.map_size <= 0 ||
+            cascades.atlas_size <= 0 ||
+            !shadow_depth_pso_) {
             return false;
         }
-        const uint32_t size = static_cast<uint32_t>(map.size);
-        if (!ensureShadowTexture(size, true)) {
+        const uint32_t cascade_size = static_cast<uint32_t>(cascades.map_size);
+        const uint32_t atlas_size = static_cast<uint32_t>(cascades.atlas_size);
+        if (!ensureShadowTexture(atlas_size, true)) {
             return false;
         }
 
@@ -2495,7 +2626,6 @@ float4 main(PSInput input) : SV_TARGET {
             const float clear[4] = {1.0f, 1.0f, 1.0f, 1.0f};
             context_->ClearRenderTarget(shadow_rtv, clear, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         }
-        setViewport(size, size);
         context_->SetPipelineState(shadow_depth_pso_);
         if (shadow_depth_srb_) {
             context_->CommitShaderResources(shadow_depth_srb_, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -2506,25 +2636,6 @@ float4 main(PSInput input) : SV_TARGET {
         const float clip_y_sign = detail::ResolveShadowClipYSign(false);
         const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
             detail::ResolveDirectionalShadowSemantics(light_);
-        const float inv_depth_range = map.depth_range > 1e-6f ? (1.0f / map.depth_range) : 1.0f;
-        const glm::vec4 shadow_params0{
-            1.0f,
-            map.strength,
-            map.bias,
-            map.size > 0 ? (1.0f / static_cast<float>(map.size)) : 0.0f,
-        };
-        const glm::vec4 shadow_params1{
-            map.extent,
-            map.center_x,
-            map.center_y,
-            map.min_depth,
-        };
-        const glm::vec4 shadow_params2{
-            inv_depth_range,
-            static_cast<float>(map.pcf_radius),
-            clip_depth.scale,
-            clip_depth.bias,
-        };
         const glm::vec4 shadow_bias_params{
             shadow_semantics.receiver_bias_scale,
             shadow_semantics.normal_bias_scale,
@@ -2532,80 +2643,128 @@ float4 main(PSInput input) : SV_TARGET {
             shadow_semantics.raster_slope_bias,
         };
         const glm::vec4 shadow_axis_right{
-            map.axis_right.x,
-            map.axis_right.y,
-            map.axis_right.z,
+            cascades.axis_right.x,
+            cascades.axis_right.y,
+            cascades.axis_right.z,
             0.0f,
         };
         const glm::vec4 shadow_axis_up{
-            map.axis_up.x,
-            map.axis_up.y,
-            map.axis_up.z,
+            cascades.axis_up.x,
+            cascades.axis_up.y,
+            cascades.axis_up.z,
             clip_y_sign,
         };
         const glm::vec4 shadow_axis_forward{
-            map.axis_forward.x,
-            map.axis_forward.y,
-            map.axis_forward.z,
+            cascades.axis_forward.x,
+            cascades.axis_forward.y,
+            cascades.axis_forward.z,
             0.0f,
         };
+        const int cascade_count = std::clamp(
+            cascades.cascade_count,
+            1,
+            static_cast<int>(kDirectionalShadowCascadeCount));
 
         std::size_t submitted = 0u;
         std::size_t culled = 0u;
-        for (const RenderableDraw& renderable : renderables) {
-            const auto& item = *renderable.item;
-            const auto& semantics = renderable.material->semantics;
-            if (!item.casts_shadow || semantics.alpha_blend || !semantics.draw) {
+        for (int cascade_idx = 0; cascade_idx < cascade_count; ++cascade_idx) {
+            const detail::DirectionalShadowCascade& cascade =
+                cascades.cascades[static_cast<std::size_t>(cascade_idx)];
+            if (!cascade.ready) {
                 continue;
             }
-            if (renderable.mesh->shadow_radius > 0.0f) {
-                glm::vec3 world_center{0.0f, 0.0f, 0.0f};
-                float world_radius = 0.0f;
-                computeWorldShadowSphere(
-                    item.transform,
-                    renderable.mesh->shadow_center,
-                    renderable.mesh->shadow_radius,
-                    world_center,
-                    world_radius);
-                if (!intersectsDirectionalShadowMap(map, world_center, world_radius)) {
-                    ++culled;
+
+            Diligent::Viewport shadow_viewport{};
+            shadow_viewport.TopLeftX = std::floor(cascade.atlas_offset.x * static_cast<float>(atlas_size) + 0.5f);
+            shadow_viewport.TopLeftY = std::floor(cascade.atlas_offset.y * static_cast<float>(atlas_size) + 0.5f);
+            shadow_viewport.Width = static_cast<float>(cascade_size);
+            shadow_viewport.Height = static_cast<float>(cascade_size);
+            shadow_viewport.MinDepth = 0.0f;
+            shadow_viewport.MaxDepth = 1.0f;
+            context_->SetViewports(1, &shadow_viewport, atlas_size, atlas_size);
+
+            const float inv_depth_range =
+                cascade.depth_range > 1e-6f ? (1.0f / cascade.depth_range) : 1.0f;
+            const glm::vec4 shadow_params0{
+                1.0f,
+                cascades.strength,
+                cascades.bias,
+                cascades.map_size > 0
+                    ? (1.0f / static_cast<float>(cascades.map_size))
+                    : 0.0f,
+            };
+            const glm::vec4 shadow_params1{
+                cascade.extent,
+                cascade.center_x,
+                cascade.center_y,
+                cascade.min_depth,
+            };
+            const glm::vec4 shadow_params2{
+                inv_depth_range,
+                static_cast<float>(cascades.pcf_radius),
+                clip_depth.scale,
+                clip_depth.bias,
+            };
+
+            for (const RenderableDraw& renderable : renderables) {
+                const auto& item = *renderable.item;
+                const auto& semantics = renderable.material->semantics;
+                if (!item.casts_shadow || semantics.alpha_blend || !semantics.draw) {
                     continue;
                 }
+                if (renderable.mesh->shadow_radius > 0.0f) {
+                    glm::vec3 world_center{0.0f, 0.0f, 0.0f};
+                    float world_radius = 0.0f;
+                    computeWorldShadowSphere(
+                        item.transform,
+                        renderable.mesh->shadow_center,
+                        renderable.mesh->shadow_radius,
+                        world_center,
+                        world_radius);
+                    if (!detail::IntersectsDirectionalShadowCascade(
+                            cascades,
+                            cascade_idx,
+                            world_center,
+                            world_radius)) {
+                        ++culled;
+                        continue;
+                    }
+                }
+
+                Constants constants{};
+                constants.u_model = item.transform;
+                constants.u_shadowParams0 = shadow_params0;
+                constants.u_shadowParams1 = shadow_params1;
+                constants.u_shadowParams2 = shadow_params2;
+                constants.u_shadowBiasParams = shadow_bias_params;
+                constants.u_shadowAxisRight = shadow_axis_right;
+                constants.u_shadowAxisUp = shadow_axis_up;
+                constants.u_shadowAxisForward = shadow_axis_forward;
+                Diligent::MapHelper<Constants> cb_data(
+                    context_,
+                    constant_buffer_,
+                    Diligent::MAP_WRITE,
+                    Diligent::MAP_FLAG_DISCARD);
+                *cb_data = constants;
+
+                const uint64_t offsets[] = {0};
+                Diligent::IBuffer* vbs[] = {renderable.mesh->vb};
+                context_->SetVertexBuffers(
+                    0,
+                    1,
+                    vbs,
+                    offsets,
+                    Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                    Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
+                context_->SetIndexBuffer(renderable.mesh->ib, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+                Diligent::DrawIndexedAttribs draw{};
+                draw.IndexType = Diligent::VT_UINT32;
+                draw.NumIndices = renderable.mesh->num_indices;
+                draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
+                context_->DrawIndexed(draw);
+                ++submitted;
             }
-
-            Constants constants{};
-            constants.u_model = item.transform;
-            constants.u_shadowParams0 = shadow_params0;
-            constants.u_shadowParams1 = shadow_params1;
-            constants.u_shadowParams2 = shadow_params2;
-            constants.u_shadowBiasParams = shadow_bias_params;
-            constants.u_shadowAxisRight = shadow_axis_right;
-            constants.u_shadowAxisUp = shadow_axis_up;
-            constants.u_shadowAxisForward = shadow_axis_forward;
-            Diligent::MapHelper<Constants> cb_data(
-                context_,
-                constant_buffer_,
-                Diligent::MAP_WRITE,
-                Diligent::MAP_FLAG_DISCARD);
-            *cb_data = constants;
-
-            const uint64_t offsets[] = {0};
-            Diligent::IBuffer* vbs[] = {renderable.mesh->vb};
-            context_->SetVertexBuffers(
-                0,
-                1,
-                vbs,
-                offsets,
-                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-                Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
-            context_->SetIndexBuffer(renderable.mesh->ib, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-            Diligent::DrawIndexedAttribs draw{};
-            draw.IndexType = Diligent::VT_UINT32;
-            draw.NumIndices = renderable.mesh->num_indices;
-            draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
-            context_->DrawIndexed(draw);
-            ++submitted;
         }
 
         if (shadow_tex_) {
@@ -2621,11 +2780,14 @@ float4 main(PSInput input) : SV_TARGET {
 
         KARMA_TRACE_CHANGED(
             "render.diligent",
-            std::to_string(map.size) + ":" + std::to_string(submitted) + ":" +
+            std::to_string(cascades.map_size) + ":" +
+                std::to_string(cascade_count) + ":" +
+                std::to_string(submitted) + ":" +
                 std::to_string(culled) + ":" +
                 (depth_attachment ? "depth" : "color_min"),
-            "gpu shadow pass size={} draws={} culled={} attachment={}",
-            map.size,
+            "gpu shadow pass size={} cascades={} draws={} culled={} attachment={}",
+            cascades.map_size,
+            cascade_count,
             submitted,
             culled,
             depth_attachment ? "depth" : "color_min");
@@ -2809,6 +2971,7 @@ float4 main(PSInput input) : SV_TARGET {
     bool shadow_tex_ready_ = false;
     bool point_shadow_tex_ready_ = false;
     detail::DirectionalShadowMap cached_shadow_map_{};
+    detail::DirectionalShadowCascadeSet cached_shadow_cascades_{};
     detail::PointShadowMap cached_point_shadow_map_{};
     int shadow_update_every_frames_ = 1;
     int shadow_frames_until_update_ = 0;

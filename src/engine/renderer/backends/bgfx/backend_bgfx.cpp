@@ -42,8 +42,11 @@
 namespace karma::renderer_backend {
 namespace {
 
-constexpr bgfx::ViewId kBgfxShadowViewId = 0;
-constexpr bgfx::ViewId kBgfxMainViewId = 1;
+constexpr bgfx::ViewId kBgfxShadowViewIdBase = 0;
+constexpr std::size_t kDirectionalShadowCascadeCount =
+    static_cast<std::size_t>(detail::kDirectionalShadowCascadeCount);
+constexpr bgfx::ViewId kBgfxMainViewId =
+    static_cast<bgfx::ViewId>(kBgfxShadowViewIdBase + kDirectionalShadowCascadeCount);
 constexpr std::size_t kMaxLocalLights = 4u;
 constexpr std::size_t kMaxPointShadowLights = kMaxLocalLights;
 constexpr std::size_t kPointShadowFaceCount = static_cast<std::size_t>(detail::kPointShadowFaceCount);
@@ -127,30 +130,6 @@ void computeWorldShadowSphere(const glm::mat4& transform,
     out_center = glm::vec3(world_center);
     const float scale = maxTransformScale(transform);
     out_radius = std::max(0.0f, local_radius * std::max(scale, 0.0f));
-}
-
-bool intersectsDirectionalShadowMap(const detail::DirectionalShadowMap& map,
-                                    const glm::vec3& center,
-                                    float radius) {
-    if (!map.ready) {
-        return true;
-    }
-    const float lx = glm::dot(center, map.axis_right);
-    const float ly = glm::dot(center, map.axis_up);
-    const float lz = glm::dot(center, map.axis_forward);
-    const float padded_extent = map.extent + std::max(radius, 0.0f);
-    if (std::fabs(lx - map.center_x) > padded_extent ||
-        std::fabs(ly - map.center_y) > padded_extent) {
-        return false;
-    }
-    if (map.depth_range > 1e-6f) {
-        const float min_depth = map.min_depth - std::max(radius, 0.0f);
-        const float max_depth = map.min_depth + map.depth_range + std::max(radius, 0.0f);
-        if (lz < min_depth || lz > max_depth) {
-            return false;
-        }
-    }
-    return true;
 }
 
 bgfx::ShaderHandle loadShader(const std::string& path) {
@@ -1072,6 +1051,21 @@ class BgfxBackend final : public Backend {
         u_shadow_axis_right_ = bgfx::createUniform("u_shadowAxisRight", bgfx::UniformType::Vec4);
         u_shadow_axis_up_ = bgfx::createUniform("u_shadowAxisUp", bgfx::UniformType::Vec4);
         u_shadow_axis_forward_ = bgfx::createUniform("u_shadowAxisForward", bgfx::UniformType::Vec4);
+        u_shadow_cascade_splits_ =
+            bgfx::createUniform("u_shadowCascadeSplits", bgfx::UniformType::Vec4);
+        u_shadow_cascade_world_texel_ =
+            bgfx::createUniform("u_shadowCascadeWorldTexel", bgfx::UniformType::Vec4);
+        u_shadow_cascade_params_ =
+            bgfx::createUniform("u_shadowCascadeParams", bgfx::UniformType::Vec4);
+        u_shadow_camera_position_ =
+            bgfx::createUniform("u_shadowCameraPosition", bgfx::UniformType::Vec4);
+        u_shadow_camera_forward_ =
+            bgfx::createUniform("u_shadowCameraForward", bgfx::UniformType::Vec4);
+        u_shadow_cascade_uv_proj_ =
+            bgfx::createUniform(
+                "u_shadowCascadeUvProj",
+                bgfx::UniformType::Mat4,
+                static_cast<uint16_t>(kDirectionalShadowCascadeCount));
         u_local_light_count_ = bgfx::createUniform("u_localLightCount", bgfx::UniformType::Vec4);
         u_local_light_params_ = bgfx::createUniform("u_localLightParams", bgfx::UniformType::Vec4);
         u_local_light_pos_range_ =
@@ -1159,6 +1153,12 @@ class BgfxBackend final : public Backend {
         if (bgfx::isValid(u_shadow_axis_right_)) bgfx::destroy(u_shadow_axis_right_);
         if (bgfx::isValid(u_shadow_axis_up_)) bgfx::destroy(u_shadow_axis_up_);
         if (bgfx::isValid(u_shadow_axis_forward_)) bgfx::destroy(u_shadow_axis_forward_);
+        if (bgfx::isValid(u_shadow_cascade_splits_)) bgfx::destroy(u_shadow_cascade_splits_);
+        if (bgfx::isValid(u_shadow_cascade_world_texel_)) bgfx::destroy(u_shadow_cascade_world_texel_);
+        if (bgfx::isValid(u_shadow_cascade_params_)) bgfx::destroy(u_shadow_cascade_params_);
+        if (bgfx::isValid(u_shadow_camera_position_)) bgfx::destroy(u_shadow_camera_position_);
+        if (bgfx::isValid(u_shadow_camera_forward_)) bgfx::destroy(u_shadow_camera_forward_);
+        if (bgfx::isValid(u_shadow_cascade_uv_proj_)) bgfx::destroy(u_shadow_cascade_uv_proj_);
         if (bgfx::isValid(u_local_light_count_)) bgfx::destroy(u_local_light_count_);
         if (bgfx::isValid(u_local_light_params_)) bgfx::destroy(u_local_light_params_);
         if (bgfx::isValid(u_local_light_pos_range_)) bgfx::destroy(u_local_light_pos_range_);
@@ -1596,12 +1596,14 @@ class BgfxBackend final : public Backend {
         if (!shadow_semantics.enabled) {
             shadow_frames_until_update_ = 0;
             cached_shadow_map_ = detail::DirectionalShadowMap{};
+            cached_shadow_cascades_ = detail::DirectionalShadowCascadeSet{};
             shadow_tex_ready_ = false;
             shadow_cache_inputs_valid_ = false;
             previous_shadow_items_.clear();
         } else if (world_layer && shadow_casters.empty()) {
             shadow_frames_until_update_ = 0;
             cached_shadow_map_ = detail::DirectionalShadowMap{};
+            cached_shadow_cascades_ = detail::DirectionalShadowCascadeSet{};
             shadow_tex_ready_ = false;
             shadow_cache_inputs_valid_ = false;
             previous_shadow_items_.clear();
@@ -1611,12 +1613,28 @@ class BgfxBackend final : public Backend {
                 !cached_shadow_map_.ready ||
                 cached_shadow_map_.size != shadow_semantics.map_size) {
                 if (use_gpu_shadow_path) {
-                    cached_shadow_map_ = detail::BuildDirectionalShadowProjection(
+                    cached_shadow_cascades_ = detail::BuildDirectionalShadowCascades(
                         shadow_semantics,
                         light_.direction,
                         shadow_casters,
-                        &shadow_view);
-                    shadow_tex_ready_ = renderGpuShadowMap(cached_shadow_map_, renderables);
+                        shadow_view);
+                    shadow_tex_ready_ = renderGpuShadowMap(cached_shadow_cascades_, renderables);
+                    if (shadow_tex_ready_) {
+                        cached_shadow_map_ = detail::BuildDirectionalShadowProjection(
+                            shadow_semantics,
+                            light_.direction,
+                            shadow_casters,
+                            &shadow_view);
+                    } else {
+                        cached_shadow_map_ = detail::BuildDirectionalShadowMap(
+                            shadow_semantics,
+                            light_.direction,
+                            shadow_casters,
+                            &shadow_view);
+                        updateShadowTexture(cached_shadow_map_);
+                        cached_shadow_cascades_ =
+                            detail::BuildDirectionalShadowCascadeSetFromSingleMap(cached_shadow_map_);
+                    }
                 } else {
                     cached_shadow_map_ = detail::BuildDirectionalShadowMap(
                         shadow_semantics,
@@ -1624,6 +1642,8 @@ class BgfxBackend final : public Backend {
                         shadow_casters,
                         &shadow_view);
                     updateShadowTexture(cached_shadow_map_);
+                    cached_shadow_cascades_ =
+                        detail::BuildDirectionalShadowCascadeSetFromSingleMap(cached_shadow_map_);
                 }
                 shadow_frames_until_update_ = shadow_update_every_frames_ - 1;
             } else {
@@ -1639,28 +1659,57 @@ class BgfxBackend final : public Backend {
             cached_shadow_camera_far_ = camera_.far_clip;
             shadow_cache_inputs_valid_ = true;
         }
+        const detail::DirectionalShadowCascadeSet active_shadow_cascades =
+            cached_shadow_cascades_.ready
+                ? cached_shadow_cascades_
+                : detail::BuildDirectionalShadowCascadeSetFromSingleMap(cached_shadow_map_);
         const detail::DirectionalShadowMap& shadow_map = cached_shadow_map_;
+        const detail::DirectionalShadowCascade& primary_cascade =
+            active_shadow_cascades.cascades[0];
         const bgfx::Caps* caps = bgfx::getCaps();
         const detail::ShadowClipDepthTransform clip_depth =
             detail::ResolveShadowClipDepthTransform(caps && caps->homogeneousDepth);
-        const float inv_depth_range = shadow_map.depth_range > 1e-6f
-            ? (1.0f / shadow_map.depth_range)
+        const float inv_depth_range = primary_cascade.depth_range > 1e-6f
+            ? (1.0f / primary_cascade.depth_range)
             : 1.0f;
+        std::array<glm::mat4, kDirectionalShadowCascadeCount> shadow_cascade_uv_proj{};
+        for (glm::mat4& matrix : shadow_cascade_uv_proj) {
+            matrix = glm::mat4(1.0f);
+        }
+        std::array<float, kDirectionalShadowCascadeCount> shadow_cascade_splits{};
+        shadow_cascade_splits.fill(std::numeric_limits<float>::max());
+        std::array<float, kDirectionalShadowCascadeCount> shadow_cascade_world_texel{};
+        shadow_cascade_world_texel.fill(0.0f);
+        for (std::size_t cascade_idx = 0; cascade_idx < kDirectionalShadowCascadeCount; ++cascade_idx) {
+            const detail::DirectionalShadowCascade& cascade =
+                active_shadow_cascades.cascades[cascade_idx];
+            if (cascade.ready) {
+                shadow_cascade_uv_proj[cascade_idx] = cascade.shadow_uv_proj;
+                shadow_cascade_world_texel[cascade_idx] = cascade.world_texel;
+            }
+            shadow_cascade_splits[cascade_idx] = active_shadow_cascades.splits[cascade_idx];
+        }
+        const float active_shadow_atlas_inv_size =
+            active_shadow_cascades.atlas_size > 0
+                ? (1.0f / static_cast<float>(active_shadow_cascades.atlas_size))
+                : 0.0f;
         const float shadow_params0[4] = {
-            shadow_tex_ready_ ? 1.0f : 0.0f,
-            shadow_map.strength,
-            shadow_map.bias,
-            shadow_map.size > 0 ? (1.0f / static_cast<float>(shadow_map.size)) : 0.0f,
+            shadow_tex_ready_ && active_shadow_cascades.ready ? 1.0f : 0.0f,
+            active_shadow_cascades.strength,
+            active_shadow_cascades.bias,
+            active_shadow_cascades.map_size > 0
+                ? (1.0f / static_cast<float>(active_shadow_cascades.map_size))
+                : 0.0f,
         };
         const float shadow_params1[4] = {
-            shadow_map.extent,
-            shadow_map.center_x,
-            shadow_map.center_y,
-            shadow_map.min_depth,
+            primary_cascade.extent,
+            primary_cascade.center_x,
+            primary_cascade.center_y,
+            primary_cascade.min_depth,
         };
         const float shadow_params2[4] = {
             inv_depth_range,
-            static_cast<float>(shadow_map.pcf_radius),
+            static_cast<float>(active_shadow_cascades.pcf_radius),
             clip_depth.scale,
             clip_depth.bias,
         };
@@ -1671,13 +1720,52 @@ class BgfxBackend final : public Backend {
             shadow_semantics.raster_slope_bias,
         };
         const float shadow_axis_right[4] = {
-            shadow_map.axis_right.x, shadow_map.axis_right.y, shadow_map.axis_right.z, 0.0f,
+            active_shadow_cascades.axis_right.x,
+            active_shadow_cascades.axis_right.y,
+            active_shadow_cascades.axis_right.z,
+            0.0f,
         };
         const float shadow_axis_up[4] = {
-            shadow_map.axis_up.x, shadow_map.axis_up.y, shadow_map.axis_up.z, 0.0f,
+            active_shadow_cascades.axis_up.x,
+            active_shadow_cascades.axis_up.y,
+            active_shadow_cascades.axis_up.z,
+            0.0f,
         };
         const float shadow_axis_forward[4] = {
-            shadow_map.axis_forward.x, shadow_map.axis_forward.y, shadow_map.axis_forward.z, 0.0f,
+            active_shadow_cascades.axis_forward.x,
+            active_shadow_cascades.axis_forward.y,
+            active_shadow_cascades.axis_forward.z,
+            0.0f,
+        };
+        const float shadow_cascade_splits_uniform[4] = {
+            shadow_cascade_splits[0],
+            shadow_cascade_splits[1],
+            shadow_cascade_splits[2],
+            shadow_cascade_splits[3],
+        };
+        const float shadow_cascade_world_texel_uniform[4] = {
+            shadow_cascade_world_texel[0],
+            shadow_cascade_world_texel[1],
+            shadow_cascade_world_texel[2],
+            shadow_cascade_world_texel[3],
+        };
+        const float shadow_cascade_params_uniform[4] = {
+            active_shadow_cascades.transition_fraction,
+            static_cast<float>(std::max(active_shadow_cascades.cascade_count, 1)),
+            active_shadow_atlas_inv_size,
+            0.0f,
+        };
+        const float shadow_camera_position[4] = {
+            camera_.position.x,
+            camera_.position.y,
+            camera_.position.z,
+            0.0f,
+        };
+        const float shadow_camera_forward[4] = {
+            current_camera_forward.x,
+            current_camera_forward.y,
+            current_camera_forward.z,
+            0.0f,
         };
         std::array<float, kMaxLocalLights * 4u> local_light_pos_range{};
         std::array<float, kMaxLocalLights * 4u> local_light_color_intensity{};
@@ -2054,6 +2142,27 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_shadow_axis_right_, shadow_axis_right);
             bgfx::setUniform(u_shadow_axis_up_, shadow_axis_up);
             bgfx::setUniform(u_shadow_axis_forward_, shadow_axis_forward);
+            if (bgfx::isValid(u_shadow_cascade_splits_)) {
+                bgfx::setUniform(u_shadow_cascade_splits_, shadow_cascade_splits_uniform);
+            }
+            if (bgfx::isValid(u_shadow_cascade_world_texel_)) {
+                bgfx::setUniform(u_shadow_cascade_world_texel_, shadow_cascade_world_texel_uniform);
+            }
+            if (bgfx::isValid(u_shadow_cascade_params_)) {
+                bgfx::setUniform(u_shadow_cascade_params_, shadow_cascade_params_uniform);
+            }
+            if (bgfx::isValid(u_shadow_camera_position_)) {
+                bgfx::setUniform(u_shadow_camera_position_, shadow_camera_position);
+            }
+            if (bgfx::isValid(u_shadow_camera_forward_)) {
+                bgfx::setUniform(u_shadow_camera_forward_, shadow_camera_forward);
+            }
+            if (bgfx::isValid(u_shadow_cascade_uv_proj_)) {
+                bgfx::setUniform(
+                    u_shadow_cascade_uv_proj_,
+                    shadow_cascade_uv_proj.data(),
+                    static_cast<uint16_t>(kDirectionalShadowCascadeCount));
+            }
             if (bgfx::isValid(u_local_light_count_)) {
                 bgfx::setUniform(u_local_light_count_, local_light_count_uniform);
             }
@@ -2302,6 +2411,31 @@ class BgfxBackend final : public Backend {
             bgfx::setUniform(u_shadow_axis_right_, zeros);
             bgfx::setUniform(u_shadow_axis_up_, zeros);
             bgfx::setUniform(u_shadow_axis_forward_, zeros);
+            if (bgfx::isValid(u_shadow_cascade_splits_)) {
+                bgfx::setUniform(u_shadow_cascade_splits_, zeros);
+            }
+            if (bgfx::isValid(u_shadow_cascade_world_texel_)) {
+                bgfx::setUniform(u_shadow_cascade_world_texel_, zeros);
+            }
+            if (bgfx::isValid(u_shadow_cascade_params_)) {
+                bgfx::setUniform(u_shadow_cascade_params_, zeros);
+            }
+            if (bgfx::isValid(u_shadow_camera_position_)) {
+                bgfx::setUniform(u_shadow_camera_position_, zeros);
+            }
+            if (bgfx::isValid(u_shadow_camera_forward_)) {
+                bgfx::setUniform(u_shadow_camera_forward_, zeros);
+            }
+            if (bgfx::isValid(u_shadow_cascade_uv_proj_)) {
+                std::array<glm::mat4, kDirectionalShadowCascadeCount> shadow_cascade_mats{};
+                for (glm::mat4& matrix : shadow_cascade_mats) {
+                    matrix = glm::mat4(1.0f);
+                }
+                bgfx::setUniform(
+                    u_shadow_cascade_uv_proj_,
+                    shadow_cascade_mats.data(),
+                    static_cast<uint16_t>(kDirectionalShadowCascadeCount));
+            }
             if (bgfx::isValid(u_local_light_count_)) {
                 bgfx::setUniform(u_local_light_count_, zeros);
             }
@@ -2535,26 +2669,23 @@ class BgfxBackend final : public Backend {
         return bgfx::isValid(point_shadow_tex_);
     }
 
-    bool renderGpuShadowMap(const detail::DirectionalShadowMap& map, const std::vector<RenderableDraw>& renderables) {
-        if (!map.ready || map.size <= 0 || !bgfx::isValid(shadow_depth_program_)) {
+    bool renderGpuShadowMap(const detail::DirectionalShadowCascadeSet& cascades,
+                            const std::vector<RenderableDraw>& renderables) {
+        if (!cascades.ready ||
+            cascades.map_size <= 0 ||
+            cascades.atlas_size <= 0 ||
+            !bgfx::isValid(shadow_depth_program_)) {
             return false;
         }
-        const uint16_t size = static_cast<uint16_t>(map.size);
-        if (!ensureShadowTexture(size, true)) {
+        if (cascades.map_size > static_cast<int>(std::numeric_limits<uint16_t>::max()) ||
+            cascades.atlas_size > static_cast<int>(std::numeric_limits<uint16_t>::max())) {
             return false;
         }
-
-        bgfx::setViewFrameBuffer(kBgfxShadowViewId, shadow_fb_);
-        bgfx::setViewRect(kBgfxShadowViewId, 0, 0, size, size);
-        bgfx::setViewTransform(kBgfxShadowViewId, nullptr, nullptr);
-        const bool depth_attachment = shadow_tex_rt_uses_depth_;
-        bgfx::setViewClear(
-            kBgfxShadowViewId,
-            depth_attachment ? BGFX_CLEAR_DEPTH : BGFX_CLEAR_COLOR,
-            0xffffffff,
-            1.0f,
-            0);
-        bgfx::touch(kBgfxShadowViewId);
+        const uint16_t cascade_size = static_cast<uint16_t>(cascades.map_size);
+        const uint16_t atlas_size = static_cast<uint16_t>(cascades.atlas_size);
+        if (!ensureShadowTexture(atlas_size, true)) {
+            return false;
+        }
 
         const bgfx::Caps* caps = bgfx::getCaps();
         const detail::ShadowClipDepthTransform clip_depth =
@@ -2563,95 +2694,150 @@ class BgfxBackend final : public Backend {
             detail::ResolveShadowClipYSign(caps && caps->originBottomLeft);
         const detail::ResolvedDirectionalShadowSemantics shadow_semantics =
             detail::ResolveDirectionalShadowSemantics(light_);
-        const float inv_depth_range = map.depth_range > 1e-6f ? (1.0f / map.depth_range) : 1.0f;
-        const float shadow_params1[4] = {
-            map.extent,
-            map.center_x,
-            map.center_y,
-            map.min_depth,
-        };
-        const float shadow_params0[4] = {
-            1.0f,
-            map.strength,
-            map.bias,
-            map.size > 0 ? (1.0f / static_cast<float>(map.size)) : 0.0f,
-        };
-        const float shadow_params2[4] = {
-            inv_depth_range,
-            static_cast<float>(map.pcf_radius),
-            clip_depth.scale,
-            clip_depth.bias,
-        };
-        const float shadow_bias_params[4] = {
-            shadow_semantics.receiver_bias_scale,
-            shadow_semantics.normal_bias_scale,
-            shadow_semantics.raster_depth_bias,
-            shadow_semantics.raster_slope_bias,
-        };
-        const float shadow_axis_right[4] = {
-            map.axis_right.x, map.axis_right.y, map.axis_right.z, 0.0f,
-        };
-        const float shadow_axis_up[4] = {
-            map.axis_up.x, map.axis_up.y, map.axis_up.z, clip_y_sign,
-        };
-        const float shadow_axis_forward[4] = {
-            map.axis_forward.x, map.axis_forward.y, map.axis_forward.z, 0.0f,
-        };
-        bgfx::setUniform(u_shadow_params0_, shadow_params0);
-        bgfx::setUniform(u_shadow_params1_, shadow_params1);
-        bgfx::setUniform(u_shadow_params2_, shadow_params2);
-        bgfx::setUniform(u_shadow_bias_params_, shadow_bias_params);
-        bgfx::setUniform(u_shadow_axis_right_, shadow_axis_right);
-        bgfx::setUniform(u_shadow_axis_up_, shadow_axis_up);
-        bgfx::setUniform(u_shadow_axis_forward_, shadow_axis_forward);
+        const bool depth_attachment = shadow_tex_rt_uses_depth_;
+        const int cascade_count = std::clamp(
+            cascades.cascade_count,
+            1,
+            static_cast<int>(kDirectionalShadowCascadeCount));
 
         std::size_t submitted = 0u;
         std::size_t culled = 0u;
-        for (const RenderableDraw& renderable : renderables) {
-            const auto& item = *renderable.item;
-            const auto& semantics = renderable.material->semantics;
-            if (!item.casts_shadow || semantics.alpha_blend || !semantics.draw) {
+        for (int cascade_idx = 0; cascade_idx < cascade_count; ++cascade_idx) {
+            const detail::DirectionalShadowCascade& cascade =
+                cascades.cascades[static_cast<std::size_t>(cascade_idx)];
+            if (!cascade.ready) {
                 continue;
             }
-            if (renderable.mesh->shadow_radius > 0.0f) {
-                glm::vec3 world_center{0.0f, 0.0f, 0.0f};
-                float world_radius = 0.0f;
-                computeWorldShadowSphere(
-                    item.transform,
-                    renderable.mesh->shadow_center,
-                    renderable.mesh->shadow_radius,
-                    world_center,
-                    world_radius);
-                if (!intersectsDirectionalShadowMap(map, world_center, world_radius)) {
-                    ++culled;
+            const bgfx::ViewId view_id =
+                static_cast<bgfx::ViewId>(kBgfxShadowViewIdBase + cascade_idx);
+            const uint16_t view_x = static_cast<uint16_t>(
+                std::clamp<int>(static_cast<int>(std::floor(cascade.atlas_offset.x *
+                                                            static_cast<float>(atlas_size) + 0.5f)),
+                                0,
+                                std::max(static_cast<int>(atlas_size) - 1, 0)));
+            const uint16_t view_y = static_cast<uint16_t>(
+                std::clamp<int>(static_cast<int>(std::floor(cascade.atlas_offset.y *
+                                                            static_cast<float>(atlas_size) + 0.5f)),
+                                0,
+                                std::max(static_cast<int>(atlas_size) - 1, 0)));
+            bgfx::setViewFrameBuffer(view_id, shadow_fb_);
+            bgfx::setViewRect(view_id, view_x, view_y, cascade_size, cascade_size);
+            bgfx::setViewTransform(view_id, nullptr, nullptr);
+            bgfx::setViewClear(
+                view_id,
+                depth_attachment ? BGFX_CLEAR_DEPTH : BGFX_CLEAR_COLOR,
+                0xffffffff,
+                1.0f,
+                0);
+            bgfx::touch(view_id);
+
+            const float inv_depth_range =
+                cascade.depth_range > 1e-6f ? (1.0f / cascade.depth_range) : 1.0f;
+            const float shadow_params1[4] = {
+                cascade.extent,
+                cascade.center_x,
+                cascade.center_y,
+                cascade.min_depth,
+            };
+            const float shadow_params0[4] = {
+                1.0f,
+                cascades.strength,
+                cascades.bias,
+                cascades.map_size > 0
+                    ? (1.0f / static_cast<float>(cascades.map_size))
+                    : 0.0f,
+            };
+            const float shadow_params2[4] = {
+                inv_depth_range,
+                static_cast<float>(cascades.pcf_radius),
+                clip_depth.scale,
+                clip_depth.bias,
+            };
+            const float shadow_bias_params[4] = {
+                shadow_semantics.receiver_bias_scale,
+                shadow_semantics.normal_bias_scale,
+                shadow_semantics.raster_depth_bias,
+                shadow_semantics.raster_slope_bias,
+            };
+            const float shadow_axis_right[4] = {
+                cascades.axis_right.x,
+                cascades.axis_right.y,
+                cascades.axis_right.z,
+                0.0f,
+            };
+            const float shadow_axis_up[4] = {
+                cascades.axis_up.x,
+                cascades.axis_up.y,
+                cascades.axis_up.z,
+                clip_y_sign,
+            };
+            const float shadow_axis_forward[4] = {
+                cascades.axis_forward.x,
+                cascades.axis_forward.y,
+                cascades.axis_forward.z,
+                0.0f,
+            };
+            bgfx::setUniform(u_shadow_params0_, shadow_params0);
+            bgfx::setUniform(u_shadow_params1_, shadow_params1);
+            bgfx::setUniform(u_shadow_params2_, shadow_params2);
+            bgfx::setUniform(u_shadow_bias_params_, shadow_bias_params);
+            bgfx::setUniform(u_shadow_axis_right_, shadow_axis_right);
+            bgfx::setUniform(u_shadow_axis_up_, shadow_axis_up);
+            bgfx::setUniform(u_shadow_axis_forward_, shadow_axis_forward);
+
+            for (const RenderableDraw& renderable : renderables) {
+                const auto& item = *renderable.item;
+                const auto& semantics = renderable.material->semantics;
+                if (!item.casts_shadow || semantics.alpha_blend || !semantics.draw) {
                     continue;
                 }
-            }
+                if (renderable.mesh->shadow_radius > 0.0f) {
+                    glm::vec3 world_center{0.0f, 0.0f, 0.0f};
+                    float world_radius = 0.0f;
+                    computeWorldShadowSphere(
+                        item.transform,
+                        renderable.mesh->shadow_center,
+                        renderable.mesh->shadow_radius,
+                        world_center,
+                        world_radius);
+                    if (!detail::IntersectsDirectionalShadowCascade(
+                            cascades,
+                            cascade_idx,
+                            world_center,
+                            world_radius)) {
+                        ++culled;
+                        continue;
+                    }
+                }
 
-            bgfx::setVertexBuffer(0, renderable.mesh->vbh);
-            bgfx::setIndexBuffer(renderable.mesh->ibh);
-            bgfx::setTransform(&item.transform[0][0]);
-            uint64_t state = BGFX_STATE_MSAA;
-            if (depth_attachment) {
-                state |= BGFX_STATE_WRITE_Z |
-                    BGFX_STATE_DEPTH_TEST_LESS;
-            } else {
-                state |= BGFX_STATE_WRITE_RGB |
-                    BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE) |
-                    BGFX_STATE_BLEND_EQUATION_MIN;
+                bgfx::setVertexBuffer(0, renderable.mesh->vbh);
+                bgfx::setIndexBuffer(renderable.mesh->ibh);
+                bgfx::setTransform(&item.transform[0][0]);
+                uint64_t state = BGFX_STATE_MSAA;
+                if (depth_attachment) {
+                    state |= BGFX_STATE_WRITE_Z |
+                        BGFX_STATE_DEPTH_TEST_LESS;
+                } else {
+                    state |= BGFX_STATE_WRITE_RGB |
+                        BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE) |
+                        BGFX_STATE_BLEND_EQUATION_MIN;
+                }
+                bgfx::setState(state);
+                bgfx::submit(view_id, shadow_depth_program_);
+                ++submitted;
             }
-            bgfx::setState(state);
-            bgfx::submit(kBgfxShadowViewId, shadow_depth_program_);
-            ++submitted;
         }
 
         KARMA_TRACE_CHANGED(
             "render.bgfx",
-            std::to_string(map.size) + ":" + std::to_string(submitted) + ":" +
+            std::to_string(cascades.map_size) + ":" +
+                std::to_string(cascade_count) + ":" +
+                std::to_string(submitted) + ":" +
                 std::to_string(culled) + ":" +
                 (depth_attachment ? "depth" : "color_min"),
-            "gpu shadow pass size={} draws={} culled={} attachment={}",
-            map.size,
+            "gpu shadow pass size={} cascades={} draws={} culled={} attachment={}",
+            cascades.map_size,
+            cascade_count,
             submitted,
             culled,
             depth_attachment ? "depth" : "color_min");
@@ -2718,6 +2904,12 @@ class BgfxBackend final : public Backend {
     bgfx::UniformHandle u_shadow_axis_right_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_axis_up_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_shadow_axis_forward_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_cascade_splits_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_cascade_world_texel_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_cascade_params_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_camera_position_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_camera_forward_ = BGFX_INVALID_HANDLE;
+    bgfx::UniformHandle u_shadow_cascade_uv_proj_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_local_light_count_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_local_light_params_ = BGFX_INVALID_HANDLE;
     bgfx::UniformHandle u_local_light_pos_range_ = BGFX_INVALID_HANDLE;
@@ -2745,6 +2937,7 @@ class BgfxBackend final : public Backend {
     bool shadow_tex_ready_ = false;
     bool point_shadow_tex_ready_ = false;
     detail::DirectionalShadowMap cached_shadow_map_{};
+    detail::DirectionalShadowCascadeSet cached_shadow_cascades_{};
     detail::PointShadowMap cached_point_shadow_map_{};
     int shadow_update_every_frames_ = 1;
     int shadow_frames_until_update_ = 0;

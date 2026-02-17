@@ -49,8 +49,8 @@ git -C ../KARMA-REPO fetch --all --prune
   - If fetch fails, mark KARMA state stale explicitly.
 
 ## Current Priority Override
-- Renderer parity and renderer-shadow-hardening are co-equal P0 tracks.
-- Prioritize these ahead of non-blocking audio/content-mount/UI and queued backend follow-up.
+- Renderer capability parity and KARMA lighting/shadow parity are co-equal P0 priorities.
+- Active execution is consolidated under `docs/projects/karma-lighting-shadow-parity.md`; prioritize it ahead of non-blocking audio/content-mount/UI and queued backend follow-up.
 - Convert KARMA feature intent into rewrite-owned contracts/docs.
 
 ## KARMA Intake Loop (Integration Mode)

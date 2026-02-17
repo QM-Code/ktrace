@@ -1,27 +1,45 @@
 # KARMA Lighting + Shadow Parity
 
 ## Project Snapshot
-- Current owner: `codex`
-- Status: `priority/in progress (new canonical lighting/shadow intake track)`
+- Current owner: `specialist-renderer-csm-p0s1`
+- Status: `priority/in progress (P0-S1 directional CSM intake complete; ready for P0-S2 compare-sampler intake)`
 - Upstream snapshot: `KARMA-REPO@905b63b`
 - Rewrite snapshot: `m-rewrite@7ee717f8d`
-- Immediate next task: execute Slice `P0-S1` (directional CSM intake design lock + first vertical slice in sandbox).
+- Immediate next task: execute `P0-S2` compare-sampler shadow sampling intake.
 - Validation gate: one assigned runtime-select renderer profile (`bgfx,diligent`), sandbox proof recipes, runtime smoke across renderer overrides, and docs lint must pass before slice acceptance.
 
 ## Mission
 Implement every lighting/shadow technique that is actively used in KARMA demo paths and still missing (or only partially implemented) in `m-rewrite`, prove each in sandbox first, then wire the proven stack into `bz3` runtime.
+
+## Intake Stance (Locked)
+1. For this track, default to algorithm/flow-first intake from `KARMA-REPO`: when KARMA already has a proven lighting/shadow implementation, port that behavior directly.
+2. Adapt imported logic to rewrite contracts, naming, and generic-backend structure; do not mirror upstream file layout.
+3. Do not redesign algorithms first when a KARMA implementation exists and is compatible with rewrite contracts.
+4. If a KARMA algorithm/flow cannot be applied cleanly in rewrite, stop and escalate with a compatibility note; do not silently substitute a different approach.
+5. Any intentional divergence from KARMA algorithm/flow requires explicit rationale plus validation evidence in the handoff.
 
 ## Foundation References
 - `docs/foundation/policy/execution-policy.md`
 - `docs/foundation/policy/rewrite-invariants.md`
 - `docs/foundation/governance/overseer-playbook.md`
 - `docs/archive/renderer-shadow-hardening-superseded-2026-02-17.md` (source of carry-over unfinished items)
-- `docs/projects/renderer-parity.md` (cross-track status only)
+- `docs/archive/renderer-parity-retired-2026-02-17.md` (historical parity/VQ ledger; retired)
 
 ## Why This Is Separate
 - Shadow hardening moved from isolated bug-fix mode into a full capability-parity program.
 - We now need one canonical agent start point that covers: KARMA intake gaps, sandbox proof policy, and final bz3 integration sequencing.
 - This document supersedes `renderer-shadow-hardening.md` as the active intake/implementation entry point.
+- This document now also carries the remaining actionable concerns from retired `renderer-parity.md` so active renderer/shadow execution stays in one place.
+
+## Renderer-Parity Retirement Intake (2026-02-17)
+- Retired file: `docs/projects/renderer-parity.md` -> `docs/archive/renderer-parity-retired-2026-02-17.md`.
+- Active carry-over concern from the retired track:
+  - VQ4 deterministic visual regression guardrails (`assertions/metrics + wrapper/docs alignment`).
+- Carry-over closure accepted by operator:
+  - locked `gpu_default` contact-edge visual closeout is accepted; no immediate follow-up adjustment is queued unless regression evidence appears.
+- VQ4 strategy lock for this track:
+  - primary gate uses deterministic numeric/trace-derived proxies,
+  - screenshot evidence remains supplemental/operator evidence (not sole CI gate), especially while Diligent non-interactive capture remains environment-limited.
 
 ## Owned Paths
 - `docs/projects/karma-lighting-shadow-parity.md`
@@ -48,11 +66,13 @@ Read-only comparison root:
   - backend-parity lighting/shadow behavior in rewrite sandbox.
   - runtime-wired controls needed for deterministic bz3 verification.
 - Coordinate before changing:
-  - `docs/projects/renderer-parity.md`
+  - `docs/foundation/governance/testing-ci-governance.md`
+  - `docs/archive/renderer-parity-retired-2026-02-17.md` (historical thresholds/rubrics)
   - `docs/foundation/architecture/core-engine-contracts.md`
 
 ## Non-Goals
 - Do not clone KARMA file layout or architecture verbatim.
+- Do not replace a proven KARMA lighting/shadow algorithm with a rewrite-specific variant without documented rationale and evidence.
 - Do not expand into unrelated gameplay/network/UI migration work.
 - Do not land unproven shadow/lighting changes directly into bz3 runtime without sandbox proof.
 
@@ -64,8 +84,8 @@ Legend:
 
 | Area | KARMA-REPO (active demo path) | m-rewrite state | Gap |
 |---|---|---|---|
-| Directional shadow topology | 4-cascade CSM array with split logic + transition blending (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`, `src/renderer/backends/diligent/backend_init.cpp`) | Single-map directional shadow projection only; no cascade metadata/tables in shader path (`src/engine/renderer/backends/directional_shadow_internal.hpp`, `data/bgfx/shaders/mesh/fs_mesh.sc`) | `Missing` |
-| CSM stability policy | Texel-snapped cascade fit + cached matrices/splits + camera/light threshold invalidation (`src/renderer/backends/diligent/backend_render.cpp`) | Single-map fit/snap exists; no cascade-stability policy because no CSM | `Missing` (CSM-specific) |
+| Directional shadow topology | 4-cascade CSM array with split logic + transition blending (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`, `src/renderer/backends/diligent/backend_init.cpp`) | 4-cascade CSM atlas + metadata wired in rewrite shared internals and both backends (`src/engine/renderer/backends/directional_shadow_internal.hpp`, `src/engine/renderer/backends/bgfx/backend_bgfx.cpp`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`, `data/bgfx/shaders/mesh/fs_mesh.sc`) | `Partial` (topology/stability landed; compare-sampler parity remains in `P0-S2`) |
+| CSM stability policy | Texel-snapped cascade fit + cached matrices/splits + camera/light threshold invalidation (`src/renderer/backends/diligent/backend_render.cpp`) | Texel-snapped per-cascade fit + lambda splits + transition blending now implemented; single-map fallback retained for stabilization (`src/engine/renderer/backends/directional_shadow_internal.hpp`) | `Partial` (slice complete; later quality/parity deltas tracked in downstream slices) |
 | Directional shadow sampling | Hardware compare sampling (`SamplerComparisonState`, `SampleCmpLevelZero`) + optional PCF loop (`src/renderer/backends/diligent/backend_init.cpp`) | Manual depth sample + `step(...)` PCF kernels in BGFX and Diligent shaders (`data/bgfx/shaders/mesh/fs_mesh.sc`, `src/engine/renderer/backends/diligent/backend_diligent.cpp`) | `Missing` |
 | Point shadow sampling | Hardware compare sampling for point shadows (`SampleCmpLevelZero` on point map) | Manual depth sample + `step(...)` for point shadows | `Missing` |
 | Rasterizer depth/slope bias usage | Shadow raster state consumes `shadow_raster_depth_bias` + `shadow_raster_slope_bias` (`src/renderer/backends/diligent/backend_init.cpp`) | Bias values are plumbed into semantics/uniforms, but not applied as rasterizer state in rewrite backends | `Partial` |
@@ -80,18 +100,20 @@ Legend:
 
 ## Already Landed In m-rewrite (Keep Green)
 - GPU directional shadow pass (`gpu_default`) in BGFX and Diligent.
+- Directional 4-cascade CSM metadata path (lambda splits, cascade blend, texel-snapped fit) with explicit single-map fallback mode during stabilization.
 - Shared shadow bias semantics and config keys (constant/receiver/normal/raster fields).
 - Multi-point shadow selection with dirty-face scheduling and face-budget control.
 - Local light shadow-lift parameters and AO-local-light modulation knobs.
 - Sandbox support for multi-point-light motion, pause/resume (`space`), and diagnostics.
 
 ## Normalized Carry-Over Items (from renderer-shadow-hardening.md)
-1. Contact-edge visual closeout is still required in roaming/runtime checkpoints.
+1. Contact-edge visual closeout is accepted on locked `gpu_default` defaults (`2026-02-17`); reopen only on explicit regression evidence.
 2. Low-frequency blockiness/aliasing remains a quality risk and must be measured after compare-sampler/CSM intake.
-3. Diligent non-interactive screenshot capture remains environment-blocked (`VK_ERROR_INITIALIZATION_FAILED` on X11 in headless capture); operator desktop evidence remains required.
+3. Diligent non-interactive screenshot capture remains environment-blocked (`VK_ERROR_INITIALIZATION_FAILED` on X11 in headless capture); operator desktop evidence remains required for screenshot-specific proof.
 4. Regression watch stays active for prior distance-dropout behavior; every slice must include an explicit distance-persistence check.
 5. Runtime debug UI timing question is now explicit: defer full panel until core parity slices land, then add bounded panel for maintainability.
 6. Cascade-count policy decision is now attached to CSM slice acceptance (`fixed 4 first`, optional configurability only after parity proof).
+7. VQ4 deterministic visual regression guardrails are now tracked here (not in retired `renderer-parity.md`).
 
 ## Execution Plan
 
@@ -103,6 +125,15 @@ Legend:
   - baseline screenshots/traces for BGFX + Diligent captured and linked.
   - no regressions against current “working” sandbox command family.
 
+### P0-S0b: VQ4 Deterministic Visual Regression Guardrails (carry-over)
+- Add one deterministic visual-regression guard execution path for BGFX + Diligent that is scriptable/headless-friendly and uses explicit build-dir inputs.
+- Encode pass/fail checks with numeric/trace proxies tied to accepted runtime expectations (for example active `gpu_default` path, no unintended fallback tokens, and bounded shadow diagnostics).
+- Align wrapper/docs/CI posture in the same slice (or document explicit standalone guard posture when wrapper integration is intentionally deferred).
+- Acceptance:
+  - guard command(s) are copy-pastable and deterministic,
+  - pass/fail conditions are explicit and documented in this file,
+  - testing governance docs are updated in the same handoff.
+
 ### P0-S1: Directional CSM Intake (KARMA parity)
 - Add 4-cascade directional shadow topology and per-cascade metadata.
 - Add split policy (lambda), cascade transition blending, and texel-snapped cascade fit.
@@ -110,6 +141,19 @@ Legend:
 - Acceptance:
   - moving-camera sandbox shows no cascade seam pops.
   - near/far shadow stability better than current single-map baseline.
+
+### P0-S1 Session Update (2026-02-17)
+- Implemented shared directional CSM set (`4` cascades) with:
+  - split-lambda partitioning,
+  - texel-snapped cascade center fit,
+  - transition blending metadata,
+  - atlas tiling metadata + per-cascade UV projection.
+- Integrated cascade rendering/sampling in BGFX and Diligent backend paths while retaining explicit single-map fallback conversion for stabilization.
+- Validation status this session:
+  - `./abuild.py -c -d build-a5 -b bgfx,diligent`: pass.
+  - `./build-a5/src/engine/renderer_shadow_sandbox --backend-render bgfx ...`: pass.
+  - `./build-a5/src/engine/renderer_shadow_sandbox --backend-render diligent ...`: passes when run with `SDL_VIDEODRIVER=wayland` in this environment.
+  - runtime smoke canonical recipe updated to current CLI (`--data-dir`, `--user-config`, `--trace`); both backend runs complete to expected timeout (`EXIT:124`) with sustained render traces.
 
 ### P0-S2: Compare-Sampler Shadow Sampling
 - Replace manual `step`-based directional/point shadow compare with hardware compare sampling path (per backend capability).
@@ -175,10 +219,12 @@ From `m-rewrite/`:
   --point-shadow-lights 2 --point-shadow-map-size 256 --point-shadow-max-lights 2 \
   --point-shadow-light-range 14 --point-shadow-light-intensity 2 \
   --point-shadow-scene-motion --point-shadow-motion-speed 0.9
+# If Diligent surface init fails on Wayland/X11 autodetect, force Wayland:
+# SDL_VIDEODRIVER=wayland ./<build-dir>/src/engine/renderer_shadow_sandbox --backend-render diligent ...
 
 # Runtime smoke
-timeout -k 2s 20s ./<build-dir>/bz3 --backend-render bgfx -d ./data --strict-config=true --config data/client/config.json -v -t engine.sim,render.system,render.bgfx
-timeout -k 2s 20s ./<build-dir>/bz3 --backend-render diligent -d ./data --strict-config=true --config data/client/config.json -v -t engine.sim,render.system,render.diligent
+timeout -k 2s 20s ./<build-dir>/bz3 --backend-render bgfx --data-dir ./data --strict-config=true --user-config data/client/config.json --trace engine.sim,render.system,render.bgfx
+timeout -k 2s 20s ./<build-dir>/bz3 --backend-render diligent --data-dir ./data --strict-config=true --user-config data/client/config.json --trace engine.sim,render.system,render.diligent
 
 ./docs/scripts/lint-project-docs.sh
 ```
@@ -201,12 +247,13 @@ timeout -k 2s 20s ./<build-dir>/bz3 --backend-render diligent -d ./data --strict
 - Should compare-sampler rollout be strictly backend-synchronized, or can Diligent lead with BGFX parity gate in next slice?
 - For CSM, should rewrite lock to 4 cascades first (KARMA parity) or expose cascade count immediately?
 - At what slice do we require world-asset parity captures in addition to synthetic sandbox captures?
+- For VQ4 guardrails, should enforcement be integrated into an existing wrapper immediately or shipped first as a required standalone guard command with CI follow-up?
 
 ## Handoff Checklist
-- [ ] Active slice completed
-- [ ] Builds/tests run and summarized
-- [ ] Sandbox evidence captured for both backends
-- [ ] Runtime smoke completed (or blocker documented)
-- [ ] This file updated
-- [ ] `docs/projects/ASSIGNMENTS.md` updated
-- [ ] Remaining risks/open questions listed
+- [x] Active slice completed
+- [x] Builds/tests run and summarized
+- [x] Sandbox evidence captured for both backends
+- [x] Runtime smoke completed (or blocker documented)
+- [x] This file updated
+- [x] `docs/projects/ASSIGNMENTS.md` updated
+- [x] Remaining risks/open questions listed

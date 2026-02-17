@@ -64,6 +64,39 @@ struct DirectionalShadowMap {
     std::vector<float> depth{};
 };
 
+constexpr int kDirectionalShadowCascadeCount = 4;
+
+struct DirectionalShadowCascade {
+    bool ready = false;
+    float extent = 1.0f;
+    float center_x = 0.0f;
+    float center_y = 0.0f;
+    float min_depth = 0.0f;
+    float depth_range = 1.0f;
+    float world_texel = 0.0f;
+    glm::vec2 atlas_offset{0.0f, 0.0f};
+    float atlas_scale = 1.0f;
+    glm::mat4 shadow_uv_proj{1.0f};
+};
+
+struct DirectionalShadowCascadeSet {
+    bool ready = false;
+    bool single_map_fallback = true;
+    int map_size = 0;
+    int atlas_size = 0;
+    int cascade_count = 1;
+    int pcf_radius = 0;
+    float bias = 0.0f;
+    float strength = 0.0f;
+    float split_lambda = 0.7f;
+    float transition_fraction = 0.08f;
+    glm::vec3 axis_right{1.0f, 0.0f, 0.0f};
+    glm::vec3 axis_up{0.0f, 1.0f, 0.0f};
+    glm::vec3 axis_forward{0.0f, 0.0f, -1.0f};
+    std::array<DirectionalShadowCascade, kDirectionalShadowCascadeCount> cascades{};
+    std::array<float, kDirectionalShadowCascadeCount> splits{};
+};
+
 constexpr int kPointShadowFaceCount = 6;
 
 struct PointShadowMap {
@@ -359,6 +392,49 @@ inline bool ValidateResolvedDirectionalShadowSemantics(const ResolvedDirectional
         return false;
     }
     return true;
+}
+
+inline glm::mat4 BuildDirectionalShadowCascadeUvProjection(const glm::vec3& axis_right,
+                                                           const glm::vec3& axis_up,
+                                                           const glm::vec3& axis_forward,
+                                                           const DirectionalShadowCascade& cascade) {
+    glm::mat4 projection{1.0f};
+    const float safe_extent = std::max(cascade.extent, 1e-4f);
+    const float safe_depth_range = std::max(cascade.depth_range, 1e-4f);
+    const float atlas_scale = std::max(cascade.atlas_scale, 0.0f);
+    const float x_scale = atlas_scale / (2.0f * safe_extent);
+    const float y_scale = atlas_scale / (2.0f * safe_extent);
+    const float z_scale = 1.0f / safe_depth_range;
+    const float x_bias =
+        cascade.atlas_offset.x +
+        (0.5f * atlas_scale) -
+        (cascade.center_x * x_scale);
+    const float y_bias =
+        cascade.atlas_offset.y +
+        (0.5f * atlas_scale) -
+        (cascade.center_y * y_scale);
+    const float z_bias = -cascade.min_depth * z_scale;
+
+    projection[0][0] = axis_right.x * x_scale;
+    projection[1][0] = axis_right.y * x_scale;
+    projection[2][0] = axis_right.z * x_scale;
+    projection[3][0] = x_bias;
+
+    projection[0][1] = axis_up.x * y_scale;
+    projection[1][1] = axis_up.y * y_scale;
+    projection[2][1] = axis_up.z * y_scale;
+    projection[3][1] = y_bias;
+
+    projection[0][2] = axis_forward.x * z_scale;
+    projection[1][2] = axis_forward.y * z_scale;
+    projection[2][2] = axis_forward.z * z_scale;
+    projection[3][2] = z_bias;
+
+    projection[0][3] = 0.0f;
+    projection[1][3] = 0.0f;
+    projection[2][3] = 0.0f;
+    projection[3][3] = 1.0f;
+    return projection;
 }
 
 inline void ProjectShadowPoint(const DirectionalShadowMap& map,
@@ -896,6 +972,294 @@ inline DirectionalShadowMap BuildDirectionalShadowProjection(const ResolvedDirec
     map.axis_up = axis_up;
     map.axis_forward = axis_forward;
     return map;
+}
+
+inline DirectionalShadowCascadeSet BuildDirectionalShadowCascadeSetFromSingleMap(
+    const DirectionalShadowMap& map) {
+    DirectionalShadowCascadeSet cascades{};
+    cascades.single_map_fallback = true;
+    cascades.cascade_count = 1;
+    cascades.map_size = std::max(map.size, 0);
+    cascades.atlas_size = std::max(map.size, 0);
+    cascades.pcf_radius = std::max(map.pcf_radius, 0);
+    cascades.bias = std::max(map.bias, 0.0f);
+    cascades.strength = std::clamp(map.strength, 0.0f, 1.0f);
+    cascades.transition_fraction = 0.0f;
+    cascades.axis_right = map.axis_right;
+    cascades.axis_up = map.axis_up;
+    cascades.axis_forward = map.axis_forward;
+    cascades.splits.fill(std::numeric_limits<float>::max());
+
+    if (!map.ready || map.size <= 0) {
+        return cascades;
+    }
+
+    DirectionalShadowCascade cascade{};
+    cascade.ready = true;
+    cascade.extent = std::max(map.extent, 1e-4f);
+    cascade.center_x = map.center_x;
+    cascade.center_y = map.center_y;
+    cascade.min_depth = map.min_depth;
+    cascade.depth_range = std::max(map.depth_range, 1e-4f);
+    cascade.world_texel = (map.size > 0)
+        ? ((2.0f * cascade.extent) / static_cast<float>(map.size))
+        : 0.0f;
+    cascade.atlas_offset = glm::vec2(0.0f, 0.0f);
+    cascade.atlas_scale = 1.0f;
+    cascade.shadow_uv_proj = BuildDirectionalShadowCascadeUvProjection(
+        map.axis_right,
+        map.axis_up,
+        map.axis_forward,
+        cascade);
+
+    cascades.cascades[0] = cascade;
+    cascades.ready = true;
+    return cascades;
+}
+
+inline DirectionalShadowCascadeSet BuildDirectionalShadowCascades(
+    const ResolvedDirectionalShadowSemantics& semantics,
+    const glm::vec3& light_direction,
+    const std::vector<DirectionalShadowCaster>& casters,
+    const DirectionalShadowView& view,
+    const bool force_single_map_fallback = false) {
+    DirectionalShadowCascadeSet cascades{};
+    if (!semantics.enabled ||
+        !ValidateResolvedDirectionalShadowSemantics(semantics) ||
+        casters.empty()) {
+        return cascades;
+    }
+
+    const DirectionalShadowMap fallback_projection =
+        BuildDirectionalShadowProjection(semantics, light_direction, casters, &view);
+    if (!fallback_projection.ready) {
+        return cascades;
+    }
+    if (force_single_map_fallback) {
+        return BuildDirectionalShadowCascadeSetFromSingleMap(fallback_projection);
+    }
+
+    cascades.single_map_fallback = false;
+    cascades.map_size = std::max(semantics.map_size, 1);
+    cascades.atlas_size = cascades.map_size * 2;
+    cascades.cascade_count = kDirectionalShadowCascadeCount;
+    cascades.pcf_radius = semantics.pcf_radius;
+    cascades.bias = semantics.bias;
+    cascades.strength = semantics.strength;
+    cascades.split_lambda = 0.7f;
+    cascades.transition_fraction = 0.08f;
+    cascades.axis_right = fallback_projection.axis_right;
+    cascades.axis_up = fallback_projection.axis_up;
+    cascades.axis_forward = fallback_projection.axis_forward;
+    cascades.splits.fill(std::numeric_limits<float>::max());
+
+    const renderer::CameraData& camera = view.camera;
+    if (!IsFiniteVec3(camera.position) || !IsFiniteVec3(camera.target)) {
+        return BuildDirectionalShadowCascadeSetFromSingleMap(fallback_projection);
+    }
+
+    glm::vec3 cam_forward = camera.target - camera.position;
+    const float cam_forward_len = glm::length(cam_forward);
+    if (!std::isfinite(cam_forward_len) || cam_forward_len <= 1e-6f) {
+        return BuildDirectionalShadowCascadeSetFromSingleMap(fallback_projection);
+    }
+    cam_forward /= cam_forward_len;
+    glm::vec3 cam_up{0.0f, 1.0f, 0.0f};
+    if (std::fabs(glm::dot(cam_forward, cam_up)) >= 0.95f) {
+        cam_up = glm::vec3(0.0f, 0.0f, 1.0f);
+    }
+    glm::vec3 cam_right = glm::cross(cam_forward, cam_up);
+    const float cam_right_len = glm::length(cam_right);
+    if (!std::isfinite(cam_right_len) || cam_right_len <= 1e-6f) {
+        return BuildDirectionalShadowCascadeSetFromSingleMap(fallback_projection);
+    }
+    cam_right /= cam_right_len;
+    cam_up = glm::normalize(glm::cross(cam_right, cam_forward));
+    if (!IsFiniteVec3(cam_up)) {
+        return BuildDirectionalShadowCascadeSetFromSingleMap(fallback_projection);
+    }
+
+    const float aspect = ClampFinite(view.aspect_ratio, 16.0f / 9.0f, 0.25f, 8.0f);
+    const float fov_y_degrees = ClampFinite(camera.fov_y_degrees, 60.0f, 20.0f, 120.0f);
+    const float tan_half_fov = std::tan(glm::radians(fov_y_degrees) * 0.5f);
+    if (!std::isfinite(tan_half_fov) || tan_half_fov <= 1e-6f) {
+        return BuildDirectionalShadowCascadeSetFromSingleMap(fallback_projection);
+    }
+
+    const float shadow_near = std::max(ClampFinite(camera.near_clip, 0.1f, 0.05f, 32.0f), 0.05f);
+    float shadow_far = std::max(semantics.extent, shadow_near + 1.0f);
+    if (std::isfinite(camera.far_clip) && camera.far_clip > shadow_near + 0.1f) {
+        shadow_far = std::min(shadow_far, camera.far_clip);
+    }
+    shadow_far = std::max(shadow_far, shadow_near + 1.0f);
+    const float split_lambda = std::clamp(cascades.split_lambda, 0.0f, 1.0f);
+
+    for (int cascade = 0; cascade < kDirectionalShadowCascadeCount; ++cascade) {
+        const float p =
+            static_cast<float>(cascade + 1) / static_cast<float>(kDirectionalShadowCascadeCount);
+        const float uniform_split = shadow_near + ((shadow_far - shadow_near) * p);
+        const float log_split = shadow_near * std::pow(shadow_far / shadow_near, p);
+        float split = glm::mix(uniform_split, log_split, split_lambda);
+        split = std::clamp(split, shadow_near + 0.001f, shadow_far);
+        cascades.splits[static_cast<std::size_t>(cascade)] = split;
+    }
+
+    auto build_slice_corners = [&](float slice_near,
+                                   float slice_far,
+                                   std::array<glm::vec3, 8>& out_corners) {
+        const float near_h = tan_half_fov * slice_near;
+        const float near_w = near_h * aspect;
+        const float far_h = tan_half_fov * slice_far;
+        const float far_w = far_h * aspect;
+        const glm::vec3 near_center = camera.position + (cam_forward * slice_near);
+        const glm::vec3 far_center = camera.position + (cam_forward * slice_far);
+        out_corners = {
+            near_center + (cam_up * near_h) - (cam_right * near_w),
+            near_center + (cam_up * near_h) + (cam_right * near_w),
+            near_center - (cam_up * near_h) - (cam_right * near_w),
+            near_center - (cam_up * near_h) + (cam_right * near_w),
+            far_center + (cam_up * far_h) - (cam_right * far_w),
+            far_center + (cam_up * far_h) + (cam_right * far_w),
+            far_center - (cam_up * far_h) - (cam_right * far_w),
+            far_center - (cam_up * far_h) + (cam_right * far_w),
+        };
+        return true;
+    };
+
+    const float safe_shadow_map_extent = std::max(static_cast<float>(cascades.map_size), 1.0f);
+    float slice_prev_split = shadow_near;
+    bool any_cascade_ready = false;
+    for (int cascade_idx = 0; cascade_idx < kDirectionalShadowCascadeCount; ++cascade_idx) {
+        const float split_near = slice_prev_split;
+        const float split_far = cascades.splits[static_cast<std::size_t>(cascade_idx)];
+        slice_prev_split = split_far;
+        if (!std::isfinite(split_near) || !std::isfinite(split_far) ||
+            split_far <= split_near + 1e-4f) {
+            continue;
+        }
+
+        std::array<glm::vec3, 8> frustum_corners{};
+        if (!build_slice_corners(split_near, split_far, frustum_corners)) {
+            continue;
+        }
+
+        glm::vec3 frustum_center{0.0f, 0.0f, 0.0f};
+        for (const glm::vec3& corner : frustum_corners) {
+            frustum_center += corner;
+        }
+        frustum_center /= static_cast<float>(frustum_corners.size());
+
+        float radius_ws = 0.0f;
+        for (const glm::vec3& corner : frustum_corners) {
+            radius_ws = std::max(radius_ws, glm::length(corner - frustum_center));
+        }
+        radius_ws = std::ceil(radius_ws * 16.0f) / 16.0f;
+        radius_ws = std::max(radius_ws + 2.0f, 1.0f);
+
+        float center_x = glm::dot(frustum_center, cascades.axis_right);
+        float center_y = glm::dot(frustum_center, cascades.axis_up);
+        const float units_per_texel = (2.0f * radius_ws) / safe_shadow_map_extent;
+        if (units_per_texel > 1e-6f) {
+            center_x = std::floor((center_x / units_per_texel) + 0.5f) * units_per_texel;
+            center_y = std::floor((center_y / units_per_texel) + 0.5f) * units_per_texel;
+        }
+
+        float light_min_z = std::numeric_limits<float>::max();
+        float light_max_z = std::numeric_limits<float>::lowest();
+        for (const glm::vec3& corner : frustum_corners) {
+            const float corner_lz = glm::dot(corner, cascades.axis_forward);
+            light_min_z = std::min(light_min_z, corner_lz);
+            light_max_z = std::max(light_max_z, corner_lz);
+        }
+        if (!std::isfinite(light_min_z) || !std::isfinite(light_max_z)) {
+            continue;
+        }
+
+        const float depth_span = std::max(light_max_z - light_min_z, 1.0f);
+        const float depth_padding = std::max(5.0f, depth_span * 0.2f);
+        light_min_z -= depth_padding;
+        light_max_z += depth_padding;
+        const float depth_range = std::max(light_max_z - light_min_z, 0.01f);
+
+        DirectionalShadowCascade cascade{};
+        cascade.ready = true;
+        cascade.extent = radius_ws;
+        cascade.center_x = center_x;
+        cascade.center_y = center_y;
+        cascade.min_depth = light_min_z;
+        cascade.depth_range = depth_range;
+        cascade.world_texel = (2.0f * radius_ws) / safe_shadow_map_extent;
+        if (kDirectionalShadowCascadeCount > 1) {
+            const int col = cascade_idx % 2;
+            const int row = cascade_idx / 2;
+            cascade.atlas_offset = glm::vec2(static_cast<float>(col) * 0.5f,
+                                             static_cast<float>(row) * 0.5f);
+            cascade.atlas_scale = 0.5f;
+        } else {
+            cascade.atlas_offset = glm::vec2(0.0f, 0.0f);
+            cascade.atlas_scale = 1.0f;
+        }
+        cascade.shadow_uv_proj = BuildDirectionalShadowCascadeUvProjection(
+            cascades.axis_right,
+            cascades.axis_up,
+            cascades.axis_forward,
+            cascade);
+        cascades.cascades[static_cast<std::size_t>(cascade_idx)] = cascade;
+        any_cascade_ready = true;
+    }
+
+    if (!any_cascade_ready) {
+        return BuildDirectionalShadowCascadeSetFromSingleMap(fallback_projection);
+    }
+
+    DirectionalShadowCascade* previous_ready = nullptr;
+    for (DirectionalShadowCascade& cascade : cascades.cascades) {
+        if (cascade.ready) {
+            previous_ready = &cascade;
+            continue;
+        }
+        if (previous_ready) {
+            cascade = *previous_ready;
+        }
+    }
+
+    cascades.ready = true;
+    return cascades;
+}
+
+inline bool IntersectsDirectionalShadowCascade(const DirectionalShadowCascadeSet& cascades,
+                                               int cascade_index,
+                                               const glm::vec3& center,
+                                               float radius) {
+    if (!cascades.ready) {
+        return true;
+    }
+    if (cascade_index < 0 ||
+        cascade_index >= cascades.cascade_count ||
+        cascade_index >= kDirectionalShadowCascadeCount) {
+        return false;
+    }
+    const DirectionalShadowCascade& cascade =
+        cascades.cascades[static_cast<std::size_t>(cascade_index)];
+    if (!cascade.ready) {
+        return false;
+    }
+    const float lx = glm::dot(center, cascades.axis_right);
+    const float ly = glm::dot(center, cascades.axis_up);
+    const float lz = glm::dot(center, cascades.axis_forward);
+    const float padded_extent = cascade.extent + std::max(radius, 0.0f);
+    if (std::fabs(lx - cascade.center_x) > padded_extent ||
+        std::fabs(ly - cascade.center_y) > padded_extent) {
+        return false;
+    }
+    if (cascade.depth_range > 1e-6f) {
+        const float min_depth = cascade.min_depth - std::max(radius, 0.0f);
+        const float max_depth = cascade.min_depth + cascade.depth_range + std::max(radius, 0.0f);
+        if (lz < min_depth || lz > max_depth) {
+            return false;
+        }
+    }
+    return true;
 }
 
 inline DirectionalShadowMap BuildDirectionalShadowMap(const ResolvedDirectionalShadowSemantics& semantics,

@@ -21,7 +21,7 @@ Format:
 
 #### 2) Keep renderer capability parity as equal top priority
 - Decision:
-  - continue `renderer-parity.md` as a top track alongside networking-foundation work.
+  - continue renderer capability parity as a top track alongside networking-foundation work, with active execution consolidated under `docs/projects/karma-lighting-shadow-parity.md`.
 - Why:
   - renderer capability gaps are still one of the largest blockers to rewrite-level feature confidence.
 - Impact:
@@ -112,7 +112,7 @@ Note:
 
 ### B) Delegated build policy is `abuild.py`-only
 - Decision:
-  - delegated operator flows use `./abuild.py -d <build-dir>`; no raw `cmake -S/-B` flows.
+  - delegated operator flows use `./abuild.py -c -d <build-dir>` by default (omit `-c` only for intentional reuse); no raw `cmake -S/-B` flows.
 - Why:
   - prevent toolchain/config drift.
 - Impact:
@@ -198,3 +198,13 @@ Note:
   - preserve specialist context for product/code slices and keep environment provisioning centralized.
 - Impact:
   - when slot/toolchain readiness is missing, specialists report blockers and stop delegated build/test steps until overseer/human resolves setup.
+
+### M) Lighting/shadow KARMA intake is algorithm/flow-first
+- Decision:
+  - for lighting/shadow parity slices, when `KARMA-REPO` has a proven implementation, specialists should port the upstream algorithm/integration flow directly by default.
+  - adapt that logic to rewrite-owned contracts, naming, and generic-backend seams; do not mirror upstream file layout.
+  - any intentional divergence from KARMA algorithm/flow requires explicit rationale plus validation evidence, and unresolved compatibility gaps must be escalated for overseer/human review.
+- Why:
+  - KARMA already carries mature lighting/shadow implementation experience; re-inventing core algorithms without evidence increases risk and delay.
+- Impact:
+  - renderer parity packets should bias toward direct capability intake and only deviate when tests/traces prove a better or required rewrite-specific path.

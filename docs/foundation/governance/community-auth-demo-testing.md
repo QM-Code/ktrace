@@ -15,7 +15,7 @@ Use this workflow when changing:
 From `m-rewrite/`:
 
 ```bash
-./abuild.py build-dev
+./abuild.py -c -d build-dev
 ```
 
 Policy reminders:

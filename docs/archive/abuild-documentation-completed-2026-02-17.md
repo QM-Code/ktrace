@@ -1,9 +1,11 @@
-# ABuild Documentation
+# ABuild Documentation (Archived)
+
+Archived from `docs/projects/abuild-documentation.md` on `2026-02-17`.
 
 ## Project Snapshot
 - Current owner: `codex`
-- Status: `in progress (canonical abuild usage + blocker posture updated)`
-- Immediate next task: sweep remaining project docs for stale `abuild.py` examples and normalize to explicit `-d` usage where those examples are still active.
+- Status: `complete (canonical abuild usage synchronized; default-first policy locked)`
+- Immediate next task: maintenance only: monitor new/edited docs for `abuild.py` command-shape drift and update examples when policy/CLI behavior changes.
 - Validation gate: `./docs/scripts/lint-project-docs.sh`
 
 ## Mission
@@ -18,7 +20,7 @@ Get `abuild.py` documentation up to date so agents know the correct usage.
 `abuild.py` usage is now a cross-project execution dependency (agent identity, slot lock ownership, backend selection rules). Keeping this in a dedicated track prevents policy drift across project docs and specialist prompts.
 
 ## Owned Paths
-- `docs/projects/abuild-documentation.md`
+- `docs/archive/abuild-documentation-completed-2026-02-17.md`
 - `docs/projects/ASSIGNMENTS.md`
 - `docs/foundation/policy/execution-policy.md`
 - `docs/foundation/governance/overseer-playbook.md`
@@ -110,11 +112,12 @@ From `m-rewrite/`:
 ```
 
 ## Handoff Checklist
-- [ ] Canonical usage text is synchronized in all active docs that mention `abuild.py`.
-- [ ] Outdated command examples are removed/updated.
-- [ ] Validation command run and results recorded.
-- [ ] `docs/projects/ASSIGNMENTS.md` row is current.
+- [x] Canonical usage text is synchronized in all active docs that mention `abuild.py`.
+- [x] Outdated command examples are removed/updated.
+- [x] Validation command run and results recorded.
+- [x] `docs/projects/ASSIGNMENTS.md` row is current.
 
 ## Status/Handoff Notes
 - `2026-02-17`: verified lock/agent/backend-selection behavior directly from `abuild.py` and updated canonical specialist command flow.
 - `2026-02-17`: documented explicit blocker posture: specialists escalate missing local `./vcpkg` and do not spend coding-slice context on environment bootstrap.
+- `2026-02-17`: synchronized remaining governance/project docs from legacy `abuild.py -d ...` forms to canonical `./abuild.py -c -d <build-dir>` default-first policy; docs lint passed.

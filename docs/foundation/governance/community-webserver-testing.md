@@ -44,7 +44,7 @@ Periodic posture while webserver work is active:
 From `m-rewrite/`:
 
 ```bash
-./abuild.py -d build-a4
+./abuild.py -c -d <build-dir>
 ```
 
 Use isolated build dirs and `./abuild.py`-only workflow per `docs/foundation/policy/execution-policy.md`.

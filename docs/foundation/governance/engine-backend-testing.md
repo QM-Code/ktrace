@@ -20,7 +20,7 @@ From `m-rewrite/`:
 Rules:
 - In parallel work, always pass explicit `<build-dir>`.
 - `build-dev` default is allowed for serialized local checks and CI baseline.
-- Delegated operator flows remain `./abuild.py -d <build-dir>`-only for configure/build/test.
+- Delegated operator flows remain `./abuild.py -c -d <build-dir>`-only for configure/build/test (omit `-c` only when intentionally reusing an already configured build dir).
 
 ## Covered Test Targets
 1. `physics_backend_parity_jolt`
