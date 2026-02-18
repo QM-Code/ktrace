@@ -10,7 +10,7 @@
 
 ## Mission
 Prepare `m-rewrite` for eventual split into:
-- `KARMA-GAME-DEVELOPMENT-KIT` (KGDK), and
+- `KARMA-GAME-DEVELOPMENT-KIT` (KARMA), and
 - `BZ3-THE-GAME` (BZ3),
 
 while still working inside one monorepo.
@@ -18,49 +18,49 @@ while still working inside one monorepo.
 This track explicitly simulates split-repo development by introducing two virtual repo roots under `src/` and making top-level build orchestration invoke each virtual repo's local build wrapper.
 
 This project now also includes the pre-repo-split branch/worktree preparation step:
-- run KGDK and BZ3 as separate long-lived branches in separate sibling directories,
+- run KARMA and BZ3 as separate long-lived branches in separate sibling directories,
 - keep `m-rewrite` as rewrite/orchestration-only,
-- preserve `m-dev` and `KARMA-REPO` as external intake/reference inputs.
+- preserve `m-dev` and `q-karma` as external intake/reference inputs.
 
 ## Requested Scope (Locked)
 1. Rename:
-   - `src/engine/` -> `src/kgdk/`
+   - `src/engine/` -> `src/karma/`
    - `src/game/` -> `src/bz3/`
-2. Create full virtual repo structure for both sides and move current source trees into nested `src/` folders (`src/kgdk/src/...`, `src/bz3/src/...`).
+2. Create full virtual repo structure for both sides and move current source trees into nested `src/` folders (`src/karma/src/...`, `src/bz3/src/...`).
 3. Modify top-level `abuild.py` to orchestrate two-stage build:
-   - first build KGDK in `src/kgdk/`,
-   - then build BZ3 in `src/bz3/` against freshly built KGDK headers/libs.
+   - first build KARMA in `src/karma/`,
+   - then build BZ3 in `src/bz3/` against freshly built KARMA headers/libs.
 4. Resolve top-level overlap (primarily `docs/` and `data/`) so ownership and migration posture are explicit.
 5. After virtual-split layout is stable, run branch/worktree preparation with separate sibling directories:
-   - `m-kgdk/` (KGDK branch worktree),
+   - `m-karma/` (KARMA branch worktree),
    - `m-bz3/` (BZ3 branch worktree),
    - `m-rewrite/` (rewrite/orchestrator branch worktree),
    - `m-dev/` (read-only reference branch worktree for rewrite flow),
-   - `KARMA-REPO/` (separate repo for capability intake).
+   - `q-karma/` (separate repo for capability intake).
 
 ## Workspace Topology (Locked Intent)
 `bz3-rewrite/` is a filesystem parent directory, not a git branch/repo name.
 
 Target sibling directories:
-- `bz3-rewrite/m-kgdk/`
+- `bz3-rewrite/m-karma/`
 - `bz3-rewrite/m-bz3/`
 - `bz3-rewrite/m-rewrite/`
 - `bz3-rewrite/m-dev/`
-- `bz3-rewrite/KARMA-REPO/`
+- `bz3-rewrite/q-karma/`
 
 Interpretation:
-- `m-kgdk`, `m-bz3`, and `m-rewrite` are separate branch worktrees (parallel directories, no branch switching workflow).
+- `m-karma`, `m-bz3`, and `m-rewrite` are separate branch worktrees (parallel directories, no branch switching workflow).
 - `m-dev` remains available for rewrite parity/reference pull decisions (primarily read-only posture for rewrite agents).
-- `KARMA-REPO` remains a separate repo used for KGDK capability intake tracking.
+- `q-karma` remains a separate repo used for m-karma capability intake tracking.
 
 Implementation note (intent):
-- use persistent branch worktrees for `m-kgdk`, `m-bz3`, and `m-rewrite` so each has an always-on directory.
+- use persistent branch worktrees for `m-karma`, `m-bz3`, and `m-rewrite` so each has an always-on directory.
 - avoid normal development via branch switching in a shared directory.
 - keep `bz3-rewrite/` as a neutral filesystem container only.
 
 ## Target Virtual Layout
 
-### `m-rewrite/src/kgdk/` (virtual KGDK repo)
+### `m-rewrite/src/karma/` (virtual KARMA repo)
 - `CMakeLists.txt`
 - `README.md`
 - `abuild.py`
@@ -79,7 +79,7 @@ Implementation note (intent):
 - `CMakeLists.txt`
 - `README.md`
 - `abuild.py`
-- `build-aN/` (game builds linking KGDK; gitignored artifact dirs)
+- `build-aN/` (game builds linking KARMA; gitignored artifact dirs)
 - `data/` (game data)
 - `docs/`
 - `scripts/`
@@ -87,35 +87,35 @@ Implementation note (intent):
 - `vcpkg/`
 
 ## Branch/Worktree Roles (Locked Intent)
-### `m-kgdk/`
-- Purpose: KGDK codebase branch in near-final standalone-repo shape.
+### `m-karma/`
+- Purpose: KARMA codebase branch in near-final standalone-repo shape.
 - Contents: engine/runtime SDK code only (no rewrite governance content).
-- Build role: compile KGDK libraries and SDK artifacts.
-- Future posture: ingest/selectively align relevant capabilities from `KARMA-REPO`.
+- Build role: compile KARMA libraries and SDK artifacts.
+- Future posture: ingest/selectively align relevant capabilities from `q-karma`.
 
 ### `m-bz3/`
 - Purpose: BZ3 game codebase branch in near-final standalone-repo shape.
-- Contents: game code only, consuming KGDK outputs.
-- Build role: compile game binaries linking KGDK libraries/headers.
-- Knowledge boundary intent: may consult KGDK behavior/contract expectations; does not carry rewrite-overseer governance context.
+- Contents: game code only, consuming KARMA outputs.
+- Build role: compile game binaries linking KARMA libraries/headers.
+- Knowledge boundary intent: may consult KARMA behavior/contract expectations; does not carry rewrite-overseer governance context.
 
 ### `m-rewrite/`
 - Purpose: rewrite orchestration/meta branch.
 - Contents: rewrite-specific docs/instructions + top-level orchestration wrappers.
 - Build role after cutover: delegate only; no direct production compile ownership.
-- Policy intent: rewrite-only governance artifacts should not be required in final KGDK/BZ3 repos.
+- Policy intent: rewrite-only governance artifacts should not be required in final KARMA/BZ3 repos.
 
 ### `m-dev/`
 - Purpose: legacy/reference branch worktree available during transition.
 - Role in this project: reference input for parity/migration decisions, not primary implementation target.
 
-### `KARMA-REPO/`
-- Purpose: separate repo used for ongoing capability intake into KGDK as approved.
+### `q-karma/`
+- Purpose: separate repo used for ongoing capability intake into KARMA as approved.
 - Role in this project: external intake source, not rewritten in this track.
 
 ## Build Execution Policy After Worktree Cutover (Locked Intent)
 1. Actual component builds occur in:
-   - `m-kgdk/` for KGDK,
+   - `m-karma/` for KARMA,
    - `m-bz3/` for BZ3.
 2. `m-rewrite/` should not be treated as a direct compile root after cutover.
 3. `m-rewrite/abuild.py` acts as an orchestrator/delegator that invokes branch-local wrappers.
@@ -125,11 +125,11 @@ Implementation note (intent):
 After RP4, `m-rewrite/` is intentionally lightweight and rewrite-specific:
 - keep: rewrite orchestration docs + delegator tooling.
 - remove/avoid as primary ownership: component source trees, component build directories, component-local vcpkg/cmake/data/demo trees.
-- practical rule: if it is required to compile KGDK or BZ3 directly, it should live in `m-kgdk/` or `m-bz3/`, not in `m-rewrite/`.
+- practical rule: if it is required to compile KARMA or BZ3 directly, it should live in `m-karma/` or `m-bz3/`, not in `m-rewrite/`.
 
 ## Agent-Scope Intent (Operational)
-1. KGDK-focused agents operate from `m-kgdk/` and should not rely on rewrite-specific docs/process as primary guidance.
-2. BZ3-focused agents operate from `m-bz3/`; KGDK is an external dependency surface, not a co-owned source tree.
+1. KARMA-focused agents operate from `m-karma/` and should not rely on rewrite-specific docs/process as primary guidance.
+2. BZ3-focused agents operate from `m-bz3/`; KARMA is an external dependency surface, not a co-owned source tree.
 3. Rewrite overseer agents operate from `m-rewrite/` with cross-worktree awareness and coordination authority.
 4. `m-dev/` remains reference-oriented for rewrite/overseer flow unless explicitly reassigned.
 
@@ -144,7 +144,7 @@ As of `2026-02-18`:
   - governance/project docs that encode path ownership rules.
   - current install/export behavior publishes all headers under `include/karma/*` (`CMakeLists.txt` install directory export), which is broader than intended long-term SDK surface.
 
-## KGDK Public Header Boundary (New Gate)
+## KARMA Public Header Boundary (New Gate)
 This split must explicitly define what is public SDK API vs internal integration surface.
 
 Current risk:
@@ -152,7 +152,7 @@ Current risk:
 
 ### Boundary Decision (Required in RP0)
 Define and lock:
-1. Public header allowlist for KGDK.
+1. Public header allowlist for KARMA.
 2. Private/internal header list (not installed as SDK API).
 3. Transition policy for currently-public headers that move to private.
 
@@ -221,7 +221,7 @@ These are the likely public SDK-facing categories:
 - Outputs exposed:
   - virtual-repo directory topology under `src/kgdk` and `src/bz3`,
   - two-stage top-level build orchestration (`kgdk` then `bz3`),
-  - sibling branch/worktree operating topology (`m-kgdk`, `m-bz3`, `m-rewrite`, `m-dev`, `KARMA-REPO`),
+  - sibling branch/worktree operating topology (`m-karma`, `m-bz3`, `m-rewrite`, `m-dev`, `q-karma`),
   - explicit overlap policy for shared top-level assets/docs.
 - Coordinate before changing:
   - `CMakeLists.txt`
@@ -239,14 +239,14 @@ Goal: lock preconditions so path moves do not create avoidable rework.
 
 Actions:
 1. Resolve and lock decisions in **Blockers / Uncertainties** below.
-2. Finalize vcpkg posture and KGDK -> BZ3 handoff contract.
+2. Finalize vcpkg posture and KARMA -> BZ3 handoff contract.
 3. Freeze move map + grep allowlist (historical external references that must remain unchanged).
-4. Freeze KGDK public header boundary (allowlist/private list + transition policy).
+4. Freeze KARMA public header boundary (allowlist/private list + transition policy).
 
 Acceptance:
 - required gates are explicitly decided and recorded.
 - migration map is approved before touching filesystem paths.
-- KGDK public header boundary is documented and approved before install/export adjustments.
+- KARMA public header boundary is documented and approved before install/export adjustments.
 
 ### RP1: Filesystem + CMake Migration (Pass 2)
 Goal: rename/move directories and restore configure/build with minimal semantic change.
@@ -271,20 +271,20 @@ Goal: simulate split-repo developer workflow from monorepo root.
 
 Actions:
 1. Add local wrappers:
-   - `src/kgdk/abuild.py` for KGDK-only build,
-   - `src/bz3/abuild.py` for BZ3-only build consuming KGDK output.
+   - `src/kgdk/abuild.py` for KARMA-only build,
+   - `src/bz3/abuild.py` for BZ3-only build consuming KARMA output.
 2. Refactor top-level `abuild.py` to orchestrate:
    - phase A: invoke `src/kgdk/abuild.py`,
-   - phase B: invoke `src/bz3/abuild.py` with KGDK prefix/include/lib locations.
-3. Define and document stable handoff artifact contract from KGDK -> BZ3:
+   - phase B: invoke `src/bz3/abuild.py` with KARMA prefix/include/lib locations.
+3. Define and document stable handoff artifact contract from KARMA -> BZ3:
    - include root,
    - library root,
    - package config root (if `find_package` path is used).
 
 Acceptance:
 - top-level wrapper performs two-stage build end-to-end.
-- BZ3 build consumes KGDK outputs from the same run.
-- artifact handoff from KGDK -> BZ3 is deterministic and documented.
+- BZ3 build consumes KARMA outputs from the same run.
+- artifact handoff from KARMA -> BZ3 is deterministic and documented.
 
 ### RP3: Scripts + Docs + Overlap Closeout (Pass 4)
 Goal: remove stale path usage and lock ownership posture for shared top-level assets.
@@ -308,22 +308,22 @@ Goal: run the pre-split branch/worktree model in daily operation with explicit r
 
 Actions:
 1. Establish/verify sibling worktree directories under parent `bz3-rewrite/`:
-   - `m-kgdk/`, `m-bz3/`, `m-rewrite/`, `m-dev/`, and separate repo `KARMA-REPO/`.
+   - `m-karma/`, `m-bz3/`, `m-rewrite/`, `m-dev/`, and separate repo `q-karma/`.
 2. Ensure no branch-switch workflow is required for normal development:
    - each active codebase has its own persistent directory.
 3. Move compile responsibility to:
-   - `m-kgdk/` for KGDK,
+   - `m-karma/` for KARMA,
    - `m-bz3/` for BZ3.
 4. Keep `m-rewrite/` as orchestration/governance:
    - no primary component compile ownership,
-   - delegates builds into `m-kgdk/` and `m-bz3/`.
+   - delegates builds into `m-karma/` and `m-bz3/`.
 5. Lock reference posture:
    - `m-dev/` as migration/parity reference input,
-   - `KARMA-REPO/` as capability-intake input for KGDK.
+   - `q-karma/` as capability-intake input for KARMA.
 
 Acceptance:
 - five-directory sibling topology is operational and documented.
-- compile workflows run from `m-kgdk/` and `m-bz3/`, not directly from `m-rewrite/`.
+- compile workflows run from `m-karma/` and `m-bz3/`, not directly from `m-rewrite/`.
 - role boundaries for all five directories are explicit and enforced in docs/wrappers.
 
 ## Blockers / Uncertainties (Decide Before Code Changes)
@@ -332,10 +332,10 @@ Acceptance:
      - temporarily shared top-level vcpkg for both virtual repos, or
      - fully independent `src/kgdk/vcpkg` and `src/bz3/vcpkg` now.
    - note: revisit/lock this before any code movement.
-2. **KGDK consumption contract for BZ3**
+2. **KARMA consumption contract for BZ3**
    - direct include/lib path handoff vs `find_package(KarmaEngine)` handoff.
 3. **Install/staging contract location**
-   - where KGDK writes build outputs BZ3 consumes (for example staging prefix under `src/kgdk/build-aN/...`).
+   - where KARMA writes build outputs BZ3 consumes (for example staging prefix under `src/kgdk/build-aN/...`).
 4. **Lock ownership semantics across nested wrappers**
    - whether top-level lock delegates or each virtual wrapper owns independent lock files.
 5. **Docs migration policy**
@@ -343,10 +343,10 @@ Acceptance:
 6. **Top-level shared assets**
    - explicit ownership and duplication policy for `data/`, `demo/`, `docs/`, `scripts/`.
 7. **Branch/worktree creation strategy**
-   - exact creation approach for `m-kgdk`/`m-bz3`/`m-rewrite` directories (worktree commands and ownership policy).
+   - exact creation approach for `m-karma`/`m-bz3`/`m-rewrite` directories (worktree commands and ownership policy).
 8. **Operational compile cutover date**
    - when `m-rewrite` stops being a compile root and becomes delegator-only.
-9. **KGDK public header boundary**
+9. **KARMA public header boundary**
    - exact allowlist/private list and compatibility policy for de-publicizing current headers.
 
 ## Non-Goals
@@ -366,7 +366,7 @@ From `m-rewrite/`:
 ./abuild.py -c -d <build-dir>
 
 # post-RP4 operating posture (examples)
-# run KGDK build from m-kgdk/
+# run KARMA build from m-karma/
 # run BZ3 build from m-bz3/
 # run orchestrated delegate flow from m-rewrite/ only as coordinator
 ```
@@ -385,7 +385,7 @@ rg -n "src/kgdk/|src/bz3/" CMakeLists.txt src scripts docs
 - `2026-02-18`: no code movement performed yet.
 
 ## Open Questions
-- Should KGDK and BZ3 wrappers share backend-profile vocabulary exactly, or should BZ3 expose a reduced surface?
+- Should KARMA and BZ3 wrappers share backend-profile vocabulary exactly, or should BZ3 expose a reduced surface?
 - Should top-level `abuild.py` remain developer entrypoint after split simulation, or become a thin delegator only?
 - Should `src/webserver/` remain top-level during virtual split prep, or be explicitly attached to one virtual repo for ownership clarity?
 

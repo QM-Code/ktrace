@@ -3,7 +3,7 @@
 This folder is integration-mode bootstrap material for a three-repo workspace:
 - `m-rewrite`
 - `m-dev`
-- `KARMA-REPO`
+- `q-karma`
 
 Use this only when explicitly running cross-repo intake/parity oversight.
 

@@ -10,7 +10,7 @@ Execution command policy (for all specialists) is canonical in `docs/foundation/
 
 Mode note:
 - Standalone mode (default): `m-rewrite` only.
-- Integration mode (optional): `m-rewrite` + `m-dev` + `KARMA-REPO` via `docs/overseer/BOOTSTRAP.md`.
+- Integration mode (optional): `m-rewrite` + `m-dev` + `q-karma` via `docs/overseer/BOOTSTRAP.md`.
 
 ## Overseer Responsibilities
 1. Keep direction aligned with `docs/AGENTS.md`, `docs/foundation/policy/execution-policy.md`, and `docs/foundation/policy/decisions-log.md`.
@@ -20,7 +20,7 @@ Mode note:
 5. Keep `docs/projects/ASSIGNMENTS.md` plus project snapshot fields current.
 6. Maintain durable memory in `docs/foundation/policy/decisions-log.md`.
 7. Enforce default-first direction (`95% defaults / 5% overrides`).
-8. In integration mode, run continuous `KARMA-REPO` capability intake without structure mirroring.
+8. In integration mode, run continuous `q-karma` capability intake without structure mirroring.
 9. Persist accepted work via overseer checkpoint commits/pushes.
 
 ## Startup Protocol (Required)
@@ -36,29 +36,29 @@ cd m-rewrite
 3. Restate startup alignment:
   - engine owns lifecycle/subsystems; game owns BZ3 rules/protocol semantics,
   - default-first assignment posture.
-4. Integration mode only: run KARMA refresh gate before proposing targets:
+4. Integration mode only: run q-karma refresh gate before proposing targets:
 
 ```bash
-git -C ../KARMA-REPO fetch --all --prune
+git -C ../q-karma fetch --all --prune
 ```
 
-5. Integration mode only: summarize KARMA freshness in startup output:
+5. Integration mode only: summarize q-karma freshness in startup output:
   - new remote branches (if any),
   - notable upstream head commits,
   - intake candidates (adopt now / defer).
-  - If fetch fails, mark KARMA state stale explicitly.
+  - If fetch fails, mark q-karma state stale explicitly.
 
 ## Current Priority Override
-- Renderer capability parity and KARMA lighting/shadow parity are co-equal P0 priorities.
+- Renderer capability parity and q-karma lighting/shadow parity are co-equal P0 priorities.
 - Active execution is consolidated under `docs/projects/karma-lighting-parity.md`; prioritize it ahead of non-blocking audio/content-mount/UI and queued backend follow-up.
-- Convert KARMA feature intent into rewrite-owned contracts/docs.
+- Convert q-karma feature intent into rewrite-owned contracts/docs.
 
-## KARMA Intake Loop (Integration Mode)
+## q-karma Intake Loop (Integration Mode)
 1. Detect upstream capability deltas.
 2. Triage significance (default-path leverage, parity unblock, rework reduction).
 3. Reframe accepted deltas into rewrite project slices with owned paths and validation.
 4. Schedule under current rewrite priorities and conflict constraints.
-5. Close local memory by updating rewrite docs/decisions so direction is KARMA-independent.
+5. Close local memory by updating rewrite docs/decisions so direction is q-karma-independent.
 
 ## Assignment Protocol
 When issuing a specialist packet:

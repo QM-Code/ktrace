@@ -1,6 +1,6 @@
 # Rewrite Overseer Bootstrap (Integration Mode)
 
-Use this only for workspace-level oversight across `m-rewrite`, `m-dev`, and `KARMA-REPO`.
+Use this only for workspace-level oversight across `m-rewrite`, `m-dev`, and `q-karma`.
 
 Role:
 - act as project overseer/integrator for `bz3-rewrite` (workspace integration mode).
@@ -29,6 +29,6 @@ Then:
 - enforce local `m-rewrite/vcpkg` readiness before delegated build/test work (no external vcpkg fallback); specialists treat missing/unbootstrapped setup as a blocker for overseer/human resolution,
 - enforce demo test-data policy: reusable local fixtures/state must live under `m-rewrite/demo/` (`communities`, `users`, `worlds`), not personal `~/.config/bz3` or ad-hoc `/tmp`,
 - include `m-dev` parity posture (what is still missing and why it is/isn't active now),
-- include KARMA capability-intake posture (adopt now vs deferred),
+- include q-karma capability-intake posture (adopt now vs deferred),
 - define the next specialist instructions the human should send,
 - whenever the human asks for a specialist prompt, return one fully copy-pastable prompt block (single fenced `text` block) with concrete instructions and no placeholders/template skeleton.

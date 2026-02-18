@@ -1,9 +1,9 @@
-# KARMA Lighting + Shadow Parity
+# q-karma Lighting + Shadow Parity
 
 ## Project Snapshot
 - Current owner: `unassigned`
 - Status: `priority/on hold (close-out snapshot captured before external revisions; P0-S3 regression isolation restart point recorded)`
-- Upstream snapshot: `KARMA-REPO@905b63b`
+- Upstream snapshot: `q-karma@905b63b`
 - Rewrite snapshot: `origin/m-rewrite@931b5fa34` (active line) and `origin/m-rewrite-broken-shadows@405049381` (quarantined regression history)
 - Immediate next task: after external revisions land, re-run canonical baseline and isolate the residual shared seam artifact before resuming `P0-S3` incremental intake.
 - Validation gate: one assigned runtime-select renderer profile (`bgfx,diligent`), sandbox proof recipes, runtime smoke across renderer overrides, and docs lint must pass before slice acceptance.
@@ -17,7 +17,7 @@
 
 #### Proposed Fix Set Before Resuming P0-S3
 1. Rebase P0-S3 work on top of `8876e1887` (do not treat `405049381` as a stable base).
-2. Keep KARMA-parity point-face selection in sampling (`toSample = worldPos - lightPos`); do not invert this vector.
+2. Keep q-karma-parity point-face selection in sampling (`toSample = worldPos - lightPos`); do not invert this vector.
 3. Keep rewrite directional clip-space Y handling (`ResolveShadowClipYSign(...)`) unchanged for directional CSM path; do not force `clip_y_sign = 1.0f` there.
 4. Re-introduce GPU point-shadow generation in bounded increments:
    - land backend resource creation + pass wiring first,
@@ -69,14 +69,14 @@
 - Policy for this project: do not pull renderer/shader code from `m-rewrite-broken-shadows` without a bounded, file-level intake plan plus sandbox proof.
 
 ## Mission
-Implement every lighting/shadow technique that is actively used in KARMA demo paths and still missing (or only partially implemented) in `m-rewrite`, prove each in sandbox first, then wire the proven stack into `bz3` runtime.
+Implement every lighting/shadow technique that is actively used in q-karma demo paths and still missing (or only partially implemented) in `m-rewrite`, prove each in sandbox first, then wire the proven stack into `bz3` runtime.
 
 ## Intake Stance (Locked)
-1. For this track, default to algorithm/flow-first intake from `KARMA-REPO`: when KARMA already has a proven lighting/shadow implementation, port that behavior directly.
+1. For this track, default to algorithm/flow-first intake from `q-karma`: when q-karma already has a proven lighting/shadow implementation, port that behavior directly.
 2. Adapt imported logic to rewrite contracts, naming, and generic-backend structure; do not mirror upstream file layout.
-3. Do not redesign algorithms first when a KARMA implementation exists and is compatible with rewrite contracts.
-4. If a KARMA algorithm/flow cannot be applied cleanly in rewrite, stop and escalate with a compatibility note; do not silently substitute a different approach.
-5. Any intentional divergence from KARMA algorithm/flow requires explicit rationale plus validation evidence in the handoff.
+3. Do not redesign algorithms first when a q-karma implementation exists and is compatible with rewrite contracts.
+4. If a q-karma algorithm/flow cannot be applied cleanly in rewrite, stop and escalate with a compatibility note; do not silently substitute a different approach.
+5. Any intentional divergence from q-karma algorithm/flow requires explicit rationale plus validation evidence in the handoff.
 
 ## Foundation References
 - `docs/foundation/policy/execution-policy.md`
@@ -87,7 +87,7 @@ Implement every lighting/shadow technique that is actively used in KARMA demo pa
 
 ## Why This Is Separate
 - Shadow hardening moved from isolated bug-fix mode into a full capability-parity program.
-- We now need one canonical agent start point that covers: KARMA intake gaps, sandbox proof policy, and final bz3 integration sequencing.
+- We now need one canonical agent start point that covers: q-karma intake gaps, sandbox proof policy, and final bz3 integration sequencing.
 - This document supersedes `renderer-shadow-hardening.md` as the active intake/implementation entry point.
 - This document now also carries the remaining actionable concerns from retired `renderer-parity.md` so active renderer/shadow execution stays in one place.
 
@@ -116,11 +116,11 @@ Implement every lighting/shadow technique that is actively used in KARMA demo pa
 - `docs/projects/ASSIGNMENTS.md`
 
 Read-only comparison root:
-- `../KARMA-REPO`
+- `../q-karma`
 
 ## Interface Boundaries
 - Inputs consumed:
-  - KARMA behavioral reference from `KARMA-REPO` renderer/app/demo paths.
+  - q-karma behavioral reference from `q-karma` renderer/app/demo paths.
   - Existing rewrite renderer contracts and runtime config surface.
 - Outputs exposed:
   - backend-parity lighting/shadow behavior in rewrite sandbox.
@@ -131,19 +131,19 @@ Read-only comparison root:
   - `docs/foundation/architecture/core-engine-contracts.md`
 
 ## Non-Goals
-- Do not clone KARMA file layout or architecture verbatim.
-- Do not replace a proven KARMA lighting/shadow algorithm with a rewrite-specific variant without documented rationale and evidence.
+- Do not clone q-karma file layout or architecture verbatim.
+- Do not replace a proven q-karma lighting/shadow algorithm with a rewrite-specific variant without documented rationale and evidence.
 - Do not expand into unrelated gameplay/network/UI migration work.
 - Do not land unproven shadow/lighting changes directly into bz3 runtime without sandbox proof.
 
-## Sweep Result: KARMA Techniques Missing In m-rewrite
+## Sweep Result: q-karma Techniques Missing In m-rewrite
 
 Legend:
 - `Missing`: not implemented in rewrite.
-- `Partial`: some plumbing exists, but behavior is not at KARMA parity.
+- `Partial`: some plumbing exists, but behavior is not at q-karma parity.
 - `Landed`: slice parity objective is accepted for this track; regression watch continues.
 
-| Area | KARMA-REPO (active demo path) | m-rewrite state | Gap |
+| Area | q-karma (active demo path) | m-rewrite state | Gap |
 |---|---|---|---|
 | Directional shadow topology | 4-cascade CSM array with split logic + transition blending (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`, `src/renderer/backends/diligent/backend_init.cpp`) | 4-cascade CSM atlas + metadata wired in rewrite shared internals and both backends (`src/engine/renderer/backends/internal/directional_shadow.hpp`, `src/engine/renderer/backends/bgfx/core.cpp`, `src/engine/renderer/backends/diligent/core.cpp`, `data/bgfx/shaders/mesh/fs_mesh.sc`) | `Partial` (topology/stability landed; downstream quality/perf work remains) |
 | CSM stability policy | Texel-snapped cascade fit + cached matrices/splits + camera/light threshold invalidation (`src/renderer/backends/diligent/backend_render.cpp`) | Texel-snapped per-cascade fit + lambda splits + transition blending now implemented; single-map fallback retained for stabilization (`src/engine/renderer/backends/internal/directional_shadow.hpp`) | `Partial` (slice complete; later quality/parity deltas tracked in downstream slices) |
@@ -153,11 +153,11 @@ Legend:
 | Point-shadow generation path | GPU depth rendering per face with per-face DSVs + dirty-face scheduling (`include/karma/renderer/backends/diligent/backend.hpp`, `src/renderer/backends/diligent/backend_render.cpp`) | CPU rasterized atlas build (`BuildPointShadowMap`) then uploaded each update cycle (`src/engine/renderer/backends/internal/directional_shadow.hpp`, backend `BuildPointShadowMap` call sites) | `Missing` |
 | Local light scalability | Forward+ local light clustering (compute path + CPU fallback), runtime tile/max controls (`src/renderer/backends/diligent/backend_init.cpp`, `src/renderer/backends/diligent/backend_render.cpp`) | Fixed-size local light array (`kMaxLocalLights = 4`) in both backends; no Forward+ path or controls | `Missing` |
 | Environment lighting source | HDR environment-map pipeline: equirect -> cubemap, irradiance, prefilter, BRDF LUT, skybox render (`src/renderer/backends/diligent/backend_render.cpp`, `backend_mesh.cpp`) | Hemispherical sky/ground ambient approximation only; no env map ingestion/prefilter/BRDF LUT pipeline (`src/engine/renderer/backends/internal/environment_lighting.hpp`) | `Missing` |
-| PBR + IBL shading | Shader path uses full material + IBL textures and tone mapping (`src/renderer/backends/diligent/backend_init.cpp`) | Simplified shading path; no KARMA-equivalent IBL integration | `Missing` |
+| PBR + IBL shading | Shader path uses full material + IBL textures and tone mapping (`src/renderer/backends/diligent/backend_init.cpp`) | Simplified shading path; no q-karma-equivalent IBL integration | `Missing` |
 | Exposure control | Runtime `setExposure` API wired from EngineConfig + debug overlay (`include/karma/renderer/backend.hpp`, `src/app/engine_app.cpp`, `src/debug/debug_overlay.cpp`) | No exposure API in rewrite backend/device interface; no exposure control plumbing | `Missing` |
 | Renderer runtime control plane | `setGenerateMips`, `setEnvironmentMap`, `setAnisotropy`, `setForwardPlusSettings`, `setShadowSettings`, `setPointShadowSettings`, `setLocalLightingSettings`, `setExposure` are backend/device contracts | Rewrite interface only exposes camera, directional light, local lights, environment-lighting struct (`include/karma/renderer/backend.hpp`, `include/karma/renderer/device.hpp`) | `Missing` |
-| Engine config plumbing for texture filtering | KARMA app applies anisotropy/mip flags into renderer backend on startup (`src/app/engine_app.cpp`) | Rewrite `EngineConfig` has anisotropy/mip fields, but runtime wiring into renderer APIs is absent | `Missing` |
-| Runtime tuning/debug loop | KARMA debug overlay includes live shadow/local-light/forward+/exposure controls (`src/debug/debug_overlay.cpp`) | No rewrite runtime debug panel for these controls (CLI/sandbox only) | `Missing` |
+| Engine config plumbing for texture filtering | q-karma app applies anisotropy/mip flags into renderer backend on startup (`src/app/engine_app.cpp`) | Rewrite `EngineConfig` has anisotropy/mip fields, but runtime wiring into renderer APIs is absent | `Missing` |
+| Runtime tuning/debug loop | q-karma debug overlay includes live shadow/local-light/forward+/exposure controls (`src/debug/debug_overlay.cpp`) | No rewrite runtime debug panel for these controls (CLI/sandbox only) | `Missing` |
 
 ## Already Landed In m-rewrite (Keep Green)
 - GPU directional shadow pass (`gpu_default`) in BGFX and Diligent.
@@ -195,7 +195,7 @@ Legend:
   - pass/fail conditions are explicit and documented in this file,
   - testing governance docs are updated in the same handoff.
 
-### P0-S1: Directional CSM Intake (KARMA parity)
+### P0-S1: Directional CSM Intake (q-karma parity)
 - Add 4-cascade directional shadow topology and per-cascade metadata.
 - Add split policy (lambda), cascade transition blending, and texel-snapped cascade fit.
 - Keep single-map fallback path behind an explicit mode while stabilizing.
@@ -224,7 +224,7 @@ Legend:
   - no detached-shadow regressions in moving-point-light sandbox.
 
 ### P0-S2 Session Update (2026-02-17)
-- Ported KARMA compare-sampler flow into rewrite backend seams:
+- Ported q-karma compare-sampler flow into rewrite backend seams:
   - BGFX shader path now uses compare samplers (`shadow2D`) for directional + point maps in base and PCF kernels.
   - BGFX shadow/point texture creation now sets compare-capable sampler flags and uses depth-compatible formats for compare sampling.
   - Diligent shader path now uses `SamplerComparisonState` + `SampleCmpLevelZero` for directional + point maps in base and PCF kernels.
@@ -322,7 +322,7 @@ timeout -k 2s 20s ./<build-dir>/bz3 --backend-render diligent --data-dir ./data 
 5. Update `docs/projects/ASSIGNMENTS.md` status/next task.
 
 ## Open Questions
-- For CSM, should rewrite lock to 4 cascades first (KARMA parity) or expose cascade count immediately?
+- For CSM, should rewrite lock to 4 cascades first (q-karma parity) or expose cascade count immediately?
 - For `P0-S3`, should CPU point-shadow atlas generation remain as an explicit fallback mode during GPU-generation stabilization?
 - At what slice do we require world-asset parity captures in addition to synthetic sandbox captures?
 - For VQ4 guardrails, should enforcement be integrated into an existing wrapper immediately or shipped first as a required standalone guard command with CI follow-up?

@@ -8,15 +8,15 @@ Update rules:
 - Keep each `Next Task` as one concrete action.
 
 Strategic tracking:
-- Each accepted slice should be labeled as `m-dev parity`, `KARMA intake`, or `shared unblocker`.
+- Each accepted slice should be labeled as `m-dev parity`, `q-karma intake`, or `shared unblocker`.
 - Keep work inside assigned isolated build dirs and explicit wrapper build-dir args.
 
 | Project | Owner | Status | Next Task | Last Update |
 |---|---|---|---|---|
 | `gameplay-migration.md` | `overseer` | `in progress (D1 hardening landed; netcode lane consolidated)` | Execute D2 movement replication slice: wire client `PlayerLocation` intent path to rewrite server authority for tank drive state. | `2026-02-18` |
-| `physics-refactor.md` | `specialist-physics-refactor` | `in progress (Phase 5h repeated start/stop lifecycle cycling app-smoke coverage landed; runtime/API behavior unchanged outside deterministic test/harness hardening)` | `KARMA intake`: execute bounded Phase 5i follow-up to add deterministic mixed-cycle lifecycle coverage (init-failure then running-path start/stop) while preserving current callback contracts (engine-only, game-agnostic). | `2026-02-18` |
-| `karma-lighting-parity.md` | `unassigned` | `priority/on hold (close-out snapshot captured; awaiting external revisions)` | `KARMA intake`: after external revisions, rerun canonical BGFX/Diligent baseline, resolve/characterize shared seam artifact, then resume bounded P0-S3 re-intake. | `2026-02-17` |
-| `radar.md` | `overseer` | `in progress (research baseline complete)` | `shared unblocker + KARMA intake`: execute R1 engine substrate slice for generic offscreen render-target + multi-camera pass scaffolding. | `2026-02-18` |
+| `physics-refactor.md` | `unassigned` | `handoff-ready (Phase 5i landed/validated; transfer-closeout snapshot captured with canonical naming/layout map)` | `q-karma intake`: incoming specialist executes bounded Phase 5j lifecycle matrix follow-up (non-running shutdown + running-stop interleave coverage) with no runtime/API behavior changes. | `2026-02-18` |
+| `karma-lighting-parity.md` | `unassigned` | `priority/on hold (close-out snapshot captured; awaiting external revisions)` | `q-karma intake`: after external revisions, rerun canonical BGFX/Diligent baseline, resolve/characterize shared seam artifact, then resume bounded P0-S3 re-intake. | `2026-02-17` |
+| `radar.md` | `overseer` | `in progress (research baseline complete)` | `shared unblocker + q-karma intake`: execute R1 engine substrate slice for generic offscreen render-target + multi-camera pass scaffolding. | `2026-02-18` |
 | `ui-game.md` | `overseer` | `in progress (staged import landed; no build/runtime wiring yet)` | `m-dev parity + shared unblocker`: execute G0 classification pass for `src/game/ui/*` and record file-level dependency blockers. | `2026-02-18` |
 | `ui-engine.md` | `codex` | `in progress` | Execute one bounded console focus-release parity follow-up slice without backend leakage. | `2026-02-12` |
 | `repo-prep.md` | `overseer` | `in progress (planning; no code movement started)` | `shared unblocker`: execute RP0 decision-gate lock (vcpkg + KGDK->BZ3 artifact contract + sibling branch/worktree model + KGDK public-header boundary) before any filesystem migration. | `2026-02-18` |

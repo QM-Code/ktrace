@@ -10,7 +10,7 @@
 Deliver a rewrite-owned radar system where:
 - engine provides generic technology for camera-to-texture picture-in-picture rendering,
 - game defines the radar concept, tracked gameplay entities, orientation policy, and visual semantics,
-- implementation preserves rewrite ownership boundaries while reusing proven behavior/flow from `KARMA-REPO` and `m-dev`.
+- implementation preserves rewrite ownership boundaries while reusing proven behavior/flow from `q-karma` and `m-dev`.
 
 ## Foundation References
 - `docs/foundation/policy/rewrite-invariants.md`
@@ -24,11 +24,11 @@ Deliver a rewrite-owned radar system where:
 Radar is a cross-cutting engine/game/UI feature with high boundary risk:
 - engine-side renderer and UI substrate work is required before game radar behavior can land,
 - game-side semantics (shots/players/world interpretation) must stay out of engine contracts,
-- parity scope spans both `m-dev` behavior and `KARMA-REPO` architecture, so explicit intake policy is required.
+- parity scope spans both `m-dev` behavior and `q-karma` architecture, so explicit intake policy is required.
 
 ## External Research Findings
 
-### `KARMA-REPO` (engine-first substrate, demo radar)
+### `q-karma` (engine-first substrate, demo radar)
 - `examples/main.cpp` demonstrates working radar as orthographic offscreen camera rendered into a dedicated render target, then displayed in UI.
 - `include/karma/components/camera.h` exposes camera-level offscreen controls (`render_to_texture`, `render_target`, `render_target_key`) and optional shader override fields.
 - `src/renderer/render_system.cpp` already schedules offscreen camera passes and keeps key-based render-target lifecycle in renderer system ownership.
@@ -64,7 +64,7 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
 1. Radar remains game-owned as a concept and behavior (`what radar means`, `what appears`, `how it behaves`).
 2. Engine owns only reusable technology (`offscreen camera passes`, `render-target lifecycle`, `UI texture plumbing`).
 3. Intake preference:
-   - adopt `KARMA-REPO` architecture/flow for generic substrate,
+   - adopt `q-karma` architecture/flow for generic substrate,
    - adopt `m-dev` gameplay behavior where it is radar-specific parity.
 4. No backend API/type leakage into `src/game/*`.
 5. No engine-level `Radar*` gameplay concepts in `src/engine/*`.
@@ -84,7 +84,7 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
 
 ## Interface Boundaries
 - Inputs consumed:
-  - `KARMA-REPO` generic offscreen camera/render-target/UI handle flow
+  - `q-karma` generic offscreen camera/render-target/UI handle flow
   - `m-dev` game radar behavior (orientation policy, tracked entity classes, shot/player markers)
 - Outputs exposed:
   - engine-generic offscreen pass and UI external-texture contracts
@@ -97,9 +97,9 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
   - `docs/projects/ui-engine.md` and `docs/projects/gameplay-migration.md` (when radar hooks overlap their scopes)
 
 ## Comparative Decision Matrix
-| Concern | `KARMA-REPO` approach | `m-dev` approach | Rewrite decision |
+| Concern | `q-karma` approach | `m-dev` approach | Rewrite decision |
 |---|---|---|---|
-| Offscreen camera substrate | Engine camera component + render target key routing | Game-local renderer orchestration | Use KARMA-style engine substrate. |
+| Offscreen camera substrate | Engine camera component + render target key routing | Game-local renderer orchestration | Use q-karma-style engine substrate. |
 | Radar semantics ownership | Demo-specific in app example | Fully game-owned radar module | Keep radar semantics game-owned. |
 | Shader customization | Camera override shader path + user params | Dedicated radar material shaders | Support both generic override path and game-owned radar material policy. |
 | Radar entity selection | Implicit scene render to target | Explicit game ECS tags (`RadarRenderable`, `RadarCircle`) | Keep explicit game-owned inclusion tags. |
@@ -144,18 +144,18 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
 ## Execution Plan
 
 ### R0: Research Lock (completed in this document)
-- Consolidate source behavior from `KARMA-REPO` and `m-dev`.
+- Consolidate source behavior from `q-karma` and `m-dev`.
 - Record rewrite gap map and direction lock.
 - Acceptance:
   - this document accepted as authoritative radar integration plan.
 
-### R1: Engine Render-Target Contract Slice (`KARMA intake`)
+### R1: Engine Render-Target Contract Slice (`q-karma intake`)
 - Add renderer contract APIs for offscreen target lifecycle and texture-handle export.
 - Implement BGFX + Diligent backend parity for these APIs.
 - Acceptance:
   - both backends can allocate/destroy offscreen targets and return valid texture handles.
 
-### R2: Engine Multi-Camera Offscreen Pass Slice (`KARMA intake`)
+### R2: Engine Multi-Camera Offscreen Pass Slice (`q-karma intake`)
 - Introduce rewrite-owned camera pass model and render-system scheduling for offscreen + primary passes.
 - Support named target-key reuse/cleanup behavior.
 - Acceptance:
@@ -226,7 +226,7 @@ timeout 20s ./<build-dir>/bz3 --backend-render diligent --backend-ui rmlui --dat
 
 ## Current Status
 - `2026-02-18`: research baseline completed from:
-  - `KARMA-REPO` engine-first offscreen camera/render-target/UI handle model,
+  - `q-karma` engine-first offscreen camera/render-target/UI handle model,
   - `m-dev` game-owned radar behavior and richer gameplay semantics,
   - `m-rewrite` current renderer/UI substrate gaps and existing radar assets.
 - `2026-02-18`: direction lock established:

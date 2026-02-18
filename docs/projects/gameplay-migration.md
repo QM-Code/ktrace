@@ -75,7 +75,7 @@ Strategic alignment:
 ## Jump Integration Blueprint (Game-Owned over Engine-Agnostic Physics)
 Goal:
 - implement jump behavior in rewrite gameplay code while keeping engine-scope physics generic and reusable.
-- use KARMA-REPO jump/controller behavior as design input (timing/feel/rule ideas), but re-implement semantics in rewrite game code (`src/game/*`) rather than engine physics.
+- use q-karma jump/controller behavior as design input (timing/feel/rule ideas), but re-implement semantics in rewrite game code (`src/game/*`) rather than engine physics.
 
 Boundary contract:
 - Engine scope (`src/engine/physics/*`) remains game-agnostic and only exposes generic capabilities:
@@ -274,7 +274,7 @@ Constraints:
 - Stay within owned paths and interface boundaries in docs/projects/gameplay-migration.md.
 - No unrelated subsystem changes.
 - Preserve engine/game and backend exposure boundaries from docs/AGENTS.md.
-- Treat `KARMA-REPO` as capability reference only (never structure/layout template).
+- Treat `q-karma` as capability reference only (never structure/layout template).
 - Use abuild.py only. Do not run raw cmake -S/-B directly.
 - Treat missing/unbootstrapped local `./vcpkg` as a hard blocker for delegated build/test execution.
 - Use only assigned build dirs:

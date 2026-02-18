@@ -1,14 +1,53 @@
-# Physics Refactor (KARMA Alignment)
+# Physics Refactor (q-karma Alignment)
 
 ## Project Snapshot
 - Current owner: `specialist-physics-refactor`
-- Status: `in progress` (Phase 5h repeated start/stop lifecycle cycling app-smoke coverage landed in `build-a3`; runtime/API behavior unchanged outside deterministic test/harness hardening)
+- Status: `in progress` (Phase 5i mixed-cycle lifecycle matrix + ordering/assertion hardening landed in `build-a3`; runtime/API behavior unchanged outside deterministic test/harness hardening)
 - Supersedes: `docs/projects/physics-backend.md` (retired to `docs/archive/physics-backend-retired-2026-02-17.md`)
-- Immediate next task: execute a bounded Phase 5i engine-scope follow-up to add deterministic mixed-cycle lifecycle coverage (init-failure then running-path start/stop) while preserving current callback contracts (no gameplay wiring).
+- Immediate next task: execute a bounded Phase 5j engine-scope follow-up to extend lifecycle matrix coverage with non-running shutdown + running-stop interleave cases while preserving current callback contracts (no gameplay wiring).
 - Validation gate: `./scripts/test-engine-backends.sh <build-dir>`
 
+## Handoff Snapshot (2026-02-18)
+- Current landed implementation state: Phase 5i is landed and validated; latest slice was test/harness hardening only (mixed init-failure/running-cycle matrix + per-cycle lifecycle ordering assertions), with no physics runtime behavior/API changes.
+- Transfer status: handoff-ready for incoming specialist ownership after naming/layout stabilization.
+- Canonical physics internal layout (current):
+  - `src/engine/physics/backends/`
+    - `factory_internal.hpp`
+    - `jolt.cpp`
+    - `jolt_stub.cpp`
+    - `physx.cpp`
+    - `physx_stub.cpp`
+  - `src/engine/physics/facade/`
+    - `world.cpp`
+    - `rigid_body.cpp`
+    - `static_body.cpp`
+    - `player_controller.cpp`
+    - `facade_state.hpp`
+  - `src/engine/physics/sync/`
+    - `ecs_sync_system.cpp`
+    - `ecs_sync_system.hpp`
+    - `engine_fixed_step_sync.hpp`
+    - `static_mesh_ingest_observability.hpp`
+- Old->new naming/path map for specialist continuity:
+  - `src/engine/physics/world.cpp` -> `src/engine/physics/facade/world.cpp`
+  - `src/engine/physics/rigid_body.cpp` -> `src/engine/physics/facade/rigid_body.cpp`
+  - `src/engine/physics/static_body.cpp` -> `src/engine/physics/facade/static_body.cpp`
+  - `src/engine/physics/player_controller.cpp` -> `src/engine/physics/facade/player_controller.cpp`
+  - `src/engine/physics/facade_state.hpp` -> `src/engine/physics/facade/facade_state.hpp`
+  - `src/engine/physics/ecs_sync_system.cpp` -> `src/engine/physics/sync/ecs_sync_system.cpp`
+  - `src/engine/physics/ecs_sync_system.hpp` -> `src/engine/physics/sync/ecs_sync_system.hpp`
+  - `src/engine/physics/engine_fixed_step_sync.hpp` -> `src/engine/physics/sync/engine_fixed_step_sync.hpp`
+  - `src/engine/physics/static_mesh_ingest_observability.hpp` -> `src/engine/physics/sync/static_mesh_ingest_observability.hpp`
+  - `src/engine/physics/backends/backend_jolt_stub.cpp` -> `src/engine/physics/backends/jolt_stub.cpp`
+  - `src/engine/physics/backends/backend_physx_stub.cpp` -> `src/engine/physics/backends/physx_stub.cpp`
+  - `src/engine/physics/backends/backend_jolt.cpp` -> `src/engine/physics/backends/jolt.cpp`
+  - `src/engine/physics/backends/backend_physx.cpp` -> `src/engine/physics/backends/physx.cpp`
+  - `src/engine/physics/backends/backend_factory_internal.hpp` -> `src/engine/physics/backends/factory_internal.hpp`
+- Immediate next bounded task after handoff: execute Phase 5j lifecycle coverage follow-up for deterministic non-running shutdown + running-stop interleave matrix checks (engine-only, game-agnostic, no runtime/API behavior changes).
+- Historical-path warning: old physics paths/names listed above are historical only; new edits must use the canonical layout/names exclusively.
+
 ## Mission
-Align `m-rewrite` physics architecture with the direction proven in `KARMA-REPO`: world-level physics API, collider/component-driven sync, controller-based character collision, static mesh collision intake, and backend-equivalent behavior across compiled physics backends.
+Align `m-rewrite` physics architecture with the direction proven in `q-karma`: world-level physics API, collider/component-driven sync, controller-based character collision, static mesh collision intake, and backend-equivalent behavior across compiled physics backends.
 
 The goal is behavioral and architectural alignment, not literal file-for-file copying.
 
@@ -16,13 +55,13 @@ The goal is behavioral and architectural alignment, not literal file-for-file co
 - `docs/foundation/architecture/core-engine-contracts.md` (physics sections)
 - `docs/foundation/governance/engine-backend-testing.md`
 - `docs/foundation/policy/decisions-log.md` (BodyId core + optional facade direction)
-- `KARMA-REPO/include/karma/physics/*`
-- `KARMA-REPO/src/physics/*`
-- `KARMA-REPO/examples/main.cpp`
+- `q-karma/include/karma/physics/*`
+- `q-karma/src/physics/*`
+- `q-karma/examples/main.cpp`
 
 ## Why This Is Separate
 - Existing rewrite physics work is mostly backend-core parity (`BodyId`, gravity flag, locks, raycast).
-- KARMA-aligned intake requires wider architectural changes (public API shape, ECS component model, sync system, backend capability depth, engine loop wiring).
+- q-karma-aligned intake requires wider architectural changes (public API shape, ECS component model, sync system, backend capability depth, engine loop wiring).
 - This is a major foundation realignment and should be tracked as a dedicated project.
 
 ## Owned Paths
@@ -39,7 +78,7 @@ The goal is behavioral and architectural alignment, not literal file-for-file co
 - We accept intentional breakage in currently migrated gameplay code while refactoring this foundation.
 - Priority is physics architecture alignment first; game repair follows afterward.
 
-## KARMA Intake Checklist (Definition of Alignment)
+## q-karma Intake Checklist (Definition of Alignment)
 - [ ] Physics-backed world API supports dynamic rigid bodies, static mesh collision, player controller creation, gravity control, and raycast.
 - [ ] ECS physics sync system owns collider-to-physics object lifecycle and transform/velocity write-back.
 - [ ] Collider component model includes box/sphere/capsule/mesh and trigger semantics.
@@ -49,17 +88,17 @@ The goal is behavioral and architectural alignment, not literal file-for-file co
 - [ ] Collision enablement/filter intent is represented at component level and honored by sync path.
 - [ ] Cleanup of stale physics objects (destroyed/changed entities) is deterministic.
 - [ ] Both compiled physics backends expose equivalent contract behavior for these capabilities.
-- [ ] A demo-level scenario equivalent to `KARMA-REPO/examples/main.cpp` physics flow is possible in rewrite without backend leakage.
+- [ ] A demo-level scenario equivalent to `q-karma/examples/main.cpp` physics flow is possible in rewrite without backend leakage.
 
 ## Target Architecture in `m-rewrite`
 
 ### 1) Public Gameplay Physics Surface
-- Introduce/restore a KARMA-like public surface under `karma::physics`:
+- Introduce/restore a q-karma-like public surface under `karma::physics`:
   - `World`
   - `RigidBody`
   - `StaticBody`
   - `PlayerController`
-- Maintain overlap with KARMA interface shape where practical:
+- Maintain overlap with q-karma interface shape where practical:
   - `createBoxBody(...)`
   - `createStaticMesh(...)`
   - `createPlayer(...)`
@@ -73,7 +112,7 @@ The goal is behavioral and architectural alignment, not literal file-for-file co
 - Keep deterministic invalid-input and stale-handle behavior from current parity work.
 
 ### 3) ECS/Scene Physics Component Layer
-- Add/normalize physics data components equivalent to KARMA intent:
+- Add/normalize physics data components equivalent to q-karma intent:
   - rigidbody
   - colliders (box/sphere/capsule/mesh)
   - player controller intent
@@ -81,7 +120,7 @@ The goal is behavioral and architectural alignment, not literal file-for-file co
 - Decide final namespace ownership (`scene` vs dedicated `components`) early and keep consistent.
 
 ### 4) Physics Sync System
-- Implement KARMA-style sync responsibilities:
+- Implement q-karma-style sync responsibilities:
   - create/update/destroy runtime rigid bodies from ECS components
   - create static mesh collision from mesh components
   - maintain player controller runtime object from controller + collider components
@@ -112,7 +151,7 @@ These are not discarded; they become the lower-layer regression base for the ref
 
 ### Phase 0: Contract Reset and Migration Scaffolding
 1. Freeze direction and publish breaking-change intent in docs/trace notes.
-2. Define target public physics API (KARMA-overlap) and compatibility stance for existing `PhysicsSystem` usage.
+2. Define target public physics API (q-karma-overlap) and compatibility stance for existing `PhysicsSystem` usage.
 3. Decide whether current BodyId API remains internal-only or dual-exposed during transition.
 4. Add migration TODO matrix mapping old interfaces/tests to new layers.
 
@@ -122,7 +161,7 @@ Exit criteria:
 
 ### Phase 1: Public World/Body/Controller API Introduction
 1. Add `World`, `RigidBody`, `StaticBody`, `PlayerController` wrappers in rewrite.
-2. Expose world-level calls overlapping KARMA behavior where sensible.
+2. Expose world-level calls overlapping q-karma behavior where sensible.
 3. Keep backend abstraction hidden and backend-neutral.
 4. Add compile-time and runtime guards for invalid lifecycle usage.
 
@@ -138,7 +177,7 @@ Exit criteria:
 Exit criteria:
 - Components exist, are serializable where required, and have documented invariants.
 
-### Phase 3: ECS Sync System (KARMA-Style Behavior)
+### Phase 3: ECS Sync System (q-karma-Style Behavior)
 1. Implement rigid-body sync from components.
 2. Implement static mesh collider creation path.
 3. Implement player-controller sync path, including shape/size-change handling.
@@ -163,7 +202,7 @@ Exit criteria:
 3. Accept temporary game breakage while foundation lands; fix-up can follow as separate slices.
 
 Exit criteria:
-- Engine supports KARMA-style controller/collider update flow end-to-end.
+- Engine supports q-karma-style controller/collider update flow end-to-end.
 
 ### Phase 6: Validation, Parity, and Stabilization
 1. Keep existing backend parity tests green for preserved low-level contracts.
@@ -173,10 +212,10 @@ Exit criteria:
   - static mesh collision intake
   - collider mutation/recreation behavior
   - collision mask/filter semantics
-3. Add scenario smoke equivalent to KARMA demo collision behavior.
+3. Add scenario smoke equivalent to q-karma demo collision behavior.
 
 Exit criteria:
-- Lower-layer parity + higher-layer KARMA-aligned behavior tests pass in both backends.
+- Lower-layer parity + higher-layer q-karma-aligned behavior tests pass in both backends.
 
 ## Required Validation Commands
 From `m-rewrite/`:
@@ -206,7 +245,7 @@ From `m-rewrite/`:
 
 ## Phase 0/1 Contract Slice (2026-02-18)
 Landed in this bounded slice:
-- Public KARMA-aligned facade surface added under `include/karma/physics/*`:
+- Public q-karma-aligned facade surface added under `include/karma/physics/*`:
   - `World`
   - `RigidBody`
   - `StaticBody`
@@ -1493,7 +1532,16 @@ Landed in this bounded maintenance slice:
   - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
   - `./scripts/test-engine-backends.sh build-a3` (pass)
   - `./docs/scripts/lint-project-docs.sh` (pass)
-- Next implementation slice: execute bounded Phase 5i follow-up to add deterministic mixed-cycle lifecycle coverage (init-failure then running-path start/stop) while preserving current callback contracts (engine-only, game-agnostic).
+- `2026-02-18`: Phase 5i mixed-cycle lifecycle matrix and harness-hardening slice landed:
+  - app smoke now includes deterministic mixed-cycle flows for both server and client (`init-failure -> running-path stop -> init-failure`) in a single test flow while preserving existing callback contract semantics.
+  - lifecycle assertions were strengthened beyond aggregate counts with per-cycle ordering checks (create-before-reset), duplicate-reset rejection, and forbidden transition checks in-cycle.
+  - client startup/config determinism setup was consolidated into reusable parity-test helpers (`ClientLifecycleBootstrap`, `ScopedClientLifecycleConfigOverrides`) with per-block config override restoration.
+  - runtime/API behavior remains unchanged (test/harness hardening only).
+- `2026-02-18`: Phase 5i validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- Next implementation slice: execute bounded Phase 5j follow-up to extend lifecycle matrix coverage with non-running shutdown + running-stop interleave cases while preserving current callback contracts (engine-only, game-agnostic).
 
 ## Handoff Checklist
 - [x] `physics-refactor.md` remains the single active physics project doc in `docs/projects/`.

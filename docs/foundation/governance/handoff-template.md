@@ -40,14 +40,14 @@ Scope:
 - <exact behavior/API/test slice>
 
 Strategic alignment (required):
-- Track: <m-dev parity | KARMA capability intake | shared unblocker>
+- Track: <m-dev parity | q-karma capability intake | shared unblocker>
 - Explain how this slice advances the selected track without violating rewrite ownership boundaries.
 
 Constraints:
 - Stay within owned paths and interface boundaries in docs/projects/<project>.md.
 - No unrelated subsystem changes.
 - Preserve engine/game and backend exposure boundaries from docs/AGENTS.md.
-- Treat `KARMA-REPO` as capability reference only (never structure/layout template).
+- Treat `q-karma` as capability reference only (never structure/layout template).
 - Use abuild.py only. Do not run raw cmake -S/-B directly.
 - Treat missing/unbootstrapped local `./vcpkg` as a hard blocker; report it to overseer/human and stop build/test work for that slice.
 - Use explicit specialist identity and slot ownership:
@@ -98,7 +98,7 @@ Scope:
 - <exact behavior/API/test slice>
 
 Strategic alignment (required):
-- Track: <m-dev parity | KARMA capability intake | shared unblocker>
+- Track: <m-dev parity | q-karma capability intake | shared unblocker>
 - Keep scope aligned to standing bootstrap boundaries.
 
 Constraints:

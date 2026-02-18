@@ -27,13 +27,13 @@ Format:
 - Impact:
   - resource planning treats renderer and engine-network foundation as co-equal top workstreams.
 
-#### 3) Lock the KARMA retirement objective
+#### 3) Lock the q-karma retirement objective
 - Decision:
-  - target near-feature-parity planning (implemented or explicitly sketched) so `KARMA-REPO` can be removed without losing direction.
+  - target near-feature-parity planning (implemented or explicitly sketched) so `q-karma` can be removed without losing direction.
 - Why:
   - long-term productivity requires rewrite docs/contracts to stand on their own.
 - Impact:
-  - parity work must end in rewrite-owned specs and decisions, not KARMA-dependent memory.
+  - parity work must end in rewrite-owned specs and decisions, not q-karma-dependent memory.
 
 ### P1 (Next Priority, Immediately After/Alongside P0)
 
@@ -69,7 +69,7 @@ Format:
 - Impact:
   - user-facing ergonomics can improve without changing backend contract authority.
 
-#### 8) Launch architecture/defaults documentation track without KARMA references
+#### 8) Launch architecture/defaults documentation track without q-karma references
 - Decision:
   - create a dedicated project to document rewrite-native structure, abstraction layers, and planned 95%-path defaults for systems/components/physics/audio.
 - Why:
@@ -134,7 +134,7 @@ Note:
 - Impact:
   - prioritize moving game-agnostic scaffolding into engine-owned contracts.
 
-### E) KARMA remains capability reference only, never a structure template
+### E) q-karma remains capability reference only, never a structure template
 - Decision:
   - port behavior/capability intent, not upstream file layout.
 - Why:
@@ -144,7 +144,7 @@ Note:
 
 ### F) Dual-track planning is mandatory
 - Decision:
-  - manager/specialist framing must explicitly identify each slice as `m-dev` parity, KARMA intake, or shared unblocker.
+  - manager/specialist framing must explicitly identify each slice as `m-dev` parity, q-karma intake, or shared unblocker.
 - Why:
   - prevent parity-only tunnel vision and structure-copy drift.
 - Impact:
@@ -158,13 +158,13 @@ Note:
 - Impact:
   - accepted work is routinely persisted and assignment cadence is gated by successful checkpointing.
 
-### H) Overseer startup must refresh KARMA upstream state
+### H) Overseer startup must refresh q-karma upstream state
 - Decision:
   - each overseer startup includes upstream refresh and explicit freshness reporting before target selection.
 - Why:
   - intake triage must use current upstream state.
 - Impact:
-  - adopted-vs-deferred KARMA capability decisions remain explicit and timely.
+  - adopted-vs-deferred q-karma capability decisions remain explicit and timely.
 
 ### I) Audio backend hierarchy is primary+fallback, not co-equal expansion
 - Decision:
@@ -199,12 +199,12 @@ Note:
 - Impact:
   - when slot/toolchain readiness is missing, specialists report blockers and stop delegated build/test steps until overseer/human resolves setup.
 
-### M) Lighting/shadow KARMA intake is algorithm/flow-first
+### M) Lighting/shadow q-karma intake is algorithm/flow-first
 - Decision:
-  - for lighting/shadow parity slices, when `KARMA-REPO` has a proven implementation, specialists should port the upstream algorithm/integration flow directly by default.
+  - for lighting/shadow parity slices, when `q-karma` has a proven implementation, specialists should port the upstream algorithm/integration flow directly by default.
   - adapt that logic to rewrite-owned contracts, naming, and generic-backend seams; do not mirror upstream file layout.
-  - any intentional divergence from KARMA algorithm/flow requires explicit rationale plus validation evidence, and unresolved compatibility gaps must be escalated for overseer/human review.
+  - any intentional divergence from q-karma algorithm/flow requires explicit rationale plus validation evidence, and unresolved compatibility gaps must be escalated for overseer/human review.
 - Why:
-  - KARMA already carries mature lighting/shadow implementation experience; re-inventing core algorithms without evidence increases risk and delay.
+  - q-karma already carries mature lighting/shadow implementation experience; re-inventing core algorithms without evidence increases risk and delay.
 - Impact:
   - renderer parity packets should bias toward direct capability intake and only deviate when tests/traces prove a better or required rewrite-specific path.

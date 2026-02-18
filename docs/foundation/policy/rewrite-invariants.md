@@ -22,21 +22,21 @@ Primary target:
 
 ## Dual-Track Strategy (Non-Negotiable)
 - Track A: deliver modern BZ3 behavior parity against `m-dev`.
-- Track B: continuously ingest significant `KARMA-REPO` capabilities under rewrite-owned contracts.
+- Track B: continuously ingest significant `q-karma` capabilities under rewrite-owned contracts.
 - Port capability outcomes, never upstream file layout/structure.
-- Rewrite priorities remain authoritative; KARMA intake is continuous but bounded.
+- Rewrite priorities remain authoritative; q-karma intake is continuous but bounded.
 
 Repository roles:
 - `m-rewrite/`: production rewrite codebase (active implementation target).
 - `m-dev/`: behavior/reference baseline (source-of-truth for parity, not architecture to copy).
-- `KARMA-REPO/`: capability-intent reference (not structure template).
+- `q-karma/`: capability-intent reference (not structure template).
 - `m-rewrite/docs/`: canonical rewrite guidance, decisions, and project specs.
 
 ## Workspace Scope (Required)
 - Standalone mode (this repo only): treat repo root as the active codebase for edits, builds, and git operations.
 - Integration mode (`bz3-rewrite/` with sibling repos): treat `m-rewrite/` as the only active codebase for edits, builds, and git operations.
 - In integration mode, run git commands from `m-rewrite/` (or with `git -C m-rewrite ...`) and do not stage/commit from workspace root.
-- In integration mode, workspace root (`bz3-rewrite/`) is bootstrap-only and should contain only `README.md` plus sibling repos (`m-rewrite/`, `m-dev/`, `KARMA-REPO/`).
+- In integration mode, workspace root (`bz3-rewrite/`) is bootstrap-only and should contain only `README.md` plus sibling repos (`m-rewrite/`, `m-dev/`, `q-karma/`).
 
 ## Core Architecture Contract
 - `src/engine/` is game-agnostic and owns loop/lifecycle/timing.
@@ -56,7 +56,7 @@ Repository roles:
 - Exception: game UI may directly target chosen UI backend (`imgui` or `rmlui`).
 
 ## Rewrite-Level Non-Goals
-- Do not mirror `m-dev`/`KARMA-REPO` file layouts.
+- Do not mirror `m-dev`/`q-karma` file layouts.
 - Do not prioritize full gameplay feature parity before core infra contracts are stable.
 - Do not move gameplay semantics into engine-core subsystems.
 

@@ -28,5 +28,5 @@ Then:
 - enforce demo test-data policy: reusable local test state belongs under `demo/` (`demo/communities`, `demo/users`, `demo/worlds`), not personal `~/.config/bz3` or ad-hoc `/tmp`.
 - whenever I ask for a specialist prompt, return one fully copy-pastable prompt block (single fenced `text` block) with concrete instructions and no placeholders/template skeleton.
 
-For cross-repo integration mode (`m-rewrite` + `m-dev` + `KARMA-REPO`), use:
+For cross-repo integration mode (`m-rewrite` + `m-dev` + `q-karma`), use:
 - `docs/overseer/BOOTSTRAP.md`
