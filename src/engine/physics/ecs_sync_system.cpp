@@ -1,5 +1,6 @@
 #include "physics/ecs_sync_system.hpp"
 
+#include "karma/common/logging/logging.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/physics/physics_system.hpp"
 #include "karma/scene/components.hpp"
@@ -15,6 +16,206 @@
 #include <glm/gtc/quaternion.hpp>
 
 namespace karma::physics {
+
+namespace detail {
+
+enum class RuntimeCommandTraceOutcome : uint8_t {
+    None = 0,
+    StaleRuntimeBindingBody,
+    IneligibleNonDynamic,
+    IneligibleKinematic,
+    RuntimeApplyFailed,
+    RecoveryApplied
+};
+
+enum class RuntimeCommandTraceOperation : uint8_t {
+    None = 0,
+    LinearForce,
+    LinearImpulse,
+    AngularTorque,
+    AngularImpulse
+};
+
+enum class RuntimeCommandTraceStage : uint8_t {
+    Create = 0,
+    Update,
+    Recovery
+};
+
+enum class RuntimeCommandTraceFailureCause : uint8_t {
+    None = 0,
+    StaleBinding,
+    BackendReject
+};
+
+const char* RuntimeCommandTraceStageTag(RuntimeCommandTraceStage stage) {
+    switch (stage) {
+        case RuntimeCommandTraceStage::Create:
+            return "create";
+        case RuntimeCommandTraceStage::Update:
+            return "update";
+        case RuntimeCommandTraceStage::Recovery:
+            return "recovery";
+        default:
+            return "unknown";
+    }
+}
+
+RuntimeCommandTraceStage ClassifyRuntimeCommandTraceStage(bool has_existing_binding,
+                                                          bool recovering_from_command_failure) {
+    if (recovering_from_command_failure) {
+        return RuntimeCommandTraceStage::Recovery;
+    }
+    return has_existing_binding ? RuntimeCommandTraceStage::Update : RuntimeCommandTraceStage::Create;
+}
+
+const char* ClassifyRuntimeCommandTraceStageTag(bool has_existing_binding, bool recovering_from_command_failure) {
+    return RuntimeCommandTraceStageTag(
+        ClassifyRuntimeCommandTraceStage(has_existing_binding, recovering_from_command_failure));
+}
+
+const char* RuntimeCommandTraceOperationTag(RuntimeCommandTraceOperation operation) {
+    switch (operation) {
+        case RuntimeCommandTraceOperation::None:
+            return "none";
+        case RuntimeCommandTraceOperation::LinearForce:
+            return "linear_force";
+        case RuntimeCommandTraceOperation::LinearImpulse:
+            return "linear_impulse";
+        case RuntimeCommandTraceOperation::AngularTorque:
+            return "angular_torque";
+        case RuntimeCommandTraceOperation::AngularImpulse:
+            return "angular_impulse";
+        default:
+            return "unknown";
+    }
+}
+
+const char* RuntimeCommandTraceOutcomeTag(RuntimeCommandTraceOutcome outcome) {
+    switch (outcome) {
+        case RuntimeCommandTraceOutcome::None:
+            return "none";
+        case RuntimeCommandTraceOutcome::StaleRuntimeBindingBody:
+            return "stale_runtime_binding_body";
+        case RuntimeCommandTraceOutcome::IneligibleNonDynamic:
+            return "ineligible_non_dynamic";
+        case RuntimeCommandTraceOutcome::IneligibleKinematic:
+            return "ineligible_kinematic";
+        case RuntimeCommandTraceOutcome::RuntimeApplyFailed:
+            return "runtime_apply_failed";
+        case RuntimeCommandTraceOutcome::RecoveryApplied:
+            return "recovery_applied";
+        default:
+            return "unknown";
+    }
+}
+
+const char* RuntimeCommandTraceFailureCauseTag(RuntimeCommandTraceFailureCause cause) {
+    switch (cause) {
+        case RuntimeCommandTraceFailureCause::None:
+            return "none";
+        case RuntimeCommandTraceFailureCause::StaleBinding:
+            return "stale_binding";
+        case RuntimeCommandTraceFailureCause::BackendReject:
+            return "backend_reject";
+        default:
+            return "unknown";
+    }
+}
+
+RuntimeCommandTraceOperation ClassifyRuntimeCommandTraceOperation(bool has_linear_force,
+                                                                  bool has_linear_impulse,
+                                                                  bool has_angular_torque,
+                                                                  bool has_angular_impulse) {
+    if (has_linear_force) {
+        return RuntimeCommandTraceOperation::LinearForce;
+    }
+    if (has_linear_impulse) {
+        return RuntimeCommandTraceOperation::LinearImpulse;
+    }
+    if (has_angular_torque) {
+        return RuntimeCommandTraceOperation::AngularTorque;
+    }
+    if (has_angular_impulse) {
+        return RuntimeCommandTraceOperation::AngularImpulse;
+    }
+    return RuntimeCommandTraceOperation::None;
+}
+
+const char* ClassifyRuntimeCommandTraceOperationTag(bool has_linear_force,
+                                                    bool has_linear_impulse,
+                                                    bool has_angular_torque,
+                                                    bool has_angular_impulse) {
+    return RuntimeCommandTraceOperationTag(ClassifyRuntimeCommandTraceOperation(has_linear_force,
+                                                                                has_linear_impulse,
+                                                                                has_angular_torque,
+                                                                                has_angular_impulse));
+}
+
+RuntimeCommandTraceOutcome ClassifyRuntimeCommandTraceOutcome(bool has_pending_commands,
+                                                             bool is_dynamic,
+                                                             bool is_kinematic,
+                                                             bool stale_runtime_binding_body,
+                                                             bool runtime_apply_failed,
+                                                             bool recovery_applied) {
+    if (recovery_applied) {
+        return RuntimeCommandTraceOutcome::RecoveryApplied;
+    }
+    if (!has_pending_commands) {
+        return RuntimeCommandTraceOutcome::None;
+    }
+    if (stale_runtime_binding_body) {
+        return RuntimeCommandTraceOutcome::StaleRuntimeBindingBody;
+    }
+    if (!is_dynamic) {
+        return RuntimeCommandTraceOutcome::IneligibleNonDynamic;
+    }
+    if (is_kinematic) {
+        return RuntimeCommandTraceOutcome::IneligibleKinematic;
+    }
+    if (runtime_apply_failed) {
+        return RuntimeCommandTraceOutcome::RuntimeApplyFailed;
+    }
+    return RuntimeCommandTraceOutcome::None;
+}
+
+const char* ClassifyRuntimeCommandTraceOutcomeTag(bool has_pending_commands,
+                                                  bool is_dynamic,
+                                                  bool is_kinematic,
+                                                  bool stale_runtime_binding_body,
+                                                  bool runtime_apply_failed,
+                                                  bool recovery_applied) {
+    return RuntimeCommandTraceOutcomeTag(ClassifyRuntimeCommandTraceOutcome(has_pending_commands,
+                                                                            is_dynamic,
+                                                                            is_kinematic,
+                                                                            stale_runtime_binding_body,
+                                                                            runtime_apply_failed,
+                                                                            recovery_applied));
+}
+
+RuntimeCommandTraceFailureCause ClassifyRuntimeCommandTraceFailureCause(bool stale_runtime_binding_body,
+                                                                        bool runtime_apply_failed) {
+    if (stale_runtime_binding_body) {
+        return RuntimeCommandTraceFailureCause::StaleBinding;
+    }
+    if (runtime_apply_failed) {
+        return RuntimeCommandTraceFailureCause::BackendReject;
+    }
+    return RuntimeCommandTraceFailureCause::None;
+}
+
+const char* ClassifyRuntimeCommandTraceFailureCauseTag(bool stale_runtime_binding_body, bool runtime_apply_failed) {
+    return RuntimeCommandTraceFailureCauseTag(
+        ClassifyRuntimeCommandTraceFailureCause(stale_runtime_binding_body, runtime_apply_failed));
+}
+
+bool IsRuntimeCommandTraceFailureOutcome(RuntimeCommandTraceOutcome outcome) {
+    return outcome == RuntimeCommandTraceOutcome::StaleRuntimeBindingBody
+           || outcome == RuntimeCommandTraceOutcome::RuntimeApplyFailed;
+}
+
+} // namespace detail
+
 namespace {
 
 bool EntityLess(const ecs::Entity& lhs, const ecs::Entity& rhs) {
@@ -134,46 +335,129 @@ bool ApplyRuntimeVelocityPolicy(PhysicsSystem& physics_system,
            && physics_system.setBodyAngularVelocity(body, out_angular_velocity);
 }
 
-bool ApplyRuntimeForceImpulseCommands(PhysicsSystem& physics_system,
-                                      physics_backend::BodyId body,
-                                      scene::RigidBodyIntentComponent& rigidbody) {
+struct RuntimeCommandApplyResult {
+    bool success = true;
+    bool has_pending_commands = false;
+    detail::RuntimeCommandTraceOperation trace_operation = detail::RuntimeCommandTraceOperation::None;
+    detail::RuntimeCommandTraceOutcome trace_outcome = detail::RuntimeCommandTraceOutcome::None;
+    detail::RuntimeCommandTraceFailureCause trace_failure_cause = detail::RuntimeCommandTraceFailureCause::None;
+};
+
+bool IsStaleRuntimeBindingBody(PhysicsSystem& physics_system, physics_backend::BodyId body) {
+    physics_backend::BodyTransform probe{};
+    return !physics_system.getBodyTransform(body, probe);
+}
+
+void TraceRuntimeCommandOutcome(ecs::Entity entity,
+                                physics_backend::BodyId body,
+                                detail::RuntimeCommandTraceStage stage,
+                                detail::RuntimeCommandTraceOperation operation,
+                                detail::RuntimeCommandTraceOutcome outcome,
+                                detail::RuntimeCommandTraceFailureCause failure_cause) {
+    if (outcome == detail::RuntimeCommandTraceOutcome::None) {
+        return;
+    }
+    if (detail::IsRuntimeCommandTraceFailureOutcome(outcome)) {
+        KARMA_TRACE("physics.system",
+                    "EcsSyncSystem: runtime-command stage='{}' operation='{}' outcome='{}' cause='{}' entity={} generation={} body={}",
+                    detail::RuntimeCommandTraceStageTag(stage),
+                    detail::RuntimeCommandTraceOperationTag(operation),
+                    detail::RuntimeCommandTraceOutcomeTag(outcome),
+                    detail::RuntimeCommandTraceFailureCauseTag(failure_cause),
+                    entity.index,
+                    entity.generation,
+                    body);
+        return;
+    }
+    KARMA_TRACE("physics.system",
+                "EcsSyncSystem: runtime-command stage='{}' operation='{}' outcome='{}' entity={} generation={} body={}",
+                detail::RuntimeCommandTraceStageTag(stage),
+                detail::RuntimeCommandTraceOperationTag(operation),
+                detail::RuntimeCommandTraceOutcomeTag(outcome),
+                entity.index,
+                entity.generation,
+                body);
+}
+
+RuntimeCommandApplyResult ApplyRuntimeForceImpulseCommands(PhysicsSystem& physics_system,
+                                                           physics_backend::BodyId body,
+                                                           scene::RigidBodyIntentComponent& rigidbody) {
+    RuntimeCommandApplyResult result{};
     if (scene::HasRuntimeCommandClearRequest(rigidbody)) {
         scene::ClearRuntimeCommandIntents(rigidbody);
-        return true;
+        return result;
     }
 
     const bool has_force = scene::HasRuntimeLinearForceCommand(rigidbody);
     const bool has_impulse = scene::HasRuntimeLinearImpulseCommand(rigidbody);
     const bool has_torque = scene::HasRuntimeAngularTorqueCommand(rigidbody);
     const bool has_angular_impulse = scene::HasRuntimeAngularImpulseCommand(rigidbody);
+    result.has_pending_commands = has_force || has_impulse || has_torque || has_angular_impulse;
+    result.trace_operation =
+        detail::ClassifyRuntimeCommandTraceOperation(has_force, has_impulse, has_torque, has_angular_impulse);
     if (!has_force && !has_impulse && !has_torque && !has_angular_impulse) {
-        return true;
+        return result;
     }
 
     // Runtime command intents on ineligible bodies are stably preserved until clear/reset or eligibility transition.
-    if (!rigidbody.dynamic || rigidbody.kinematic) {
-        return true;
+    if (!rigidbody.dynamic) {
+        result.trace_outcome = detail::RuntimeCommandTraceOutcome::IneligibleNonDynamic;
+        return result;
+    }
+    if (rigidbody.kinematic) {
+        result.trace_outcome = detail::RuntimeCommandTraceOutcome::IneligibleKinematic;
+        return result;
     }
 
     if (has_force && !physics_system.addBodyForce(body, rigidbody.linear_force)) {
-        return false;
+        const bool stale_runtime_binding_body = IsStaleRuntimeBindingBody(physics_system, body);
+        result.success = false;
+        result.trace_operation = detail::RuntimeCommandTraceOperation::LinearForce;
+        result.trace_outcome = stale_runtime_binding_body
+                                   ? detail::RuntimeCommandTraceOutcome::StaleRuntimeBindingBody
+                                   : detail::RuntimeCommandTraceOutcome::RuntimeApplyFailed;
+        result.trace_failure_cause = detail::ClassifyRuntimeCommandTraceFailureCause(stale_runtime_binding_body, true);
+        return result;
     }
     if (has_impulse) {
         if (!physics_system.addBodyLinearImpulse(body, rigidbody.linear_impulse)) {
-            return false;
+            const bool stale_runtime_binding_body = IsStaleRuntimeBindingBody(physics_system, body);
+            result.success = false;
+            result.trace_operation = detail::RuntimeCommandTraceOperation::LinearImpulse;
+            result.trace_outcome = stale_runtime_binding_body
+                                       ? detail::RuntimeCommandTraceOutcome::StaleRuntimeBindingBody
+                                       : detail::RuntimeCommandTraceOutcome::RuntimeApplyFailed;
+            result.trace_failure_cause =
+                detail::ClassifyRuntimeCommandTraceFailureCause(stale_runtime_binding_body, true);
+            return result;
         }
         rigidbody.linear_impulse = glm::vec3(0.0f, 0.0f, 0.0f);
     }
     if (has_torque && !physics_system.addBodyTorque(body, rigidbody.angular_torque)) {
-        return false;
+        const bool stale_runtime_binding_body = IsStaleRuntimeBindingBody(physics_system, body);
+        result.success = false;
+        result.trace_operation = detail::RuntimeCommandTraceOperation::AngularTorque;
+        result.trace_outcome = stale_runtime_binding_body
+                                   ? detail::RuntimeCommandTraceOutcome::StaleRuntimeBindingBody
+                                   : detail::RuntimeCommandTraceOutcome::RuntimeApplyFailed;
+        result.trace_failure_cause = detail::ClassifyRuntimeCommandTraceFailureCause(stale_runtime_binding_body, true);
+        return result;
     }
     if (has_angular_impulse) {
         if (!physics_system.addBodyAngularImpulse(body, rigidbody.angular_impulse)) {
-            return false;
+            const bool stale_runtime_binding_body = IsStaleRuntimeBindingBody(physics_system, body);
+            result.success = false;
+            result.trace_operation = detail::RuntimeCommandTraceOperation::AngularImpulse;
+            result.trace_outcome = stale_runtime_binding_body
+                                       ? detail::RuntimeCommandTraceOutcome::StaleRuntimeBindingBody
+                                       : detail::RuntimeCommandTraceOutcome::RuntimeApplyFailed;
+            result.trace_failure_cause =
+                detail::ClassifyRuntimeCommandTraceFailureCause(stale_runtime_binding_body, true);
+            return result;
         }
         rigidbody.angular_impulse = glm::vec3(0.0f, 0.0f, 0.0f);
     }
-    return true;
+    return result;
 }
 
 struct PreservedRuntimeState {
@@ -423,7 +707,8 @@ void EcsSyncSystem::preSimulate(ecs::World& world) {
                                      controller_compatibility,
                                      retain_controller_binding,
                                      &scene_transform,
-                                     &world](const PreservedRuntimeState* preserved_state = nullptr) -> bool {
+                                     &world](const PreservedRuntimeState* preserved_state = nullptr,
+                                             bool recovering_from_command_failure = false) -> bool {
             scene::ControllerVelocityOwnership create_velocity_ownership =
                 scene::ControllerVelocityOwnership::RigidbodyIntent;
             glm::vec3 create_linear_velocity{0.0f, 0.0f, 0.0f};
@@ -489,9 +774,34 @@ void EcsSyncSystem::preSimulate(ecs::World& world) {
                 physics_system_.destroyBody(body);
                 return false;
             }
-            if (!ApplyRuntimeForceImpulseCommands(physics_system_, body, *rigidbody)) {
+            const RuntimeCommandApplyResult create_command_result =
+                ApplyRuntimeForceImpulseCommands(physics_system_, body, *rigidbody);
+            const detail::RuntimeCommandTraceStage create_trace_stage =
+                detail::ClassifyRuntimeCommandTraceStage(false, recovering_from_command_failure);
+            TraceRuntimeCommandOutcome(
+                entity,
+                body,
+                create_trace_stage,
+                create_command_result.trace_operation,
+                create_command_result.trace_outcome,
+                create_command_result.trace_failure_cause);
+            if (!create_command_result.success) {
                 physics_system_.destroyBody(body);
                 return false;
+            }
+            if (recovering_from_command_failure) {
+                TraceRuntimeCommandOutcome(
+                    entity,
+                    body,
+                    detail::RuntimeCommandTraceStage::Recovery,
+                    create_command_result.trace_operation,
+                    detail::ClassifyRuntimeCommandTraceOutcome(create_command_result.has_pending_commands,
+                                                               rigidbody->dynamic,
+                                                               rigidbody->kinematic,
+                                                               false,
+                                                               false,
+                                                               true),
+                    detail::RuntimeCommandTraceFailureCause::None);
             }
             binding.last_transform = create_transform;
             bindings_[entity] = binding;
@@ -678,11 +988,20 @@ void EcsSyncSystem::preSimulate(ecs::World& world) {
                 continue;
             }
         }
-        if (!ApplyRuntimeForceImpulseCommands(physics_system_, binding.body, *rigidbody)) {
+        const RuntimeCommandApplyResult update_command_result =
+            ApplyRuntimeForceImpulseCommands(physics_system_, binding.body, *rigidbody);
+        TraceRuntimeCommandOutcome(
+            entity,
+            binding.body,
+            detail::RuntimeCommandTraceStage::Update,
+            update_command_result.trace_operation,
+            update_command_result.trace_outcome,
+            update_command_result.trace_failure_cause);
+        if (!update_command_result.success) {
             // Deterministic fallback path for runtime mutation failure: rebuild runtime object.
             physics_system_.destroyBody(binding.body);
             bindings_.erase(binding_it);
-            (void)create_binding();
+            (void)create_binding(nullptr, true);
             continue;
         }
 

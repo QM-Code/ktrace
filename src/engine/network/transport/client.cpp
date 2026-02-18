@@ -194,12 +194,14 @@ class EnetClientTransport final : public ClientTransport {
         }
 
         pollReconnect(&staged_events);
-        return detail::NormalizePumpEventsPerKey(out_events,
-                                                 &staged_events,
-                                                 ClientTransportEventType::Connected,
-                                                 ClientTransportEventType::Received,
-                                                 ClientTransportEventType::Disconnected,
-                                                 [](const ClientTransportEvent&) { return 0u; });
+        return transport::detail::NormalizePumpEventsPerKey(out_events,
+                                                            &staged_events,
+                                                            ClientTransportEventType::Connected,
+                                                            ClientTransportEventType::Received,
+                                                            ClientTransportEventType::Disconnected,
+                                                            [](const ClientTransportEvent&) {
+                                                                return 0u;
+                                                            });
     }
 
     bool sendReliable(const std::vector<std::byte>& payload) override {

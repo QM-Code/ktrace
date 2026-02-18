@@ -1,5 +1,5 @@
 #pragma once
 
-namespace karma::net {
+namespace karma::network::http {
 bool EnsureCurlGlobalInit();
-}
+} // namespace karma::network::http

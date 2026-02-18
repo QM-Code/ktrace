@@ -4,7 +4,7 @@
 #include <curl/curl.h>
 #include <mutex>
 
-namespace karma::net {
+namespace karma::network::http {
 
 bool EnsureCurlGlobalInit() {
     static std::once_flag flag;
@@ -18,4 +18,4 @@ bool EnsureCurlGlobalInit() {
     return initialized;
 }
 
-} // namespace karma::net
+} // namespace karma::network::http

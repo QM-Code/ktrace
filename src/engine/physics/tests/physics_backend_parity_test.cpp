@@ -14,6 +14,21 @@
 #include <string_view>
 #include <vector>
 
+namespace karma::physics::detail {
+const char* ClassifyRuntimeCommandTraceStageTag(bool has_existing_binding, bool recovering_from_command_failure);
+const char* ClassifyRuntimeCommandTraceOperationTag(bool has_linear_force,
+                                                    bool has_linear_impulse,
+                                                    bool has_angular_torque,
+                                                    bool has_angular_impulse);
+const char* ClassifyRuntimeCommandTraceOutcomeTag(bool has_pending_commands,
+                                                  bool is_dynamic,
+                                                  bool is_kinematic,
+                                                  bool stale_runtime_binding_body,
+                                                  bool runtime_apply_failed,
+                                                  bool recovery_applied);
+const char* ClassifyRuntimeCommandTraceFailureCauseTag(bool stale_runtime_binding_body, bool runtime_apply_failed);
+}
+
 namespace {
 
 using karma::physics_backend::BackendKind;
@@ -3492,6 +3507,161 @@ bool RunBackendSelectionChecks() {
     return true;
 }
 
+bool RunRuntimeCommandTraceClassificationChecks() {
+    using karma::physics::detail::ClassifyRuntimeCommandTraceStageTag;
+    using karma::physics::detail::ClassifyRuntimeCommandTraceOperationTag;
+    using karma::physics::detail::ClassifyRuntimeCommandTraceOutcomeTag;
+    using karma::physics::detail::ClassifyRuntimeCommandTraceFailureCauseTag;
+
+    auto expect_tag = [](std::string_view actual, std::string_view expected, std::string_view label) -> bool {
+        if (actual != expected) {
+            std::cerr << "runtime command trace classification mismatch for " << label << ": expected '" << expected
+                      << "' got '" << actual << "'\n";
+            return false;
+        }
+        return true;
+    };
+
+    if (!expect_tag(ClassifyRuntimeCommandTraceStageTag(false, false), "create", "stage-create")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceStageTag(true, false), "update", "stage-update")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceStageTag(false, true), "recovery", "stage-recovery-create-path")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceStageTag(true, true), "recovery", "stage-recovery-priority")) {
+        return false;
+    }
+
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(true, false, false, false),
+                    "linear_force",
+                    "operation-linear-force")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(false, true, false, false),
+                    "linear_impulse",
+                    "operation-linear-impulse")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(false, false, true, false),
+                    "angular_torque",
+                    "operation-angular-torque")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(false, false, false, true),
+                    "angular_impulse",
+                    "operation-angular-impulse")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(true, true, true, true),
+                    "linear_force",
+                    "operation-deterministic-priority")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(false, false, false, false),
+                    "none",
+                    "operation-none")) {
+        return false;
+    }
+
+    if (!expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(true, true, false, true, false, false),
+                    "stale_runtime_binding_body",
+                    "stale-runtime")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(true, false, false, false, false, false),
+                    "ineligible_non_dynamic",
+                    "ineligible-non-dynamic")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(true, true, true, false, false, false),
+                    "ineligible_kinematic",
+                    "ineligible-kinematic")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(true, true, false, false, true, false),
+                    "runtime_apply_failed",
+                    "runtime-apply-failed")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(true, true, false, false, false, true),
+                    "recovery_applied",
+                    "recovery-applied")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(false, true, false, false, false, false),
+                    "none",
+                    "none")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceFailureCauseTag(true, false),
+                    "stale_binding",
+                    "failure-cause-stale-binding")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceFailureCauseTag(false, true),
+                    "backend_reject",
+                    "failure-cause-backend-reject")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceFailureCauseTag(false, false),
+                    "none",
+                    "failure-cause-none")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceFailureCauseTag(true, true),
+                    "stale_binding",
+                    "failure-cause-deterministic-priority")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(false, true, false, false),
+                    "linear_impulse",
+                    "combined-operation-linear-impulse")
+        || !expect_tag(ClassifyRuntimeCommandTraceStageTag(true, false),
+                       "update",
+                       "combined-stage-update")
+        || !expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(true, true, false, false, true, false),
+                       "runtime_apply_failed",
+                       "combined-outcome-runtime-apply-failed")
+        || !expect_tag(ClassifyRuntimeCommandTraceFailureCauseTag(false, true),
+                       "backend_reject",
+                       "combined-cause-backend-reject")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(false, false, false, true),
+                    "angular_impulse",
+                    "combined-operation-angular-impulse")
+        || !expect_tag(ClassifyRuntimeCommandTraceStageTag(false, true),
+                       "recovery",
+                       "combined-stage-recovery")
+        || !expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(true, true, false, false, false, true),
+                       "recovery_applied",
+                       "combined-outcome-recovery-applied")
+        || !expect_tag(ClassifyRuntimeCommandTraceFailureCauseTag(false, false),
+                       "none",
+                       "combined-cause-none")) {
+        return false;
+    }
+    if (!expect_tag(ClassifyRuntimeCommandTraceOperationTag(true, false, false, false),
+                    "linear_force",
+                    "combined-operation-linear-force")
+        || !expect_tag(ClassifyRuntimeCommandTraceStageTag(true, false),
+                       "update",
+                       "combined-stage-update-stale")
+        || !expect_tag(ClassifyRuntimeCommandTraceOutcomeTag(true, true, false, true, false, false),
+                       "stale_runtime_binding_body",
+                       "combined-outcome-stale-runtime")
+        || !expect_tag(ClassifyRuntimeCommandTraceFailureCauseTag(true, false),
+                       "stale_binding",
+                       "combined-cause-stale-binding")) {
+        return false;
+    }
+
+    return true;
+}
+
 bool RunScenePhysicsComponentContractChecks() {
     using karma::scene::ColliderReconcileAction;
     using karma::scene::ColliderIntentComponent;
@@ -5111,6 +5281,15 @@ bool RunEcsSyncSystemPolicyChecks(BackendKind backend) {
         physics.shutdown();
         return false;
     }
+    BodyTransform stale_runtime_probe{};
+    const bool stale_runtime_binding_body = !physics.getBodyTransform(stale_runtime_body_before, stale_runtime_probe);
+    if (std::string_view(karma::physics::detail::ClassifyRuntimeCommandTraceFailureCauseTag(stale_runtime_binding_body, true))
+        != "stale_binding") {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync stale-runtime fixture did not classify stale_binding failure cause deterministically\n";
+        physics.shutdown();
+        return false;
+    }
 
     sync.preSimulate(world);
     BodyId stale_runtime_body_after_failure = karma::physics_backend::kInvalidBodyId;
@@ -5209,6 +5388,15 @@ bool RunEcsSyncSystemPolicyChecks(BackendKind backend) {
     if (!physics.setBodyKinematic(backend_failure_body, true)) {
         std::cerr << "backend=" << BackendKindName(backend)
                   << " ecs-sync backend-failure fixture could not force runtime kinematic state for failure injection\n";
+        physics.shutdown();
+        return false;
+    }
+    BodyTransform backend_failure_probe{};
+    const bool backend_failure_stale_binding = !physics.getBodyTransform(backend_failure_body, backend_failure_probe);
+    if (std::string_view(karma::physics::detail::ClassifyRuntimeCommandTraceFailureCauseTag(backend_failure_stale_binding, true))
+        != "backend_reject") {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync backend-failure fixture did not classify backend_reject failure cause deterministically\n";
         physics.shutdown();
         return false;
     }
@@ -5944,6 +6132,9 @@ int main(int argc, char** argv) {
     }
 
     if (!RunBackendSelectionChecks()) {
+        return EXIT_FAILURE;
+    }
+    if (!RunRuntimeCommandTraceClassificationChecks()) {
         return EXIT_FAILURE;
     }
     if (!RunScenePhysicsComponentContractChecks()) {

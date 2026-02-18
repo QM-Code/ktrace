@@ -46,7 +46,7 @@ bool PerformPost(const std::string& url,
     if (!status_out || !error_out || !body_out) {
         return false;
     }
-    if (!karma::net::EnsureCurlGlobalInit()) {
+    if (!karma::network::http::EnsureCurlGlobalInit()) {
         *error_out = "curl global init failed";
         return false;
     }
@@ -165,7 +165,7 @@ void HeartbeatClient::workerProc() {
             requests_.pop_front();
         }
 
-        if (!karma::net::EnsureCurlGlobalInit()) {
+        if (!karma::network::http::EnsureCurlGlobalInit()) {
             spdlog::warn("HeartbeatClient: failed to initialize curl");
             continue;
         }

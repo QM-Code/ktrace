@@ -162,14 +162,13 @@ class EnetServerTransport final : public ServerTransport {
             service_result = enet_host_service(host_, &event, 0);
         }
 
-        return detail::NormalizePumpEventsPerKey(out_events,
-                                                 &staged_events,
-                                                 ServerTransportEventType::Connected,
-                                                 ServerTransportEventType::Received,
-                                                 ServerTransportEventType::Disconnected,
-                                                 [](const ServerTransportEvent& event) {
-                                                     return event.peer;
-                                                 });
+        return transport::detail::NormalizePumpEventsPerKey(
+            out_events,
+            &staged_events,
+            ServerTransportEventType::Connected,
+            ServerTransportEventType::Received,
+            ServerTransportEventType::Disconnected,
+            [](const ServerTransportEvent& event) { return event.peer; });
     }
 
     bool sendReliable(PeerToken peer, const std::vector<std::byte>& payload) override {

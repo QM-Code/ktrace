@@ -77,14 +77,13 @@ struct CapturedTransportConfig {
 
 std::vector<ServerTransportEvent> NormalizeEvents(std::vector<ServerTransportEvent> staged_events) {
     std::vector<ServerTransportEvent> out_events{};
-    karma::network::detail::NormalizePumpEventsPerKey(&out_events,
-                                                      &staged_events,
-                                                      ServerTransportEventType::Connected,
-                                                      ServerTransportEventType::Received,
-                                                      ServerTransportEventType::Disconnected,
-                                                      [](const ServerTransportEvent& event) {
-                                                          return event.peer;
-                                                      });
+    karma::network::transport::detail::NormalizePumpEventsPerKey(
+        &out_events,
+        &staged_events,
+        ServerTransportEventType::Connected,
+        ServerTransportEventType::Received,
+        ServerTransportEventType::Disconnected,
+        [](const ServerTransportEvent& event) { return event.peer; });
     return out_events;
 }
 

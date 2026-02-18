@@ -58,7 +58,7 @@ bool PerformPost(const std::string& url,
     if (!status_out || !error_out || !body_out) {
         return false;
     }
-    if (!karma::net::EnsureCurlGlobalInit()) {
+    if (!karma::network::http::EnsureCurlGlobalInit()) {
         *error_out = "curl global init failed";
         return false;
     }
@@ -160,7 +160,7 @@ bool EvaluateCommunityAuth(const ServerPreAuthConfig& config,
         return true;
     }
 
-    if (!karma::net::EnsureCurlGlobalInit()) {
+    if (!karma::network::http::EnsureCurlGlobalInit()) {
         decision_out->accepted = false;
         decision_out->reject_reason = config.reject_reason;
         KARMA_TRACE("engine.server",

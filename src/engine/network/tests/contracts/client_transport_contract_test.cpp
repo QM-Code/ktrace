@@ -40,11 +40,11 @@ bool Expect(bool condition, const std::string& message) {
 
 std::vector<ClientTransportEventType> Normalize(std::vector<ClientTransportEvent> staged_events) {
     std::vector<ClientTransportEvent> out_events{};
-    karma::network::detail::NormalizePumpEvents(&out_events,
-                                                &staged_events,
-                                                ClientTransportEventType::Connected,
-                                                ClientTransportEventType::Received,
-                                                ClientTransportEventType::Disconnected);
+    karma::network::transport::detail::NormalizePumpEvents(&out_events,
+                                                           &staged_events,
+                                                           ClientTransportEventType::Connected,
+                                                           ClientTransportEventType::Received,
+                                                           ClientTransportEventType::Disconnected);
 
     std::vector<ClientTransportEventType> out_types{};
     out_types.reserve(out_events.size());

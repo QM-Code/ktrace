@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-namespace karma::network::detail {
+namespace karma::network::transport::detail {
 
 template <typename Event, typename EventType, typename KeyFn>
 size_t NormalizePumpEventsPerKey(std::vector<Event>* out_events,
@@ -68,4 +68,4 @@ size_t NormalizePumpEvents(std::vector<Event>* out_events,
                                      [](const Event&) { return 0u; });
 }
 
-} // namespace karma::network::detail
+} // namespace karma::network::transport::detail

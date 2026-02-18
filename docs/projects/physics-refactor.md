@@ -2,9 +2,9 @@
 
 ## Project Snapshot
 - Current owner: `specialist-physics-refactor`
-- Status: `in progress` (Phase 4p validated in `build-a3`; explicit stale-runtime vs ineligible-state runtime-command failure classification matrix coverage landed)
+- Status: `in progress` (Phase 4t validated in `build-a3`; `physics.system` runtime-command traces now emit deterministic stage+operation+outcome+failure-cause tags)
 - Supersedes: `docs/projects/physics-backend.md` (retired to `docs/archive/physics-backend-retired-2026-02-17.md`)
-- Immediate next task: execute a bounded Phase 4 follow-up to add runtime-command failure observability tags in `physics.system` traces for stale-runtime vs ineligible-state recovery paths without expanding API surface.
+- Immediate next task: execute a bounded Phase 4 follow-up to extend runtime-command observability with deterministic tag coverage depth while keeping API/behavior unchanged.
 - Validation gate: `./scripts/test-engine-backends.sh <build-dir>`
 
 ## Mission
@@ -804,6 +804,106 @@ Explicit remaining deferrals after Phase 4p:
 - No engine loop integration in `src/engine/app/*`.
 - No gameplay migration wiring.
 
+## Phase 4q Runtime Command Failure Observability Tags Slice (2026-02-18)
+Landed in this bounded slice:
+- Added explicit runtime-command outcome classification + tag mapping helpers in `src/engine/physics/ecs_sync_system.cpp` for `physics.system` trace emission:
+  - `stale_runtime_binding_body`,
+  - `ineligible_non_dynamic`,
+  - `ineligible_kinematic`,
+  - `runtime_apply_failed`,
+  - `recovery_applied`.
+- Added deterministic trace emission at ECS pre-sim command decision points:
+  - command-intent ineligible state classification (non-dynamic vs kinematic),
+  - stale runtime-body/binding failure detection on runtime apply failure,
+  - runtime apply generic failure classification,
+  - recovery classification when fallback rebuild converges after a prior command failure path.
+- Added bounded parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp` for classification/tag mapping behavior used by traces (no log-capture harness).
+- Kept slice bounded:
+  - no substrate/backend API additions,
+  - no gameplay semantics changes,
+  - no command-lifecycle behavior changes.
+
+Explicit remaining deferrals after Phase 4q:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4r Runtime Command Operation+Outcome Trace Tags Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended runtime-command trace tagging in `src/engine/physics/ecs_sync_system.cpp` with deterministic per-command operation labels:
+  - `linear_force`,
+  - `linear_impulse`,
+  - `angular_torque`,
+  - `angular_impulse`.
+- Updated `physics.system` ECS pre-sim trace emission to include both operation + outcome classification at command decision points.
+- Preserved existing runtime-command semantics:
+  - no command lifecycle/consume/fallback behavior changes,
+  - no substrate/backend/API expansion.
+- Added bounded helper coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp` for:
+  - operation-label deterministic priority mapping,
+  - outcome-tag mapping,
+  - combined operation/outcome helper expectations (without log-capture harness).
+
+Explicit remaining deferrals after Phase 4r:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4s Runtime Command Stage+Operation+Outcome Trace Tags Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended runtime-command trace helper surface in `src/engine/physics/ecs_sync_system.cpp` with deterministic stage classification/tag mapping:
+  - `create`,
+  - `update`,
+  - `recovery`.
+- Updated `physics.system` runtime-command trace emission to include full metadata tuple:
+  - stage + operation + outcome.
+- Bound stage emission to existing ECS pre-sim command decision points:
+  - create path (`create`),
+  - existing-binding command reconciliation path (`update`),
+  - fallback/rebuild convergence path (`recovery`).
+- Added bounded helper coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp` for:
+  - stage classification/tag mapping,
+  - operation mapping,
+  - outcome mapping,
+  - combined stage+operation+outcome expectations.
+- Kept slice behavior-neutral:
+  - no command lifecycle, fallback, or consume-rule changes,
+  - no substrate/backend/API expansion.
+
+Explicit remaining deferrals after Phase 4s:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4t Runtime Command Failure-Cause Trace Sub-Tag Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended runtime-command trace helper surface in `src/engine/physics/ecs_sync_system.cpp` with deterministic failure-cause sub-tag mapping:
+  - `stale_binding`,
+  - `backend_reject`.
+- Trace emission now includes failure cause only for runtime command failure outcomes:
+  - `stale_runtime_binding_body`,
+  - `runtime_apply_failed`.
+- Kept command runtime behavior unchanged:
+  - no substrate/backend API changes,
+  - no command lifecycle/consume/fallback policy changes.
+- Added bounded parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp` for:
+  - failure-cause helper mapping/tag priority behavior,
+  - stale-binding fixture classification path,
+  - backend-reject fixture classification path.
+
+Explicit remaining deferrals after Phase 4t:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
 ## Current Status
 - `2026-02-17`: Project created as full replacement for backend-only parity track.
 - `2026-02-17`: `physics-backend.md` retired and subsumed into this plan.
@@ -1006,7 +1106,39 @@ Explicit remaining deferrals after Phase 4p:
   - `./scripts/test-engine-backends.sh build-a3` (pass)
   - `./docs/scripts/lint-project-docs.sh` (pass)
   - `./abuild.py --lock-status -d build-a3` (owner verified)
-- Next implementation slice: execute a bounded Phase 4 follow-up to add runtime-command failure observability tags in `physics.system` traces for stale-runtime/ineligible-state recovery paths.
+- `2026-02-18`: Phase 4q runtime-command failure observability tag slice landed:
+  - ECS pre-sim now emits deterministic `physics.system` runtime-command outcome tags for stale-runtime/ineligible-state/apply-failure/recovery paths,
+  - parity tests now include direct classification/tag mapping checks for the trace helper path (no log capture).
+- `2026-02-18`: Phase 4q validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4r runtime-command operation+outcome trace tag slice landed:
+  - ECS pre-sim `physics.system` traces now include deterministic operation labels plus existing outcome classification tags.
+  - Helper coverage now asserts operation-label mapping and combined operation/outcome tagging expectations.
+- `2026-02-18`: Phase 4r validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4s runtime-command stage+operation+outcome trace tag slice landed:
+  - ECS pre-sim `physics.system` traces now include deterministic command-apply stage tags in addition to operation+outcome tags.
+  - helper coverage now validates stage mapping and combined stage/operation/outcome tagging logic.
+- `2026-02-18`: Phase 4s validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4t runtime-command failure-cause trace sub-tag slice landed:
+  - ECS pre-sim `physics.system` runtime-command traces now include deterministic failure-cause tags for failure outcomes (`stale_binding` vs `backend_reject`) in addition to stage/operation/outcome tags.
+  - Helper and fixture-level parity coverage now validates both cause classifications deterministically without log-capture harness.
+- `2026-02-18`: Phase 4t validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- Next implementation slice: execute a bounded Phase 4 follow-up to deepen runtime-command observability coverage while preserving current API and runtime behavior.
 
 ## Handoff Checklist
 - [x] `physics-refactor.md` remains the single active physics project doc in `docs/projects/`.
