@@ -9,6 +9,11 @@
 
 namespace karma::network::content {
 
+struct TransferSenderRuntimeConfig {
+    uint32_t chunk_size = 16 * 1024;
+    uint32_t max_retry_attempts = 2;
+};
+
 struct TransferSenderRequest {
     uint32_t client_id = 0;
     std::string transfer_id{};
@@ -25,6 +30,27 @@ struct TransferSenderRequest {
     uint32_t chunk_size = 1;
     uint32_t max_retry_attempts = 0;
 };
+
+TransferSenderRuntimeConfig ReadTransferSenderRuntimeConfig(
+    uint16_t default_chunk_size = static_cast<uint16_t>(16 * 1024),
+    uint16_t default_retry_attempts = 2);
+
+std::string BuildTransferId(uint32_t client_id, uint64_t transfer_sequence);
+
+TransferSenderRequest BuildTransferSenderRequest(
+    uint32_t client_id,
+    std::string_view transfer_id,
+    std::string_view world_id,
+    std::string_view world_revision,
+    std::string_view world_hash,
+    std::string_view world_content_hash,
+    bool is_delta,
+    std::string_view delta_base_world_id,
+    std::string_view delta_base_world_revision,
+    std::string_view delta_base_world_hash,
+    std::string_view delta_base_world_content_hash,
+    const std::vector<std::byte>& world_package,
+    const TransferSenderRuntimeConfig& runtime_config);
 
 struct TransferSenderCallbacks {
     std::function<bool(std::string_view transfer_id,

@@ -44,8 +44,6 @@ set(BZ3_CLIENT_RUNTIME_SRCS
     ${PROJECT_SOURCE_DIR}/src/game/client/runtime/run.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/runtime/engine_config.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/runtime/startup_options.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/client/runtime/community_credentials.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/client/runtime/auth_payload.cpp
 )
 
 set(BZ3_SERVER_RUNTIME_SRCS
@@ -57,7 +55,6 @@ set(BZ3_SERVER_RUNTIME_SRCS
 )
 
 add_executable(bz3
-    ${PROJECT_SOURCE_DIR}/src/game/client/community_server_list.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/domain/tank_drive_controller.cpp
     ${BZ3_CLIENT_RUNTIME_SRCS}
     ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/core.cpp

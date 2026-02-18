@@ -2,7 +2,6 @@
 
 #include "karma/common/config_store.hpp"
 #include "karma/common/content/archive.hpp"
-#include "karma/common/content/package_apply.hpp"
 #include "karma/common/content/sync_facade.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/logging.hpp"
@@ -33,23 +32,7 @@ std::vector<karma::content::ManifestEntry> ToContentManifest(
 
 } // namespace
 
-bool ExtractWorldArchiveAtomically(const std::vector<std::byte>& world_data,
-                                   const std::filesystem::path& package_root,
-                                   std::string_view world_name,
-                                   std::string_view expected_world_content_hash,
-                                   std::string_view expected_world_manifest_hash,
-                                   uint32_t expected_world_manifest_file_count,
-                                   const std::vector<bz3::net::WorldManifestEntry>& expected_world_manifest) {
-    return karma::content::ExtractArchiveAtomically(world_data,
-                                                    package_root,
-                                                    world_name,
-                                                    expected_world_content_hash,
-                                                    expected_world_manifest_hash,
-                                                    expected_world_manifest_file_count,
-                                                    ToContentManifest(expected_world_manifest),
-                                                    "ClientConnection");
-}
-
+namespace detail {
 
 bool ApplyWorldPackageForServer(const std::string& host,
                                 uint16_t port,
@@ -165,105 +148,6 @@ bool ApplyWorldPackageForServer(const std::string& host,
                 sync_result.cache_hit ? 1 : 0,
                 sync_result.transfer_mode);
     return true;
-}
-
-namespace detail {
-
-bool InitIncludesWorldMetadata(const bz3::net::ServerMessage& message) {
-    return ::bz3::client::net::InitIncludesWorldMetadata(message);
-}
-
-bool IsChunkInTransferBounds(uint64_t total_bytes,
-                             uint32_t chunk_size,
-                             uint32_t chunk_index,
-                             size_t chunk_bytes) {
-    return ::bz3::client::net::IsChunkInTransferBounds(total_bytes,
-                                                       chunk_size,
-                                                       chunk_index,
-                                                       chunk_bytes);
-}
-
-bool ChunkMatchesBufferedPayload(const std::vector<std::byte>& payload,
-                                 size_t chunk_offset,
-                                 const std::vector<std::byte>& chunk_data) {
-    return ::bz3::client::net::ChunkMatchesBufferedPayload(payload, chunk_offset, chunk_data);
-}
-
-void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
-    ::bz3::client::net::HashBytesFNV1a(hash, bytes, count);
-}
-
-void HashChunkChainFNV1a(uint64_t& hash,
-                         uint32_t chunk_index,
-                         const std::vector<std::byte>& chunk_data) {
-    ::bz3::client::net::HashChunkChainFNV1a(hash, chunk_index, chunk_data);
-}
-
-std::string Hash64Hex(uint64_t hash) {
-    return ::bz3::client::net::Hash64Hex(hash);
-}
-
-bool HasCachedWorldPackageForServer(const std::string& host,
-                                    uint16_t port,
-                                    std::string_view world_id,
-                                    std::string_view world_revision,
-                                    std::string_view world_content_hash,
-                                    std::string_view world_hash) {
-    return ::bz3::client::net::HasCachedWorldPackageForServer(host,
-                                                              port,
-                                                              world_id,
-                                                              world_revision,
-                                                              world_content_hash,
-                                                              world_hash);
-}
-
-std::optional<CachedWorldIdentity> ReadCachedWorldIdentityForServer(const std::string& host, uint16_t port) {
-    return ::bz3::client::net::ReadCachedWorldIdentityForServer(host, port);
-}
-
-std::vector<bz3::net::WorldManifestEntry> ReadCachedWorldManifest(
-    const std::filesystem::path& server_cache_dir) {
-    return ::bz3::client::net::ReadCachedWorldManifest(server_cache_dir);
-}
-
-std::string ComputeManifestHash(const std::vector<bz3::net::WorldManifestEntry>& manifest) {
-    return ::bz3::client::net::ComputeManifestHash(manifest);
-}
-
-bool ApplyWorldPackageForServer(const std::string& host,
-                                uint16_t port,
-                                std::string_view world_name,
-                                std::string_view world_id,
-                                std::string_view world_revision,
-                                std::string_view world_hash,
-                                std::string_view world_content_hash,
-                                std::string_view world_manifest_hash,
-                                uint32_t world_manifest_file_count,
-                                uint64_t world_size,
-                                const std::vector<bz3::net::WorldManifestEntry>& world_manifest,
-                                const std::vector<std::byte>& world_data,
-                                bool is_delta_transfer,
-                                std::string_view delta_base_world_id,
-                                std::string_view delta_base_world_revision,
-                                std::string_view delta_base_world_hash,
-                                std::string_view delta_base_world_content_hash) {
-    return ::bz3::client::net::ApplyWorldPackageForServer(host,
-                                                          port,
-                                                          world_name,
-                                                          world_id,
-                                                          world_revision,
-                                                          world_hash,
-                                                          world_content_hash,
-                                                          world_manifest_hash,
-                                                          world_manifest_file_count,
-                                                          world_size,
-                                                          world_manifest,
-                                                          world_data,
-                                                          is_delta_transfer,
-                                                          delta_base_world_id,
-                                                          delta_base_world_revision,
-                                                          delta_base_world_hash,
-                                                          delta_base_world_content_hash);
 }
 
 } // namespace detail

@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `overseer`
-- Status: `in progress (W1 landed: world-package helper adapters compacted into bridge.cpp; redundant wrapper-heavy files removed)`
-- Immediate next task: execute W2 header surface minimization by trimming `src/game/client/net/world_package/internal.hpp` to active adapter contract only.
+- Status: `archived/completed (W1-W5 complete: adapter compaction, header-surface minimization, regression hardening, and closeout finished)`
+- Immediate next task: `none (archived)`.
 - Validation gate: `./abuild.py -c -d <build-dir>` + `./scripts/test-server-net.sh <build-dir>` + `ctest --test-dir <build-dir> -R 'client_world_package_safety_integration_test|server_net_contract_test' --output-on-failure` + `./docs/scripts/lint-project-docs.sh`.
 
 ## Mission
@@ -25,7 +25,7 @@ Primary objective:
 Content mount and boundary-hygiene extraction are already archived as completed tracks. This project is a focused follow-up to improve maintainability and handoff resilience for remaining world-package adapters without reopening completed engineization scope.
 
 ## Owned Paths
-- `docs/projects/world-package-engine-integration.md`
+- `docs/archive/world-package-engine-integration-completed-2026-02-18.md`
 - `docs/projects/ASSIGNMENTS.md`
 - `src/game/client/net/world_package/*`
 - `src/game/client/net/connection/internal.hpp` (interface-only coordination when required)
@@ -120,15 +120,26 @@ ctest --test-dir <build-dir> -R 'client_world_package_safety_integration_test|se
   - `./scripts/test-server-net.sh build-a3`
   - `ctest --test-dir build-a3 -R 'client_world_package_safety_integration_test|server_net_contract_test' --output-on-failure`
   - `./docs/scripts/lint-project-docs.sh`
+- `2026-02-18`: W2 completed: trimmed `src/game/client/net/world_package/internal.hpp` to active shared declarations/constants only, moved non-apply `detail::*` bindings from `apply.cpp` into `bridge.cpp`, and removed dead `ExtractWorldArchiveAtomically` adapter surface.
+- `2026-02-18`: W2 validation passed on `build-a3`:
+  - `./abuild.py -c -d build-a3`
+  - `./scripts/test-server-net.sh build-a3`
+  - `ctest --test-dir build-a3 -R 'client_world_package_safety_integration_test|server_net_contract_test' --output-on-failure`
+  - `./docs/scripts/lint-project-docs.sh`
+- `2026-02-18`: W4 completed: added explicit regression coverage for cache-hit/no-payload init and successful delta-transfer apply in `src/game/tests/client_world_package_safety_integration_test.cpp`; rollback-safety coverage remained in place.
+- `2026-02-18`: W4 validation passed on `build-a3`:
+  - `./abuild.py -c -d build-a3`
+  - `./scripts/test-server-net.sh build-a3`
+  - `ctest --test-dir build-a3 -R 'client_world_package_safety_integration_test|server_net_contract_test' --output-on-failure`
+  - `./docs/scripts/lint-project-docs.sh`
+- `2026-02-18`: W5 completed: project file archived to `docs/archive/world-package-engine-integration-completed-2026-02-18.md` and active assignment row removed from `docs/projects/ASSIGNMENTS.md`.
 
 ## Open Questions
-- Should final game adapter shape be one bridge unit plus apply orchestration, or keep a two/three-file split for readability?
-- Should any remaining conversion helpers (`bz3::net::WorldManifestEntry` <-> `karma::content::ManifestEntry`) move to a dedicated shared adapter utility?
-- Do we want explicit ownership docs for `src/game/client/net/connection/internal.hpp` bridge stability guarantees?
+- None blocking closeout for this track.
 
 ## Handoff Checklist
 - [x] Scoped files updated with behavior preserved.
 - [x] Required validation commands executed and summarized.
 - [x] Project snapshot/plan/checklist updated.
-- [x] `docs/projects/ASSIGNMENTS.md` row updated.
+- [x] `docs/projects/ASSIGNMENTS.md` active row removed at archive closeout.
 - [x] Risks/open questions captured.

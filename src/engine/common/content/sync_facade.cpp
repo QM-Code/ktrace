@@ -175,6 +175,52 @@ void LogClientCachePruneResult(const CachePruneResult& result, std::string_view 
 
 } // namespace
 
+ServerCachedContentState BuildServerCachedContentState(
+    std::string_view world_hash,
+    std::string_view world_id,
+    std::string_view world_revision,
+    std::string_view world_content_hash,
+    std::string_view world_manifest_hash,
+    uint32_t world_manifest_file_count,
+    std::vector<ManifestEntry> world_manifest) {
+    ServerCachedContentState cached_state{};
+    cached_state.world_hash = std::string(world_hash);
+    cached_state.world_id = std::string(world_id);
+    cached_state.world_revision = std::string(world_revision);
+    cached_state.world_content_hash = std::string(world_content_hash);
+    cached_state.world_manifest_hash = std::string(world_manifest_hash);
+    cached_state.world_manifest_file_count = world_manifest_file_count;
+    cached_state.world_manifest = std::move(world_manifest);
+    return cached_state;
+}
+
+ServerContentSyncRequest BuildServerContentSyncRequest(
+    const std::filesystem::path& world_dir,
+    std::string_view world_name,
+    std::string_view world_id,
+    std::string_view world_revision,
+    std::string_view world_package_hash,
+    std::string_view world_content_hash,
+    std::string_view world_manifest_hash,
+    uint32_t world_manifest_file_count,
+    std::vector<ManifestEntry> world_manifest,
+    const ArchiveBytes& world_package,
+    ServerCachedContentState cached_state) {
+    ServerContentSyncRequest request{};
+    request.world_dir = world_dir;
+    request.world_name = std::string(world_name);
+    request.world_id = std::string(world_id);
+    request.world_revision = std::string(world_revision);
+    request.world_package_hash = std::string(world_package_hash);
+    request.world_content_hash = std::string(world_content_hash);
+    request.world_manifest_hash = std::string(world_manifest_hash);
+    request.world_manifest_file_count = world_manifest_file_count;
+    request.world_manifest = std::move(world_manifest);
+    request.world_package = world_package;
+    request.cached_state = std::move(cached_state);
+    return request;
+}
+
 ServerContentSyncPlan BuildDefaultServerContentSyncPlan(const ServerContentSyncRequest& request,
                                                         std::string_view log_prefix) {
     ServerContentSyncPlan plan{};

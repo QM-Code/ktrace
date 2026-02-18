@@ -13,7 +13,6 @@ Strategic tracking:
 
 | Project | Owner | Status | Next Task | Last Update |
 |---|---|---|---|---|
-| `world-package-engine-integration.md` | `overseer` | `in progress (W1 landed: bridge.cpp compaction + redundant wrapper-heavy file removal complete)` | `shared unblocker`: execute W2 by trimming `src/game/client/net/world_package/internal.hpp` to active adapter contract only. | `2026-02-18` |
 | `gameplay-migration.md` | `overseer` | `in progress (D1 hardening landed; netcode lane consolidated)` | Execute D2 movement replication slice: wire client `PlayerLocation` intent path to rewrite server authority for tank drive state. | `2026-02-18` |
 | `physics-refactor.md` | `codex` | `in progress (new KARMA-alignment foundation track)` | `KARMA intake`: execute Phase 0/1 contract reset and scaffold KARMA-style world/controller/collider API layers. | `2026-02-17` |
 | `karma-lighting-shadow-parity.md` | `unassigned` | `priority/on hold (close-out snapshot captured; awaiting external revisions)` | `KARMA intake`: after external revisions, rerun canonical BGFX/Diligent baseline, resolve/characterize shared seam artifact, then resume bounded P0-S3 re-intake. | `2026-02-17` |

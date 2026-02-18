@@ -1,11 +1,61 @@
 #include "karma/network/content/transfer_sender.hpp"
 
+#include "karma/common/config_helpers.hpp"
 #include "karma/common/logging.hpp"
 
 #include <algorithm>
 #include <cstddef>
 
 namespace karma::network::content {
+
+TransferSenderRuntimeConfig ReadTransferSenderRuntimeConfig(uint16_t default_chunk_size,
+                                                            uint16_t default_retry_attempts) {
+    TransferSenderRuntimeConfig runtime_config{};
+    runtime_config.chunk_size = std::max<uint32_t>(
+        1,
+        static_cast<uint32_t>(karma::config::ReadUInt16Config({"network.WorldTransferChunkBytes"},
+                                                               default_chunk_size)));
+    runtime_config.max_retry_attempts = static_cast<uint32_t>(
+        karma::config::ReadUInt16Config({"network.WorldTransferRetryAttempts"},
+                                        default_retry_attempts));
+    return runtime_config;
+}
+
+std::string BuildTransferId(uint32_t client_id, uint64_t transfer_sequence) {
+    return std::to_string(client_id) + "-" + std::to_string(transfer_sequence);
+}
+
+TransferSenderRequest BuildTransferSenderRequest(
+    uint32_t client_id,
+    std::string_view transfer_id,
+    std::string_view world_id,
+    std::string_view world_revision,
+    std::string_view world_hash,
+    std::string_view world_content_hash,
+    bool is_delta,
+    std::string_view delta_base_world_id,
+    std::string_view delta_base_world_revision,
+    std::string_view delta_base_world_hash,
+    std::string_view delta_base_world_content_hash,
+    const std::vector<std::byte>& world_package,
+    const TransferSenderRuntimeConfig& runtime_config) {
+    TransferSenderRequest request{};
+    request.client_id = client_id;
+    request.transfer_id = std::string(transfer_id);
+    request.world_id = std::string(world_id);
+    request.world_revision = std::string(world_revision);
+    request.world_hash = std::string(world_hash);
+    request.world_content_hash = std::string(world_content_hash);
+    request.is_delta = is_delta;
+    request.delta_base_world_id = std::string(delta_base_world_id);
+    request.delta_base_world_revision = std::string(delta_base_world_revision);
+    request.delta_base_world_hash = std::string(delta_base_world_hash);
+    request.delta_base_world_content_hash = std::string(delta_base_world_content_hash);
+    request.world_package = &world_package;
+    request.chunk_size = std::max<uint32_t>(1, runtime_config.chunk_size);
+    request.max_retry_attempts = runtime_config.max_retry_attempts;
+    return request;
+}
 
 bool SendWorldPackageChunked(const TransferSenderRequest& request,
                              const TransferSenderCallbacks& callbacks,

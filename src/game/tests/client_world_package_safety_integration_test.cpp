@@ -5,6 +5,7 @@
 
 #include "karma/common/config_store.hpp"
 #include "karma/common/content/archive.hpp"
+#include "karma/common/content/delta_builder.hpp"
 #include "karma/common/content/manifest.hpp"
 #include "karma/common/content/primitives.hpp"
 #include "karma/common/data_path_resolver.hpp"
@@ -213,6 +214,19 @@ std::vector<bz3::server::net::WorldManifestEntry> ToServerManifestEntries(
     return converted;
 }
 
+std::vector<bz3::net::WorldManifestEntry> ToWireManifestEntries(
+    const std::vector<bz3::server::net::WorldManifestEntry>& entries) {
+    std::vector<bz3::net::WorldManifestEntry> converted{};
+    converted.reserve(entries.size());
+    for (const auto& entry : entries) {
+        converted.push_back(bz3::net::WorldManifestEntry{
+            .path = entry.path,
+            .size = entry.size,
+            .hash = entry.hash});
+    }
+    return converted;
+}
+
 bool WriteTextFile(const std::filesystem::path& path, const std::string& content) {
     std::ofstream output(path, std::ios::trunc);
     if (!output) {
@@ -371,6 +385,87 @@ std::vector<std::byte> BuildChunk(const std::vector<std::byte>& world_package,
                  world_package.begin() + static_cast<std::ptrdiff_t>(offset),
                  world_package.begin() + static_cast<std::ptrdiff_t>(offset + this_chunk_size));
     return chunk;
+}
+
+bool StartRawClientAndAwaitJoin(RawServerFixture* raw_server,
+                                bz3::client::net::ClientConnection* client,
+                                std::optional<bz3::net::ClientMessage>* out_join_request,
+                                std::chrono::milliseconds timeout) {
+    if (!raw_server || !client || !out_join_request) {
+        return false;
+    }
+
+    std::optional<bool> started{};
+    out_join_request->reset();
+    std::thread starter([&]() { started = client->start(); });
+    const bool start_done = WaitUntil(timeout, [&]() {
+        PumpRawServerEvents(raw_server, out_join_request, nullptr);
+    }, [&]() { return started.has_value(); });
+    starter.join();
+    if (!start_done || !started.value_or(false)) {
+        return false;
+    }
+    if (!karma::network::tests::LoopbackTransportEndpointHasPeer(&raw_server->endpoint)) {
+        return false;
+    }
+
+    return WaitUntil(timeout, [&]() {
+        PumpRawServerEvents(raw_server, out_join_request, nullptr);
+        client->poll();
+    }, [&]() { return out_join_request->has_value(); });
+}
+
+bool SendRawTransferStream(RawServerFixture* raw_server,
+                           std::string_view transfer_id,
+                           std::string_view world_id,
+                           std::string_view world_revision,
+                           std::string_view world_hash,
+                           std::string_view world_content_hash,
+                           bool is_delta,
+                           std::string_view delta_base_world_id,
+                           std::string_view delta_base_world_revision,
+                           std::string_view delta_base_world_hash,
+                           std::string_view delta_base_world_content_hash,
+                           const std::vector<std::byte>& transfer_payload,
+                           uint32_t chunk_size) {
+    if (!raw_server || transfer_id.empty() || transfer_payload.empty() || chunk_size == 0) {
+        return false;
+    }
+
+    if (!SendRawServerPayload(&raw_server->endpoint,
+                              bz3::net::EncodeServerWorldTransferBegin(transfer_id,
+                                                                       world_id,
+                                                                       world_revision,
+                                                                       transfer_payload.size(),
+                                                                       chunk_size,
+                                                                       world_hash,
+                                                                       world_content_hash,
+                                                                       is_delta,
+                                                                       delta_base_world_id,
+                                                                       delta_base_world_revision,
+                                                                       delta_base_world_hash,
+                                                                       delta_base_world_content_hash))) {
+        return false;
+    }
+
+    const uint32_t total_chunk_count =
+        static_cast<uint32_t>((transfer_payload.size() + chunk_size - 1) / chunk_size);
+    for (uint32_t chunk_index = 0; chunk_index < total_chunk_count; ++chunk_index) {
+        if (!SendRawServerPayload(&raw_server->endpoint,
+                                  bz3::net::EncodeServerWorldTransferChunk(
+                                      transfer_id,
+                                      chunk_index,
+                                      BuildChunk(transfer_payload, chunk_index, chunk_size)))) {
+            return false;
+        }
+    }
+
+    return SendRawServerPayload(&raw_server->endpoint,
+                                bz3::net::EncodeServerWorldTransferEnd(transfer_id,
+                                                                       total_chunk_count,
+                                                                       transfer_payload.size(),
+                                                                       world_hash,
+                                                                       world_content_hash));
 }
 
 class ScopedEnvVar {
@@ -1014,6 +1109,489 @@ TestResult TestChunkTransferEndHashMismatchIsRejected() {
     return TestResult::Pass;
 }
 
+TestResult TestCacheHitInitWithoutTransferUsesCachedPackage() {
+    const std::filesystem::path temp_root = MakeTempPath("cache-hit-root");
+    const std::filesystem::path xdg_root = temp_root / "xdg";
+    const std::filesystem::path world_dir = temp_root / "world";
+    const std::filesystem::path config_path = MakeConfigPath("cache-hit-config");
+
+    std::error_code ec;
+    std::filesystem::remove_all(temp_root, ec);
+    ec.clear();
+    std::filesystem::create_directories(xdg_root, ec);
+    std::filesystem::create_directories(world_dir, ec);
+    if (ec) {
+        return FailTest("failed to create temp directories for cache-hit test");
+    }
+
+    if (!WriteTextFile(world_dir / "config.json",
+                       "{\n  \"worldName\": \"cache-hit-world\",\n  \"cacheVersion\": 1\n}\n")) {
+        return FailTest("failed to write cache-hit world config.json");
+    }
+    if (!WriteDeterministicBinaryFile(world_dir / "world.glb", 192 * 1024, 0x5a5aa5a5U)) {
+        return FailTest("failed to write cache-hit world.glb");
+    }
+
+    const auto world_opt = BuildWorldFixture(world_dir, "cache-hit-world", "cache-hit-world");
+    if (!world_opt.has_value()) {
+        return FailTest("failed to build cache-hit world fixture");
+    }
+    const WorldFixture world = *world_opt;
+
+    ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
+    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+        .appName = "bz3",
+        .dataDirEnvVar = "BZ3_DATA_DIR",
+        .requiredDataMarker = {},
+        .fallbackAssetLayers = {}});
+    karma::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+
+    ScopedRawTransport raw_transport{};
+    if (!raw_transport.initialized()) {
+        PrintSkip("transport init failed for cache-hit test");
+        return TestResult::Skip;
+    }
+
+    auto raw_server_opt = CreateRawServerFixture();
+    if (!raw_server_opt.has_value()) {
+        PrintSkip("unable to create raw transport server fixture");
+        return TestResult::Skip;
+    }
+    RawServerFixture raw_server = std::move(*raw_server_opt);
+    const std::filesystem::path server_cache_dir =
+        karma::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
+    const std::filesystem::path identity_path = server_cache_dir / "active_world_identity.txt";
+    constexpr uint32_t kChunkSize = 16 * 1024;
+
+    {
+        bz3::client::net::ClientConnection seed_client("127.0.0.1", raw_server.port, "cache-seed-client");
+        std::optional<bz3::net::ClientMessage> seed_join_request{};
+        if (!StartRawClientAndAwaitJoin(&raw_server,
+                                        &seed_client,
+                                        &seed_join_request,
+                                        std::chrono::milliseconds(2500))) {
+            return FailTest("seed client failed to connect/join for cache-hit test");
+        }
+
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerJoinResponse(true, ""))) {
+            seed_client.shutdown();
+            return FailTest("failed to send seed join response for cache-hit test");
+        }
+        const auto seed_wire_manifest = ToWireManifestEntries(world.world_manifest);
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerInit(2,
+                                                             "raw-server",
+                                                             world.world_name,
+                                                             bz3::net::kProtocolVersion,
+                                                             world.world_package_hash,
+                                                             world.world_package_size,
+                                                             world.world_id,
+                                                             world.world_revision,
+                                                             world.world_content_hash,
+                                                             world.world_manifest_hash,
+                                                             world.world_manifest_file_count,
+                                                             seed_wire_manifest,
+                                                             {}))) {
+            seed_client.shutdown();
+            return FailTest("failed to send seed init payload for cache-hit test");
+        }
+        if (!SendRawTransferStream(&raw_server,
+                                   "cache-seed-transfer",
+                                   world.world_id,
+                                   world.world_revision,
+                                   world.world_package_hash,
+                                   world.world_content_hash,
+                                   false,
+                                   {},
+                                   {},
+                                   {},
+                                   {},
+                                   world.world_package,
+                                   kChunkSize)) {
+            seed_client.shutdown();
+            return FailTest("failed to stream seed world package for cache-hit test");
+        }
+        if (!SendRawServerPayload(
+                &raw_server.endpoint,
+                bz3::net::EncodeServerSessionSnapshot(
+                    std::vector<bz3::net::SessionSnapshotEntry>{{2, "cache-seed-client"}}))) {
+            seed_client.shutdown();
+            return FailTest("failed to send seed session snapshot for cache-hit test");
+        }
+
+        const bool seeded = WaitUntil(std::chrono::milliseconds(3000), [&]() {
+            PumpRawServerEvents(&raw_server, &seed_join_request, nullptr);
+            seed_client.poll();
+        }, [&]() {
+            const auto identity = ReadCachedIdentity(identity_path);
+            return identity.has_value() &&
+                   identity->world_id == world.world_id &&
+                   identity->world_revision == world.world_revision &&
+                   identity->world_content_hash == world.world_content_hash;
+        });
+        if (!seeded || seed_client.shouldExit()) {
+            seed_client.shutdown();
+            return FailTest("seed phase failed to persist cache identity for cache-hit test");
+        }
+
+        const std::filesystem::path package_root = PackageRootForIdentity(server_cache_dir,
+                                                                          world.world_id,
+                                                                          world.world_revision,
+                                                                          world.world_content_hash);
+        if (!std::filesystem::exists(package_root) || !std::filesystem::is_directory(package_root)) {
+            seed_client.shutdown();
+            return FailTest("seed phase missing package root for cache-hit test");
+        }
+
+        seed_client.shutdown();
+    }
+
+    const bool seed_peer_released = WaitUntil(std::chrono::milliseconds(1500), [&]() {
+        PumpRawServerEvents(&raw_server, nullptr, nullptr);
+    }, [&]() { return !karma::network::tests::LoopbackTransportEndpointHasPeer(&raw_server.endpoint); });
+    if (!seed_peer_released) {
+        return FailTest("raw server peer did not release after cache-hit seed phase");
+    }
+    raw_server.endpoint.disconnected = false;
+
+    {
+        bz3::client::net::ClientConnection cache_hit_client(
+            "127.0.0.1", raw_server.port, "cache-hit-client");
+        std::optional<bz3::net::ClientMessage> cache_hit_join_request{};
+        if (!StartRawClientAndAwaitJoin(&raw_server,
+                                        &cache_hit_client,
+                                        &cache_hit_join_request,
+                                        std::chrono::milliseconds(2500))) {
+            return FailTest("cache-hit client failed to connect/join");
+        }
+        if (!cache_hit_join_request.has_value() ||
+            cache_hit_join_request->cached_world_id != world.world_id ||
+            cache_hit_join_request->cached_world_revision != world.world_revision ||
+            cache_hit_join_request->cached_world_content_hash != world.world_content_hash) {
+            cache_hit_client.shutdown();
+            return FailTest("cache-hit join request missing expected cached world identity");
+        }
+
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerJoinResponse(true, ""))) {
+            cache_hit_client.shutdown();
+            return FailTest("failed to send cache-hit join response");
+        }
+        const auto cache_hit_wire_manifest = ToWireManifestEntries(world.world_manifest);
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerInit(3,
+                                                             "raw-server",
+                                                             world.world_name,
+                                                             bz3::net::kProtocolVersion,
+                                                             world.world_package_hash,
+                                                             world.world_package_size,
+                                                             world.world_id,
+                                                             world.world_revision,
+                                                             world.world_content_hash,
+                                                             world.world_manifest_hash,
+                                                             world.world_manifest_file_count,
+                                                             cache_hit_wire_manifest,
+                                                             {}))) {
+            cache_hit_client.shutdown();
+            return FailTest("failed to send cache-hit init payload");
+        }
+        if (!SendRawServerPayload(
+                &raw_server.endpoint,
+                bz3::net::EncodeServerSessionSnapshot(
+                    std::vector<bz3::net::SessionSnapshotEntry>{{3, "cache-hit-client"}}))) {
+            cache_hit_client.shutdown();
+            return FailTest("failed to send cache-hit session snapshot");
+        }
+
+        const bool unexpected_exit = WaitUntil(std::chrono::milliseconds(1200), [&]() {
+            PumpRawServerEvents(&raw_server, &cache_hit_join_request, nullptr);
+            cache_hit_client.poll();
+        }, [&]() {
+            return cache_hit_client.shouldExit() ||
+                   !karma::network::tests::LoopbackTransportEndpointHasPeer(&raw_server.endpoint);
+        });
+        if (unexpected_exit) {
+            cache_hit_client.shutdown();
+            return FailTest("cache-hit client exited/disconnected after no-payload init");
+        }
+
+        const auto identity_after_cache_hit = ReadCachedIdentity(identity_path);
+        if (!identity_after_cache_hit.has_value() ||
+            identity_after_cache_hit->world_id != world.world_id ||
+            identity_after_cache_hit->world_revision != world.world_revision ||
+            identity_after_cache_hit->world_content_hash != world.world_content_hash) {
+            cache_hit_client.shutdown();
+            return FailTest("cache-hit phase did not preserve expected world identity");
+        }
+
+        cache_hit_client.shutdown();
+    }
+
+    return TestResult::Pass;
+}
+
+TestResult TestDeltaTransferAppliesOverCachedBase() {
+    const std::filesystem::path temp_root = MakeTempPath("delta-success-root");
+    const std::filesystem::path xdg_root = temp_root / "xdg";
+    const std::filesystem::path world_a_dir = temp_root / "world-a";
+    const std::filesystem::path world_b_dir = temp_root / "world-b";
+    const std::filesystem::path config_path = MakeConfigPath("delta-success-config");
+
+    std::error_code ec;
+    std::filesystem::remove_all(temp_root, ec);
+    ec.clear();
+    std::filesystem::create_directories(xdg_root, ec);
+    std::filesystem::create_directories(world_a_dir, ec);
+    std::filesystem::create_directories(world_b_dir, ec);
+    if (ec) {
+        return FailTest("failed to create temp directories for delta-success test");
+    }
+
+    if (!WriteTextFile(world_a_dir / "config.json",
+                       "{\n  \"worldName\": \"delta-success-world\",\n  \"deltaVersion\": 1\n}\n")) {
+        return FailTest("failed to write world A config.json for delta-success test");
+    }
+    if (!WriteDeterministicBinaryFile(world_a_dir / "world.glb", 256 * 1024, 0x12344321U)) {
+        return FailTest("failed to write world A world.glb for delta-success test");
+    }
+    if (!WriteTextFile(world_b_dir / "config.json",
+                       "{\n  \"worldName\": \"delta-success-world\",\n  \"deltaVersion\": 2\n}\n")) {
+        return FailTest("failed to write world B config.json for delta-success test");
+    }
+    std::filesystem::copy_file(world_a_dir / "world.glb",
+                               world_b_dir / "world.glb",
+                               std::filesystem::copy_options::overwrite_existing,
+                               ec);
+    if (ec) {
+        return FailTest("failed to copy world.glb for delta-success test");
+    }
+
+    const auto world_a_opt = BuildWorldFixture(world_a_dir, "delta-success-world", "delta-success-world");
+    const auto world_b_opt = BuildWorldFixture(world_b_dir, "delta-success-world", "delta-success-world");
+    if (!world_a_opt.has_value() || !world_b_opt.has_value()) {
+        return FailTest("failed to build world fixtures for delta-success test");
+    }
+    const WorldFixture world_a = *world_a_opt;
+    const WorldFixture world_b = *world_b_opt;
+
+    const auto world_a_summary = karma::content::ComputeDirectoryManifestSummary(world_a_dir);
+    const auto world_b_summary = karma::content::ComputeDirectoryManifestSummary(world_b_dir);
+    if (!world_a_summary.has_value() || !world_b_summary.has_value()) {
+        return FailTest("failed to compute manifest summary for delta-success test");
+    }
+    const auto diff_plan = karma::content::BuildManifestDiffPlan(world_a_summary->entries,
+                                                                  world_b_summary->entries);
+    const auto delta_archive_opt = karma::content::BuildDeltaArchiveFromManifestDiff(world_b_dir,
+                                                                                      diff_plan,
+                                                                                      world_b.world_id,
+                                                                                      world_b.world_revision,
+                                                                                      world_a.world_revision,
+                                                                                      "ClientWorldPackageSafety");
+    if (!delta_archive_opt.has_value() || delta_archive_opt->empty()) {
+        return FailTest("failed to build delta archive for delta-success test");
+    }
+    const std::vector<std::byte> delta_archive = *delta_archive_opt;
+
+    ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
+    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+        .appName = "bz3",
+        .dataDirEnvVar = "BZ3_DATA_DIR",
+        .requiredDataMarker = {},
+        .fallbackAssetLayers = {}});
+    karma::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+
+    ScopedRawTransport raw_transport{};
+    if (!raw_transport.initialized()) {
+        PrintSkip("transport init failed for delta-success test");
+        return TestResult::Skip;
+    }
+
+    auto raw_server_opt = CreateRawServerFixture();
+    if (!raw_server_opt.has_value()) {
+        PrintSkip("unable to create raw transport server fixture");
+        return TestResult::Skip;
+    }
+    RawServerFixture raw_server = std::move(*raw_server_opt);
+    const std::filesystem::path server_cache_dir =
+        karma::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
+    const std::filesystem::path identity_path = server_cache_dir / "active_world_identity.txt";
+    constexpr uint32_t kChunkSize = 16 * 1024;
+
+    {
+        bz3::client::net::ClientConnection seed_client("127.0.0.1", raw_server.port, "delta-seed-client");
+        std::optional<bz3::net::ClientMessage> seed_join_request{};
+        if (!StartRawClientAndAwaitJoin(&raw_server,
+                                        &seed_client,
+                                        &seed_join_request,
+                                        std::chrono::milliseconds(2500))) {
+            return FailTest("seed client failed to connect/join for delta-success test");
+        }
+
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerJoinResponse(true, ""))) {
+            seed_client.shutdown();
+            return FailTest("failed to send seed join response for delta-success test");
+        }
+        const auto seed_wire_manifest = ToWireManifestEntries(world_a.world_manifest);
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerInit(2,
+                                                             "raw-server",
+                                                             world_a.world_name,
+                                                             bz3::net::kProtocolVersion,
+                                                             world_a.world_package_hash,
+                                                             world_a.world_package_size,
+                                                             world_a.world_id,
+                                                             world_a.world_revision,
+                                                             world_a.world_content_hash,
+                                                             world_a.world_manifest_hash,
+                                                             world_a.world_manifest_file_count,
+                                                             seed_wire_manifest,
+                                                             {}))) {
+            seed_client.shutdown();
+            return FailTest("failed to send seed init payload for delta-success test");
+        }
+        if (!SendRawTransferStream(&raw_server,
+                                   "delta-seed-transfer",
+                                   world_a.world_id,
+                                   world_a.world_revision,
+                                   world_a.world_package_hash,
+                                   world_a.world_content_hash,
+                                   false,
+                                   {},
+                                   {},
+                                   {},
+                                   {},
+                                   world_a.world_package,
+                                   kChunkSize)) {
+            seed_client.shutdown();
+            return FailTest("failed to stream seed world package for delta-success test");
+        }
+        if (!SendRawServerPayload(
+                &raw_server.endpoint,
+                bz3::net::EncodeServerSessionSnapshot(
+                    std::vector<bz3::net::SessionSnapshotEntry>{{2, "delta-seed-client"}}))) {
+            seed_client.shutdown();
+            return FailTest("failed to send seed session snapshot for delta-success test");
+        }
+
+        const bool seeded = WaitUntil(std::chrono::milliseconds(3000), [&]() {
+            PumpRawServerEvents(&raw_server, &seed_join_request, nullptr);
+            seed_client.poll();
+        }, [&]() {
+            const auto identity = ReadCachedIdentity(identity_path);
+            return identity.has_value() &&
+                   identity->world_id == world_a.world_id &&
+                   identity->world_revision == world_a.world_revision &&
+                   identity->world_content_hash == world_a.world_content_hash;
+        });
+        if (!seeded || seed_client.shouldExit()) {
+            seed_client.shutdown();
+            return FailTest("seed phase failed to persist base world identity for delta-success test");
+        }
+
+        seed_client.shutdown();
+    }
+
+    const bool seed_peer_released = WaitUntil(std::chrono::milliseconds(1500), [&]() {
+        PumpRawServerEvents(&raw_server, nullptr, nullptr);
+    }, [&]() { return !karma::network::tests::LoopbackTransportEndpointHasPeer(&raw_server.endpoint); });
+    if (!seed_peer_released) {
+        return FailTest("raw server peer did not release after delta-success seed phase");
+    }
+    raw_server.endpoint.disconnected = false;
+
+    {
+        bz3::client::net::ClientConnection delta_client("127.0.0.1", raw_server.port, "delta-client");
+        std::optional<bz3::net::ClientMessage> delta_join_request{};
+        if (!StartRawClientAndAwaitJoin(&raw_server,
+                                        &delta_client,
+                                        &delta_join_request,
+                                        std::chrono::milliseconds(2500))) {
+            return FailTest("delta client failed to connect/join");
+        }
+        if (!delta_join_request.has_value() ||
+            delta_join_request->cached_world_id != world_a.world_id ||
+            delta_join_request->cached_world_revision != world_a.world_revision ||
+            delta_join_request->cached_world_content_hash != world_a.world_content_hash) {
+            delta_client.shutdown();
+            return FailTest("delta join request missing expected base cached identity");
+        }
+
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerJoinResponse(true, ""))) {
+            delta_client.shutdown();
+            return FailTest("failed to send delta join response");
+        }
+        const auto delta_wire_manifest = ToWireManifestEntries(world_b.world_manifest);
+        if (!SendRawServerPayload(&raw_server.endpoint, bz3::net::EncodeServerInit(3,
+                                                             "raw-server",
+                                                             world_b.world_name,
+                                                             bz3::net::kProtocolVersion,
+                                                             world_b.world_package_hash,
+                                                             world_b.world_package_size,
+                                                             world_b.world_id,
+                                                             world_b.world_revision,
+                                                             world_b.world_content_hash,
+                                                             world_b.world_manifest_hash,
+                                                             world_b.world_manifest_file_count,
+                                                             delta_wire_manifest,
+                                                             {}))) {
+            delta_client.shutdown();
+            return FailTest("failed to send delta init payload");
+        }
+        if (!SendRawTransferStream(&raw_server,
+                                   "delta-transfer",
+                                   world_b.world_id,
+                                   world_b.world_revision,
+                                   world_b.world_package_hash,
+                                   world_b.world_content_hash,
+                                   true,
+                                   world_a.world_id,
+                                   world_a.world_revision,
+                                   world_a.world_package_hash,
+                                   world_a.world_content_hash,
+                                   delta_archive,
+                                   kChunkSize)) {
+            delta_client.shutdown();
+            return FailTest("failed to stream delta payload");
+        }
+        if (!SendRawServerPayload(
+                &raw_server.endpoint,
+                bz3::net::EncodeServerSessionSnapshot(
+                    std::vector<bz3::net::SessionSnapshotEntry>{{3, "delta-client"}}))) {
+            delta_client.shutdown();
+            return FailTest("failed to send delta session snapshot");
+        }
+
+        const bool delta_applied = WaitUntil(std::chrono::milliseconds(3500), [&]() {
+            PumpRawServerEvents(&raw_server, &delta_join_request, nullptr);
+            delta_client.poll();
+        }, [&]() {
+            const auto identity = ReadCachedIdentity(identity_path);
+            return identity.has_value() &&
+                   identity->world_id == world_b.world_id &&
+                   identity->world_revision == world_b.world_revision &&
+                   identity->world_content_hash == world_b.world_content_hash;
+        });
+        if (!delta_applied || delta_client.shouldExit()) {
+            delta_client.shutdown();
+            return FailTest("delta transfer did not apply target world identity");
+        }
+
+        const std::filesystem::path target_package_root = PackageRootForIdentity(server_cache_dir,
+                                                                                 world_b.world_id,
+                                                                                 world_b.world_revision,
+                                                                                 world_b.world_content_hash);
+        if (!std::filesystem::exists(target_package_root) ||
+            !std::filesystem::is_directory(target_package_root)) {
+            delta_client.shutdown();
+            return FailTest("delta transfer missing target package root");
+        }
+
+        delta_client.shutdown();
+    }
+
+    return TestResult::Pass;
+}
+
 TestResult TestFailedWorldUpdatePreservesPreviousCache() {
     const std::filesystem::path temp_root = MakeTempPath("root");
     const std::filesystem::path xdg_root = temp_root / "xdg";
@@ -1237,6 +1815,8 @@ int main() {
         &TestInitProtocolMismatchIsRejected,
         &TestInitWorldMetadataMissingIdentityIsRejected,
         &TestChunkTransferEndHashMismatchIsRejected,
+        &TestCacheHitInitWithoutTransferUsesCachedPackage,
+        &TestDeltaTransferAppliesOverCachedBase,
         &TestFailedWorldUpdatePreservesPreviousCache,
     };
 

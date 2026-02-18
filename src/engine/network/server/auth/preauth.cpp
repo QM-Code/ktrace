@@ -5,20 +5,14 @@
 #include "karma/common/config_helpers.hpp"
 #include "karma/common/json.hpp"
 #include "karma/common/logging.hpp"
+#include "karma/network/auth/structured_payload.hpp"
 #include "karma/network/http/curl_global.hpp"
 
-#include <cctype>
 #include <string>
 
 namespace karma::network {
 
 namespace {
-
-struct ParsedAuthPayload {
-    std::string username{};
-    std::string password{};
-    std::string passhash{};
-};
 
 size_t AppendResponse(char* ptr, size_t size, size_t nmemb, void* userdata) {
     auto* buffer = static_cast<std::string*>(userdata);
@@ -122,43 +116,6 @@ bool PerformPost(const std::string& url,
     return true;
 }
 
-std::string TrimCopy(std::string_view value) {
-    size_t begin = 0;
-    size_t end = value.size();
-    while (begin < end && std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
-        ++begin;
-    }
-    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
-        --end;
-    }
-    return std::string(value.substr(begin, end - begin));
-}
-
-ParsedAuthPayload ParseStructuredAuthPayload(std::string_view auth_payload) {
-    ParsedAuthPayload out{};
-    const std::string trimmed = TrimCopy(auth_payload);
-    if (trimmed.empty() || trimmed.front() != '{') {
-        return out;
-    }
-    try {
-        const auto json_data = karma::json::Parse(trimmed);
-        if (!json_data.is_object()) {
-            return out;
-        }
-        if (const auto it = json_data.find("username"); it != json_data.end() && it->is_string()) {
-            out.username = it->get<std::string>();
-        }
-        if (const auto it = json_data.find("password"); it != json_data.end() && it->is_string()) {
-            out.password = it->get<std::string>();
-        }
-        if (const auto it = json_data.find("passhash"); it != json_data.end() && it->is_string()) {
-            out.passhash = it->get<std::string>();
-        }
-    } catch (...) {
-    }
-    return out;
-}
-
 bool EvaluateCommunityAuth(const ServerPreAuthConfig& config,
                            const ServerPreAuthRequest& request,
                            ServerPreAuthDecision* decision_out) {
@@ -171,7 +128,7 @@ bool EvaluateCommunityAuth(const ServerPreAuthConfig& config,
         return false;
     }
 
-    ParsedAuthPayload payload = ParseStructuredAuthPayload(request.auth_payload);
+    auth::StructuredAuthPayload payload = auth::ParseStructuredAuthPayload(request.auth_payload);
     if (payload.username.empty()) {
         payload.username = std::string(request.player_name);
     }
@@ -337,7 +294,7 @@ ServerPreAuthDecision EvaluateServerPreAuth(const ServerPreAuthConfig& config,
         return decision;
     }
 
-    const ParsedAuthPayload structured = ParseStructuredAuthPayload(request.auth_payload);
+    const auth::StructuredAuthPayload structured = auth::ParseStructuredAuthPayload(request.auth_payload);
     if (!structured.password.empty() && structured.password == config.required_password) {
         decision.accepted = true;
         return decision;

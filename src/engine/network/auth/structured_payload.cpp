@@ -1,13 +1,29 @@
-#include "client/runtime/internal.hpp"
+#include "karma/network/auth/structured_payload.hpp"
+
+#include "karma/common/json.hpp"
 
 #include <openssl/evp.h>
 
 #include <array>
+#include <cctype>
 #include <cstddef>
-#include <optional>
-#include <string>
 
-namespace bz3::client::runtime_detail {
+namespace karma::network::auth {
+namespace {
+
+std::string TrimCopy(std::string_view value) {
+    size_t begin = 0;
+    size_t end = value.size();
+    while (begin < end && std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
+        ++begin;
+    }
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
+        --end;
+    }
+    return std::string(value.substr(begin, end - begin));
+}
+
+} // namespace
 
 std::string BuildStructuredAuthPayload(std::string username,
                                        std::optional<std::string> password,
@@ -15,6 +31,7 @@ std::string BuildStructuredAuthPayload(std::string username,
     if (username.empty()) {
         return {};
     }
+
     karma::json::Value auth = karma::json::Object();
     auth["username"] = std::move(username);
     if (passhash.has_value() && !passhash->empty()) {
@@ -26,6 +43,33 @@ std::string BuildStructuredAuthPayload(std::string username,
         return {};
     }
     return karma::json::Dump(auth);
+}
+
+StructuredAuthPayload ParseStructuredAuthPayload(std::string_view auth_payload) {
+    StructuredAuthPayload out{};
+    const std::string trimmed = TrimCopy(auth_payload);
+    if (trimmed.empty() || trimmed.front() != '{') {
+        return out;
+    }
+
+    try {
+        const auto json_data = karma::json::Parse(trimmed);
+        if (!json_data.is_object()) {
+            return out;
+        }
+        if (const auto it = json_data.find("username"); it != json_data.end() && it->is_string()) {
+            out.username = it->get<std::string>();
+        }
+        if (const auto it = json_data.find("password"); it != json_data.end() && it->is_string()) {
+            out.password = it->get<std::string>();
+        }
+        if (const auto it = json_data.find("passhash"); it != json_data.end() && it->is_string()) {
+            out.passhash = it->get<std::string>();
+        }
+    } catch (...) {
+    }
+
+    return out;
 }
 
 bool HashPasswordPBKDF2Sha256(const std::string& password,
@@ -62,4 +106,4 @@ bool HashPasswordPBKDF2Sha256(const std::string& password,
     return true;
 }
 
-} // namespace bz3::client::runtime_detail
+} // namespace karma::network::auth

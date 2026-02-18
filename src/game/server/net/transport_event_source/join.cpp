@@ -59,25 +59,28 @@ void TransportServerEventSource::onJoinResult(uint32_t client_id,
 
         state_it->second.joined = true;
         const ClientConnectionState& state = state_it->second;
-        const karma::content::ServerContentSyncRequest sync_request{
-            .world_dir = world_dir,
-            .world_name = std::string(world_name),
-            .world_id = std::string(world_id),
-            .world_revision = std::string(world_revision),
-            .world_package_hash = std::string(world_package_hash),
-            .world_content_hash = std::string(world_content_hash),
-            .world_manifest_hash = std::string(world_manifest_hash),
-            .world_manifest_file_count = world_manifest_file_count,
-            .world_manifest = ToContentManifest(world_manifest),
-            .world_package = world_package,
-            .cached_state = karma::content::ServerCachedContentState{
-                .world_hash = state.cached_world_hash,
-                .world_id = state.cached_world_id,
-                .world_revision = state.cached_world_revision,
-                .world_content_hash = state.cached_world_content_hash,
-                .world_manifest_hash = state.cached_world_manifest_hash,
-                .world_manifest_file_count = state.cached_world_manifest_file_count,
-                .world_manifest = ToContentManifest(state.cached_world_manifest)}};
+        auto world_manifest_content = ToContentManifest(world_manifest);
+        auto cached_world_manifest_content = ToContentManifest(state.cached_world_manifest);
+        auto cached_state = karma::content::BuildServerCachedContentState(
+            state.cached_world_hash,
+            state.cached_world_id,
+            state.cached_world_revision,
+            state.cached_world_content_hash,
+            state.cached_world_manifest_hash,
+            state.cached_world_manifest_file_count,
+            std::move(cached_world_manifest_content));
+        const auto sync_request = karma::content::BuildServerContentSyncRequest(
+            world_dir,
+            world_name,
+            world_id,
+            world_revision,
+            world_package_hash,
+            world_content_hash,
+            world_manifest_hash,
+            world_manifest_file_count,
+            std::move(world_manifest_content),
+            world_package,
+            std::move(cached_state));
         const auto sync_plan = karma::content::BuildDefaultServerContentSyncPlan(sync_request,
                                                                                   "ServerEventSource");
 

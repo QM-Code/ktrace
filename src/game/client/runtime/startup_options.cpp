@@ -2,6 +2,8 @@
 
 #include "karma/cli/client_runtime_options.hpp"
 #include "karma/common/config_helpers.hpp"
+#include "karma/network/auth/structured_payload.hpp"
+#include "karma/network/client/auth/community_credentials.hpp"
 
 #include <optional>
 #include <stdexcept>
@@ -16,7 +18,8 @@ bz3::GameStartupOptions ResolveGameStartupOptions(const karma::cli::ClientAppOpt
     const auto endpoint =
         karma::cli::ResolveClientServerEndpoint(options.server, options.server_explicit, &connect_error);
 
-    const auto credential = ResolveCommunityCredential(endpoint, options.server);
+    const auto credential =
+        karma::network::client::auth::ResolveCommunityCredential(endpoint, options.server);
     const std::string default_player_name = (credential.has_value() && !credential->username.empty())
         ? credential->username
         : karma::config::ReadStringConfig({"userDefaults.username"}, "Player");
@@ -35,12 +38,13 @@ bz3::GameStartupOptions ResolveGameStartupOptions(const karma::cli::ClientAppOpt
                 || credential->username == startup.player_name);
         if (can_hash_with_salt) {
             std::string computed_hash{};
-            if (HashPasswordPBKDF2Sha256(options.password, credential->salt, &computed_hash)) {
+            if (karma::network::auth::HashPasswordPBKDF2Sha256(
+                    options.password, credential->salt, &computed_hash)) {
                 password = std::nullopt;
                 passhash = std::move(computed_hash);
             }
         }
-        startup.auth_payload = BuildStructuredAuthPayload(
+        startup.auth_payload = karma::network::auth::BuildStructuredAuthPayload(
             startup.player_name,
             std::move(password),
             std::move(passhash));
@@ -49,7 +53,7 @@ bz3::GameStartupOptions ResolveGameStartupOptions(const karma::cli::ClientAppOpt
                && (!options.username_explicit
                    || credential->username.empty()
                    || credential->username == startup.player_name)) {
-        startup.auth_payload = BuildStructuredAuthPayload(
+        startup.auth_payload = karma::network::auth::BuildStructuredAuthPayload(
             startup.player_name,
             std::nullopt,
             credential->password_hash);

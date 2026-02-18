@@ -1,13 +1,12 @@
-#include "client/runtime/internal.hpp"
+#include "karma/network/client/auth/community_credentials.hpp"
 
 #include "karma/common/config_store.hpp"
 
 #include <algorithm>
 #include <cctype>
-#include <optional>
-#include <string>
 
-namespace bz3::client::runtime_detail {
+namespace karma::network::client::auth {
+namespace {
 
 std::string ToLowerAscii(std::string value) {
     std::transform(value.begin(),
@@ -99,6 +98,8 @@ std::optional<CommunityCredential> ReadCommunityCredentialEntry(const karma::jso
     return out;
 }
 
+} // namespace
+
 std::optional<CommunityCredential> ResolveCommunityCredential(
     const std::optional<karma::cli::ClientServerEndpoint>& endpoint,
     const std::string& server_option_raw) {
@@ -172,4 +173,4 @@ std::optional<CommunityCredential> ResolveCommunityCredential(
     return std::nullopt;
 }
 
-} // namespace bz3::client::runtime_detail
+} // namespace karma::network::client::auth

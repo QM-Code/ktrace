@@ -38,6 +38,28 @@ struct ServerContentSyncRequest {
     ServerCachedContentState cached_state{};
 };
 
+ServerCachedContentState BuildServerCachedContentState(
+    std::string_view world_hash,
+    std::string_view world_id,
+    std::string_view world_revision,
+    std::string_view world_content_hash,
+    std::string_view world_manifest_hash,
+    uint32_t world_manifest_file_count,
+    std::vector<ManifestEntry> world_manifest);
+
+ServerContentSyncRequest BuildServerContentSyncRequest(
+    const std::filesystem::path& world_dir,
+    std::string_view world_name,
+    std::string_view world_id,
+    std::string_view world_revision,
+    std::string_view world_package_hash,
+    std::string_view world_content_hash,
+    std::string_view world_manifest_hash,
+    uint32_t world_manifest_file_count,
+    std::vector<ManifestEntry> world_manifest,
+    const ArchiveBytes& world_package,
+    ServerCachedContentState cached_state);
+
 struct ServerContentSyncPlan {
     bool cache_identity_match = false;
     bool cache_hash_match = false;

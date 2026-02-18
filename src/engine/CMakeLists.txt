@@ -28,6 +28,8 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/cli/server_runtime_options.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/engine_server_app.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/config/reconnect_policy.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/network/auth/structured_payload.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/network/client/auth/community_credentials.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/community/heartbeat.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/community/heartbeat_client.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/content/transfer_integrity.cpp

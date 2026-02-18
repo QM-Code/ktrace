@@ -6,7 +6,6 @@
 #include "net/protocol_codec.hpp"
 #include "net/protocol.hpp"
 
-#include <algorithm>
 #include <string>
 
 namespace bz3::server::net::detail {
@@ -167,30 +166,23 @@ bool TransportServerEventSource::sendWorldPackageChunked(karma::network::PeerTok
                                                          std::string_view delta_base_world_revision,
                                                          std::string_view delta_base_world_hash,
                                                          std::string_view delta_base_world_content_hash) {
-    const uint32_t configured_chunk_size = static_cast<uint32_t>(
-        karma::config::ReadUInt16Config({"network.WorldTransferChunkBytes"},
-                                        static_cast<uint16_t>(16 * 1024)));
-    const uint32_t chunk_size = std::max<uint32_t>(1, configured_chunk_size);
-    const uint32_t max_retry_attempts = static_cast<uint32_t>(
-        karma::config::ReadUInt16Config({"network.WorldTransferRetryAttempts"},
-                                        static_cast<uint16_t>(2)));
-    const std::string transfer_id = std::to_string(client_id) + "-" + std::to_string(next_transfer_id_++);
-
-    karma::network::content::TransferSenderRequest request{};
-    request.client_id = client_id;
-    request.transfer_id = transfer_id;
-    request.world_id = world_id;
-    request.world_revision = world_revision;
-    request.world_hash = world_hash;
-    request.world_content_hash = world_content_hash;
-    request.is_delta = is_delta;
-    request.delta_base_world_id = delta_base_world_id;
-    request.delta_base_world_revision = delta_base_world_revision;
-    request.delta_base_world_hash = delta_base_world_hash;
-    request.delta_base_world_content_hash = delta_base_world_content_hash;
-    request.world_package = &world_package;
-    request.chunk_size = chunk_size;
-    request.max_retry_attempts = max_retry_attempts;
+    const auto runtime_config = karma::network::content::ReadTransferSenderRuntimeConfig();
+    const std::string transfer_id = karma::network::content::BuildTransferId(client_id,
+                                                                              next_transfer_id_++);
+    const auto request = karma::network::content::BuildTransferSenderRequest(
+        client_id,
+        transfer_id,
+        world_id,
+        world_revision,
+        world_hash,
+        world_content_hash,
+        is_delta,
+        delta_base_world_id,
+        delta_base_world_revision,
+        delta_base_world_hash,
+        delta_base_world_content_hash,
+        world_package,
+        runtime_config);
 
     karma::network::content::TransferSenderCallbacks callbacks{};
     callbacks.send_begin = [this, peer](std::string_view cb_transfer_id,

@@ -2,7 +2,6 @@
 
 #include "server/net/event_source.hpp"
 
-#include "karma/common/content/delta_builder.hpp"
 #include "karma/common/content/manifest.hpp"
 #include "karma/network/transport/server.hpp"
 
@@ -10,7 +9,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -39,25 +37,13 @@ struct ClientConnectionState {
     std::vector<WorldManifestEntry> cached_world_manifest{};
 };
 
-inline constexpr const char* kDeltaRemovedPathsFile = karma::content::kDeltaRemovedPathsFile;
-inline constexpr const char* kDeltaMetaFile = karma::content::kDeltaMetaFile;
-
 using ManifestDiffPlan = karma::content::ManifestDiffPlan;
 
 std::string DefaultPlayerName(uint32_t client_id);
 std::string ResolvePlayerName(const bz3::net::ClientMessage& message, uint32_t client_id);
-bool NormalizeRelativePath(std::string_view raw_path, std::filesystem::path* out);
-ManifestDiffPlan BuildServerManifestDiffPlan(const std::vector<WorldManifestEntry>& cached_manifest,
-                                             const std::vector<WorldManifestEntry>& incoming_manifest);
 void LogServerManifestDiffPlan(uint32_t client_id,
                                std::string_view world_name,
                                const ManifestDiffPlan& plan);
-std::optional<std::vector<std::byte>> BuildWorldDeltaArchive(
-    const std::filesystem::path& world_dir,
-    const ManifestDiffPlan& diff_plan,
-    std::string_view world_id,
-    std::string_view target_world_revision,
-    std::string_view base_world_revision);
 
 class TransportServerEventSource final : public ServerEventSource {
  public:

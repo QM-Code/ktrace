@@ -586,4 +586,69 @@ void ClearCachedWorldIdentity(const std::filesystem::path& server_cache_dir) {
     static_cast<void>(PersistCachedWorldManifest(server_cache_dir, {}));
 }
 
+namespace detail {
+
+bool InitIncludesWorldMetadata(const bz3::net::ServerMessage& message) {
+    return ::bz3::client::net::InitIncludesWorldMetadata(message);
+}
+
+bool IsChunkInTransferBounds(uint64_t total_bytes,
+                             uint32_t chunk_size,
+                             uint32_t chunk_index,
+                             size_t chunk_bytes) {
+    return ::bz3::client::net::IsChunkInTransferBounds(total_bytes,
+                                                       chunk_size,
+                                                       chunk_index,
+                                                       chunk_bytes);
+}
+
+bool ChunkMatchesBufferedPayload(const std::vector<std::byte>& payload,
+                                 size_t chunk_offset,
+                                 const std::vector<std::byte>& chunk_data) {
+    return ::bz3::client::net::ChunkMatchesBufferedPayload(payload, chunk_offset, chunk_data);
+}
+
+void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
+    ::bz3::client::net::HashBytesFNV1a(hash, bytes, count);
+}
+
+void HashChunkChainFNV1a(uint64_t& hash,
+                         uint32_t chunk_index,
+                         const std::vector<std::byte>& chunk_data) {
+    ::bz3::client::net::HashChunkChainFNV1a(hash, chunk_index, chunk_data);
+}
+
+std::string Hash64Hex(uint64_t hash) {
+    return ::bz3::client::net::Hash64Hex(hash);
+}
+
+bool HasCachedWorldPackageForServer(const std::string& host,
+                                    uint16_t port,
+                                    std::string_view world_id,
+                                    std::string_view world_revision,
+                                    std::string_view world_content_hash,
+                                    std::string_view world_hash) {
+    return ::bz3::client::net::HasCachedWorldPackageForServer(host,
+                                                              port,
+                                                              world_id,
+                                                              world_revision,
+                                                              world_content_hash,
+                                                              world_hash);
+}
+
+std::optional<CachedWorldIdentity> ReadCachedWorldIdentityForServer(const std::string& host, uint16_t port) {
+    return ::bz3::client::net::ReadCachedWorldIdentityForServer(host, port);
+}
+
+std::vector<bz3::net::WorldManifestEntry> ReadCachedWorldManifest(
+    const std::filesystem::path& server_cache_dir) {
+    return ::bz3::client::net::ReadCachedWorldManifest(server_cache_dir);
+}
+
+std::string ComputeManifestHash(const std::vector<bz3::net::WorldManifestEntry>& manifest) {
+    return ::bz3::client::net::ComputeManifestHash(manifest);
+}
+
+} // namespace detail
+
 } // namespace bz3::client::net
