@@ -8,7 +8,7 @@ This directory contains **UI config accessors** and shared mapping utilities.
 - `render_settings.*` — brightness state handling.
 - `hud_settings.*` — HUD visibility toggles.
 - `render_scale.*` — UI render scale support.
-- `input_mapping.*` — map platform input to UI backends (`ui::input::mapping`).
+- `input_mapping.*` — map window input to UI backends (`ui::input::mapping`).
 
 ## How it connects
 Frontends and controllers use these helpers to avoid direct ConfigStore access.

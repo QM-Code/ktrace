@@ -7,7 +7,7 @@
 
 #include "karma/common/logging/logging.hpp"
 #include "karma/renderer/render_system.hpp"
-#include "physics/engine_fixed_step_sync.hpp"
+#include "physics/sync/engine_fixed_step_sync.hpp"
 #include <glm/glm.hpp>
 
 namespace karma::app::client {
@@ -164,7 +164,7 @@ void Engine::shutdownSubsystems() {
     render_system_.reset();
     graphics_.reset();
     audio_system_.shutdown();
-    physics::detail::ResetEngineSyncBeforePhysicsShutdown(physics_sync_system_);
+    physics::detail::ResetEngineSyncBeforePhysicsShutdown(physics_sync_system_, &physics_system_);
     physics_system_.shutdown();
     window_.reset();
     running_ = false;

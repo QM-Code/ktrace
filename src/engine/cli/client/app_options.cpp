@@ -98,15 +98,15 @@ AppOptions ParseAppOptions(int argc,
             continue;
         }
 
-        const auto platform_result = ConsumePlatformBackendOption(arg,
-                                                                  i,
-                                                                  argc,
-                                                                  argv,
-                                                                  opts.backend_platform,
-                                                                  opts.backend_platform_explicit);
-        if (platform_result.consumed) {
-            if (!platform_result.error.empty()) {
-                Fail(platform_result.error, opts.app_name, extra_options);
+        const auto window_result = ConsumeWindowBackendOption(arg,
+                                                              i,
+                                                              argc,
+                                                              argv,
+                                                              opts.backend_window,
+                                                              opts.backend_window_explicit);
+        if (window_result.consumed) {
+            if (!window_result.error.empty()) {
+                Fail(window_result.error, opts.app_name, extra_options);
             }
             continue;
         }

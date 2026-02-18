@@ -1,39 +1,39 @@
-#include "karma/physics/static_body.hpp"
+#include "karma/physics/rigid_body.hpp"
 
-#include "physics/facade_state.hpp"
+#include "physics/facade/facade_state.hpp"
 
 namespace karma::physics {
 
-class StaticBody::Impl {
+class RigidBody::Impl {
  public:
     std::weak_ptr<detail::WorldState> state{};
     detail::BodyRuntimeHandle handle{};
 };
 
-StaticBody::StaticBody() = default;
-StaticBody::~StaticBody() = default;
+RigidBody::RigidBody() = default;
+RigidBody::~RigidBody() = default;
 
-StaticBody::StaticBody(std::unique_ptr<Impl> impl)
+RigidBody::RigidBody(std::unique_ptr<Impl> impl)
     : impl_(std::move(impl)) {}
 
-StaticBody StaticBody::CreateFacadeHandle(std::shared_ptr<void> world_state,
-                                          uint64_t generation,
-                                          uint64_t body) {
+RigidBody RigidBody::CreateFacadeHandle(std::shared_ptr<void> world_state,
+                                        uint64_t generation,
+                                        uint64_t body) {
     auto impl = std::make_unique<Impl>();
     impl->state = std::static_pointer_cast<detail::WorldState>(std::move(world_state));
     impl->handle.body = static_cast<physics::backend::BodyId>(body);
     impl->handle.generation = generation;
-    return StaticBody(std::move(impl));
+    return RigidBody(std::move(impl));
 }
 
-StaticBody::StaticBody(StaticBody&& other) noexcept = default;
-StaticBody& StaticBody::operator=(StaticBody&& other) noexcept = default;
+RigidBody::RigidBody(RigidBody&& other) noexcept = default;
+RigidBody& RigidBody::operator=(RigidBody&& other) noexcept = default;
 
-bool StaticBody::isValid() const {
+bool RigidBody::isValid() const {
     return impl_ && detail::IsHandleAlive(impl_->state, impl_->handle);
 }
 
-glm::vec3 StaticBody::getPosition() const {
+glm::vec3 RigidBody::getPosition() const {
     if (!impl_ || !detail::IsHandleAlive(impl_->state, impl_->handle)) {
         return glm::vec3(0.0f, 0.0f, 0.0f);
     }
@@ -51,7 +51,7 @@ glm::vec3 StaticBody::getPosition() const {
     return transform.position;
 }
 
-glm::quat StaticBody::getRotation() const {
+glm::quat RigidBody::getRotation() const {
     if (!impl_ || !detail::IsHandleAlive(impl_->state, impl_->handle)) {
         return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     }
@@ -69,7 +69,7 @@ glm::quat StaticBody::getRotation() const {
     return transform.rotation;
 }
 
-void StaticBody::setPosition(const glm::vec3& position) {
+void RigidBody::setPosition(const glm::vec3& position) {
     if (!impl_ || !detail::IsHandleAlive(impl_->state, impl_->handle)) {
         return;
     }
@@ -88,7 +88,7 @@ void StaticBody::setPosition(const glm::vec3& position) {
     (void)system->setBodyTransform(impl_->handle.body, transform);
 }
 
-void StaticBody::setRotation(const glm::quat& rotation) {
+void RigidBody::setRotation(const glm::quat& rotation) {
     if (!impl_ || !detail::IsHandleAlive(impl_->state, impl_->handle)) {
         return;
     }
@@ -107,7 +107,7 @@ void StaticBody::setRotation(const glm::quat& rotation) {
     (void)system->setBodyTransform(impl_->handle.body, transform);
 }
 
-void StaticBody::setTransform(const glm::vec3& position, const glm::quat& rotation) {
+void RigidBody::setTransform(const glm::vec3& position, const glm::quat& rotation) {
     if (!impl_ || !detail::IsHandleAlive(impl_->state, impl_->handle)) {
         return;
     }
@@ -124,7 +124,35 @@ void StaticBody::setTransform(const glm::vec3& position, const glm::quat& rotati
     (void)system->setBodyTransform(impl_->handle.body, transform);
 }
 
-void StaticBody::destroy() {
+bool RigidBody::setGravityEnabled(bool enabled) {
+    if (!impl_ || !detail::IsHandleAlive(impl_->state, impl_->handle)) {
+        return false;
+    }
+
+    const auto state = detail::LockState(impl_->state);
+    auto* system = detail::ResolveSystem(state);
+    if (!system) {
+        return false;
+    }
+
+    return system->setBodyGravityEnabled(impl_->handle.body, enabled);
+}
+
+bool RigidBody::getGravityEnabled(bool& out_enabled) const {
+    if (!impl_ || !detail::IsHandleAlive(impl_->state, impl_->handle)) {
+        return false;
+    }
+
+    const auto state = detail::LockState(impl_->state);
+    const auto* system = detail::ResolveSystem(state);
+    if (!system) {
+        return false;
+    }
+
+    return system->getBodyGravityEnabled(impl_->handle.body, out_enabled);
+}
+
+void RigidBody::destroy() {
     if (!impl_) {
         return;
     }

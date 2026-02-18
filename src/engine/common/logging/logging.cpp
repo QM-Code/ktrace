@@ -190,7 +190,7 @@ const char* TraceCategoryColor(const std::string& category) {
         {"ecs", ansi_colors.at("bright_green")},
         {"physics", ansi_colors.at("green")},
         {"engine", ansi_colors.at("bright_blue")},
-        {"platform", ansi_colors.at("cyan")},
+        {"window", ansi_colors.at("cyan")},
         {"input", ansi_colors.at("bright_black")}
     };
     auto it = colors.find(top);

@@ -2,8 +2,8 @@
 
 #include "karma/common/config/helpers.hpp"
 #include "karma/common/config/store.hpp"
-#include "karma/window/window.hpp"
-#include "ui/backend.hpp"
+#include "karma/ui/backend.hpp"
+#include "karma/window/backend.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -36,7 +36,7 @@ renderer::backend::BackendKind ResolveRenderBackendFromOption(const std::string&
     return *parsed;
 }
 
-std::string CompiledPlatformBackendName() {
+std::string CompiledWindowBackendName() {
     const auto compiled = window::backend::CompiledBackends();
     if (compiled.empty()) {
         return "unknown";
@@ -44,14 +44,14 @@ std::string CompiledPlatformBackendName() {
     return window::backend::BackendKindName(compiled.front());
 }
 
-void ValidatePlatformBackendFromOption(const std::string& option_value, bool option_explicit) {
+void ValidateWindowBackendFromOption(const std::string& option_value, bool option_explicit) {
     if (!option_explicit) {
         return;
     }
 
     const auto parsed = window::backend::ParseBackendKind(option_value);
     if (!parsed || *parsed == window::backend::BackendKind::Auto) {
-        throw std::runtime_error("Invalid CLI value for --backend-platform: '" + option_value
+        throw std::runtime_error("Invalid CLI value for --backend-window: '" + option_value
                                  + "' (expected compiled backend name).");
     }
 
@@ -62,23 +62,23 @@ void ValidatePlatformBackendFromOption(const std::string& option_value, bool opt
                                            return kind == *parsed;
                                        });
     if (!supported) {
-        throw std::runtime_error("Requested CLI platform backend '" + option_value
+        throw std::runtime_error("Requested CLI window backend '" + option_value
                                  + "' is not compiled into this build.");
     }
 }
 
 std::string ReadPreferredVideoDriverFromConfig() {
-    if (const auto* value = common::config::ConfigStore::Get("platform.VideoDriver")) {
+    if (const auto* value = common::config::ConfigStore::Get("window.VideoDriver")) {
         if (value->is_string()) {
             return value->get<std::string>();
         }
-        throw std::runtime_error("Missing required string config: platform.VideoDriver");
+        throw std::runtime_error("Missing required string config: window.VideoDriver");
     }
-    return common::config::ReadRequiredStringConfig("platform.SdlVideoDriver");
+    return common::config::ReadRequiredStringConfig("window.SdlVideoDriver");
 }
 
-std::optional<ui::Backend> ResolveUiBackendOverrideFromOption(const std::string& option_value,
-                                                              bool option_explicit) {
+std::optional<ui::backend::BackendKind> ResolveUiBackendOverrideFromOption(const std::string& option_value,
+                                                                            bool option_explicit) {
     if (!option_explicit) {
         return std::nullopt;
     }
@@ -87,7 +87,7 @@ std::optional<ui::Backend> ResolveUiBackendOverrideFromOption(const std::string&
         throw std::runtime_error(std::string("Invalid CLI value for --backend-ui: '")
                                  + option_value + "' (expected: imgui|rmlui)");
     }
-    return *parsed == ui::backend::BackendKind::ImGui ? ui::Backend::ImGui : ui::Backend::RmlUi;
+    return *parsed;
 }
 
 } // namespace karma::app::client

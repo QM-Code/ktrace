@@ -40,7 +40,7 @@ struct EngineConfig {
     renderer::backend::BackendKind render_backend = renderer::backend::BackendKind::Auto;
     physics::backend::BackendKind physics_backend = physics::backend::BackendKind::Auto;
     audio::backend::BackendKind audio_backend = audio::backend::BackendKind::Auto;
-    std::optional<ui::Backend> ui_backend_override{};
+    std::optional<ui::backend::BackendKind> ui_backend_override{};
     bool enable_audio = true;
     float simulation_fixed_hz = 60.0f;
     float simulation_max_frame_dt = 0.25f;

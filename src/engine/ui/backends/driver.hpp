@@ -1,27 +1,15 @@
 #pragma once
 
-#include "karma/window/events.hpp"
 #include "karma/renderer/types.hpp"
+#include "karma/ui/backend.hpp"
 #include "karma/ui/ui_draw_context.hpp"
+#include "karma/window/events.hpp"
 
 #include <cstdint>
 #include <memory>
-#include <optional>
-#include <string_view>
 #include <vector>
 
 namespace karma::ui::backend {
-
-enum class BackendKind {
-    Auto,
-    ImGui,
-    RmlUi,
-    Software
-};
-
-const char* BackendKindName(BackendKind kind);
-std::optional<BackendKind> ParseBackendKind(std::string_view name);
-std::vector<BackendKind> CompiledBackends();
 
 struct OverlayFrame {
     const renderer::MeshData::TextureData* texture = nullptr;

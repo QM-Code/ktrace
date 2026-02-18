@@ -2,7 +2,7 @@
 
 #include "karma/window/events.hpp"
 
-namespace platform {
+namespace window {
 class Window;
 }
 

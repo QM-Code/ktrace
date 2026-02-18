@@ -32,13 +32,13 @@ glm::vec4 ReadRequiredColor(const char* path) {
 
 karma::app::client::EngineConfig BuildEngineConfig(const karma::cli::client::AppOptions& options) {
     karma::app::client::EngineConfig config;
-    config.window.title = karma::common::config::ReadRequiredStringConfig("platform.WindowTitle");
-    config.window.width = karma::common::config::ReadRequiredUInt16Config("platform.WindowWidth");
-    config.window.height = karma::common::config::ReadRequiredUInt16Config("platform.WindowHeight");
+    config.window.title = karma::common::config::ReadRequiredStringConfig("window.WindowTitle");
+    config.window.width = karma::common::config::ReadRequiredUInt16Config("window.WindowWidth");
+    config.window.height = karma::common::config::ReadRequiredUInt16Config("window.WindowHeight");
     config.window.preferredVideoDriver = karma::app::client::ReadPreferredVideoDriverFromConfig();
-    config.window.fullscreen = karma::common::config::ReadRequiredBoolConfig("platform.Fullscreen");
-    config.window.wayland_libdecor = karma::common::config::ReadRequiredBoolConfig("platform.WaylandLibdecor");
-    config.vsync = karma::common::config::ReadRequiredBoolConfig("platform.VSync");
+    config.window.fullscreen = karma::common::config::ReadRequiredBoolConfig("window.Fullscreen");
+    config.window.wayland_libdecor = karma::common::config::ReadRequiredBoolConfig("window.WaylandLibdecor");
+    config.vsync = karma::common::config::ReadRequiredBoolConfig("window.VSync");
     config.default_camera.position = ReadRequiredVec3("roamingMode.camera.default.position");
     config.default_camera.target = ReadRequiredVec3("roamingMode.camera.default.target");
     config.default_camera.fov_y_degrees =

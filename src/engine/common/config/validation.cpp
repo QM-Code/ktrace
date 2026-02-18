@@ -83,9 +83,9 @@ std::vector<RequiredKey> ClientKeys() {
     keys.reserve(21);
     AppendKeys(keys, {
         {"language", RequiredType::String},
-        {"platform.WindowWidth", RequiredType::UInt16},
-        {"platform.WindowHeight", RequiredType::UInt16},
-        {"platform.WindowTitle", RequiredType::String},
+        {"window.WindowWidth", RequiredType::UInt16},
+        {"window.WindowHeight", RequiredType::UInt16},
+        {"window.WindowTitle", RequiredType::String},
         {"roamingMode.graphics.theme", RequiredType::String},
         {"roamingMode.graphics.skybox.Mode", RequiredType::String},
         {"roamingMode.graphics.skybox.Cubemap.Name", RequiredType::String},

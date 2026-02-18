@@ -49,11 +49,11 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/audio/backends/miniaudio_stub.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/backend_factory.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/physics_system.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/physics/world.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/physics/ecs_sync_system.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/physics/rigid_body.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/physics/static_body.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/physics/player_controller.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/facade/world.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/sync/ecs_sync_system.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/facade/rigid_body.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/facade/static_body.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/facade/player_controller.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/backends/jolt.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/backends/jolt_stub.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/backends/physx.cpp
@@ -350,7 +350,7 @@ if(BUILD_TESTING)
     add_executable(physics_backend_parity_test
         ${PROJECT_SOURCE_DIR}/src/engine/physics/tests/physics_backend_parity_test.cpp
     )
-    target_link_libraries(physics_backend_parity_test PRIVATE karma_engine_core)
+    target_link_libraries(physics_backend_parity_test PRIVATE karma_engine_client)
     target_include_directories(physics_backend_parity_test PRIVATE ${PROJECT_SOURCE_DIR}/src/engine)
 
     add_executable(audio_backend_smoke_test

@@ -1,7 +1,7 @@
 #include "karma/app/server/engine.hpp"
 
 #include "karma/common/logging/logging.hpp"
-#include "physics/engine_fixed_step_sync.hpp"
+#include "physics/sync/engine_fixed_step_sync.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -93,7 +93,7 @@ void Engine::start(GameInterface& game, const EngineConfig& config) {
             spdlog::error("Engine: audio backend failed to initialize (requested='{}', compiled='{}')",
                           audio::backend::BackendKindName(config_.audio_backend),
                           CompiledAudioBackendList());
-            physics::detail::ResetEngineSyncBeforePhysicsShutdown(physics_sync_system_);
+            physics::detail::ResetEngineSyncBeforePhysicsShutdown(physics_sync_system_, &physics_system_);
             physics_system_.shutdown();
             game_ = nullptr;
             running_ = false;
@@ -205,7 +205,7 @@ void Engine::shutdown() {
     if (config_.enable_audio) {
         audio_system_.shutdown();
     }
-    physics::detail::ResetEngineSyncBeforePhysicsShutdown(physics_sync_system_);
+    physics::detail::ResetEngineSyncBeforePhysicsShutdown(physics_sync_system_, &physics_system_);
     physics_system_.shutdown();
     KARMA_TRACE("engine.server",
                 "Engine: shutdown world_entities={}",

@@ -31,9 +31,9 @@ void RunBootstrap(const karma::cli::client::AppOptions& options,
     };
     shared::ConfigureDataAndConfigFromSpec(spec, argc, argv);
 
-    if (options.backend_platform_explicit) {
-        ValidatePlatformBackendFromOption(options.backend_platform, options.backend_platform_explicit);
-        KARMA_TRACE("engine.app", "CLI option --backend-platform set: '{}'", options.backend_platform);
+    if (options.backend_window_explicit) {
+        ValidateWindowBackendFromOption(options.backend_window, options.backend_window_explicit);
+        KARMA_TRACE("engine.app", "CLI option --backend-window set: '{}'", options.backend_window);
     }
     if (options.backend_render_explicit) {
         KARMA_TRACE("engine.app", "CLI option --backend-render set: '{}'", options.backend_render);

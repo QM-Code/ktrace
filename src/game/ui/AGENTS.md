@@ -43,9 +43,9 @@ and what to tackle next.
   - `hud/`: RmlUi HUD document and components.
 
 ### Rendering bridges (BGFX/Diligent)
-- ImGui render targets are provided by `src/karma-extras/ui/platform/imgui/renderer_*` and should stay out of core engine.
-- RmlUi uses render interfaces in `src/karma-extras/ui/platform/rmlui/renderer_{bgfx,diligent}.*`.
-- RmlUi renderers expose output textures for the shared render bridge; see `src/karma-extras/ui/bridges/` + RmlUi platform renderers.
+- ImGui render targets are provided by `src/karma-extras/ui/window/imgui/renderer_*` and should stay out of core engine.
+- RmlUi uses render interfaces in `src/karma-extras/ui/window/rmlui/renderer_{bgfx,diligent}.*`.
+- RmlUi renderers expose output textures for the shared render bridge; see `src/karma-extras/ui/bridges/` + RmlUi window renderers.
 - Backend-agnostic goal: avoid direct bgfx/diligent/jolt/physx usage in `src/game/`. UI thumbnail cache is the main remaining exception to remove later.
 
 ## Console vs HUD

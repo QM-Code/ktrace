@@ -2,8 +2,8 @@
 
 #include "karma/common/logging/logging.hpp"
 #include "karma/physics/physics_system.hpp"
-#include "physics/facade_state.hpp"
-#include "physics/static_mesh_ingest_observability.hpp"
+#include "physics/facade/facade_state.hpp"
+#include "physics/sync/static_mesh_ingest_observability.hpp"
 
 #include <algorithm>
 #include <cctype>

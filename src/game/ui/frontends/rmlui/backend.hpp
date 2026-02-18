@@ -8,7 +8,7 @@
 #include "ui/core/backend.hpp"
 #include "ui/frontends/rmlui/console/panels/panel_settings.hpp"
 
-namespace platform {
+namespace window {
 class Window;
 }
 

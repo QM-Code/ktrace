@@ -17,7 +17,7 @@
 #include "karma_extras/ui/bridges/renderer_bridge.hpp"
 #include "karma/app/ui_context.h"
 
-namespace platform {
+namespace window {
 class Window;
 }
 

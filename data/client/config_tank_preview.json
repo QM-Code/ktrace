@@ -332,7 +332,7 @@
     "ConnectionTimeout": 5,
     "MaxRetries": 3
   },
-  "platform": {
+  "window": {
     "SdlVideoDriver": "wayland",
     "WindowTitle": "BZFlag v3",
     "WindowWidth": 1280,

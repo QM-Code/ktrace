@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 ALLOWLIST=(
-    "src/engine/platform/backends/window_sdl3.cpp"
-    "src/engine/audio/backends/backend_sdl3audio_stub.cpp"
+    "src/engine/window/backends/sdl3.cpp"
+    "src/engine/audio/backends/sdl3audio.cpp"
 )
 
 for file in "${ALLOWLIST[@]}"; do
@@ -66,7 +66,7 @@ run_check() {
     return 1
 }
 
-echo "[seam] Checking SDL platform seam boundaries"
+echo "[seam] Checking SDL window seam boundaries"
 printf '[seam] Allowlist:\n'
 printf '  - %s\n' "${ALLOWLIST[@]}"
 

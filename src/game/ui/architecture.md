@@ -52,11 +52,11 @@ Key responsibilities:
 
 ### ImGui path
 - Uses `ui::RendererBridge` and `ui::UiRenderTargetBridge` to render into a texture.
-- Platform renderers live under `src/karma-extras/ui/platform/imgui/renderer_{bgfx,diligent}.*`.
+- Window renderers live under `src/karma-extras/ui/window/imgui/renderer_{bgfx,diligent}.*`.
 - `ImGuiBackend::getRenderOutput()` returns a valid texture + visibility when the console or HUD drew.
 
 ### RmlUi path
-- Uses RmlUi `RenderInterface` implementations in `src/karma-extras/ui/platform/rmlui/renderer_{bgfx,diligent}`.
+- Uses RmlUi `RenderInterface` implementations in `src/karma-extras/ui/window/rmlui/renderer_{bgfx,diligent}`.
 - `RenderOutput` is provided by both frontends and is always composited by the renderer.
 
 ## 5) Input handling

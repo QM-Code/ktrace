@@ -1,10 +1,10 @@
-#include "physics/ecs_sync_system.hpp"
+#include "physics/sync/ecs_sync_system.hpp"
 
 #include "karma/common/logging/logging.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/physics/physics_system.hpp"
 #include "karma/scene/components.hpp"
-#include "physics/static_mesh_ingest_observability.hpp"
+#include "physics/sync/static_mesh_ingest_observability.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -16,9 +16,7 @@
 
 #include <glm/gtc/quaternion.hpp>
 
-namespace karma::physics {
-
-namespace detail {
+namespace karma::physics::detail {
 
 enum class RuntimeCommandTraceOutcome : uint8_t {
     None = 0,
@@ -374,7 +372,9 @@ bool IsRuntimeCommandTraceFailureOutcome(RuntimeCommandTraceOutcome outcome) {
            || outcome == RuntimeCommandTraceOutcome::RuntimeApplyFailed;
 }
 
-} // namespace detail
+} // namespace karma::physics::detail
+
+namespace karma::physics {
 
 namespace {
 

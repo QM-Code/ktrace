@@ -18,7 +18,8 @@ Execution coordination guidance for this contract lives in
 - Runtime rewrite data/config lives at `m-rewrite/data/`.
 - Backend-specific complexity stays behind engine interfaces, not in game code.
 - Feature parity targets are capability/behavior targets, not source-layout targets.
-- Platform/render/physics/audio backend APIs are engine-internal; game code must not depend on backend implementations.
+- Window/render/physics/audio backend APIs are engine-internal; game code must not depend on backend implementations.
+- Backend selection surfaces are standardized at public headers (`include/karma/<module>/backend.hpp`, including `window` and `ui`); backend driver/implementation contracts stay internal under `src/engine/**/backends/*`.
 - UI backend remains the intentional exception: game teams may explicitly build against chosen `imgui` or `rmlui` frontend.
 
 ---
@@ -1088,7 +1089,7 @@ Achieve renderer feature parity with the rewrite-owned capability envelope while
   - renderer-side UI draw/depth integration behavior is explicit, bounded, and does not violate UI ownership boundaries.
 - Renderer observability/guardrail completeness:
   - direct/fallback readiness semantics and asset-integrity/packaging guardrails are deterministic and test-backed.
-- Platform presentation-path completeness:
+- Window presentation-path completeness:
   - backend presentation path behavior (for example Linux X11/Wayland) is tracked and stabilized behind backend layers.
 
 ## Rules

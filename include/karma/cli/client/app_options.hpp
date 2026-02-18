@@ -19,7 +19,7 @@ struct AppOptions {
     std::string backend_ui{};
     std::string backend_physics{};
     std::string backend_audio{};
-    std::string backend_platform{};
+    std::string backend_window{};
 
     bool username_explicit = false;
     bool password_explicit = false;
@@ -30,7 +30,7 @@ struct AppOptions {
     bool backend_ui_explicit = false;
     bool backend_physics_explicit = false;
     bool backend_audio_explicit = false;
-    bool backend_platform_explicit = false;
+    bool backend_window_explicit = false;
 
     bool strict_config = true;
 

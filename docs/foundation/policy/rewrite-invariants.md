@@ -50,7 +50,7 @@ Repository roles:
 - UI policy: engine supports ImGui + RmlUi; game intentionally chooses one primary UI backend.
 
 ## Backend Exposure Contract
-- Platform/render/physics/audio backends are engine-internal.
+- Window/render/physics/audio backends are engine-internal.
 - Game code must consume engine contracts, not backend APIs.
 - Backend-specific complexity stays in backend layers.
 - Exception: game UI may directly target chosen UI backend (`imgui` or `rmlui`).

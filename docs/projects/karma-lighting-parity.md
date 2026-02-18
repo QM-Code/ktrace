@@ -283,7 +283,7 @@ From `m-rewrite/`:
 ./abuild.py -c -d <build-dir> -b bgfx,diligent
 
 # Canonical sandbox parity recipes (backend-specific)
-# Keep default UI/physics/audio/platform backends for this track.
+# Keep default UI/physics/audio/window backends for this track.
 ./<build-dir>/src/engine/renderer_shadow_sandbox \
   --backend-render bgfx --duration-sec 30 --ground-tiles 1 --ground-extent 20 \
   --shadow-map-size 2048 --shadow-pcf 2 --shadow-strength 0.85 --shadow-execution-mode gpu_default \

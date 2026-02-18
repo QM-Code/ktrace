@@ -2,9 +2,9 @@
 
 ## Project Snapshot
 - Current owner: `specialist-physics-refactor`
-- Status: `in progress` (Phase 5b validation coverage landed in `build-a3`; fixed-step ECS sync ordering and lifecycle teardown invariants now have deterministic parity coverage)
+- Status: `in progress` (Phase 5h repeated start/stop lifecycle cycling app-smoke coverage landed in `build-a3`; runtime/API behavior unchanged outside deterministic test/harness hardening)
 - Supersedes: `docs/projects/physics-backend.md` (retired to `docs/archive/physics-backend-retired-2026-02-17.md`)
-- Immediate next task: execute a bounded Phase 5c engine-loop hardening slice to add app-level smoke coverage for fixed-step sync lifecycle behavior across init-failure and shutdown paths (engine-only, game-agnostic).
+- Immediate next task: execute a bounded Phase 5i engine-scope follow-up to add deterministic mixed-cycle lifecycle coverage (init-failure then running-path start/stop) while preserving current callback contracts (no gameplay wiring).
 - Validation gate: `./scripts/test-engine-backends.sh <build-dir>`
 
 ## Mission
@@ -202,6 +202,7 @@ From `m-rewrite/`:
 - Component namespace location for rewrite physics components.
 - Exact collision-layer/filter contract shape for first aligned slice.
 - Runtime lock mutation/query policy in the new layered API.
+- Boundary hardening follow-up: remove `physics::EcsSyncSystem` exposure from public app headers (`include/karma/app/client/engine.hpp`, `include/karma/app/server/engine.hpp`) by evaluating PIMPL/runtime-handle options in a dedicated post-Phase-5 slice.
 
 ## Phase 0/1 Contract Slice (2026-02-18)
 Landed in this bounded slice:
@@ -273,7 +274,7 @@ Explicit Phase 3 deferrals after Phase 2b closure:
 
 ## Phase 3 ECS Sync Slice 1 (2026-02-18)
 Landed in this bounded slice:
-- Added `src/engine/physics/ecs_sync_system.hpp/.cpp` with deterministic two-phase flow:
+- Added `src/engine/physics/sync/ecs_sync_system.hpp/.cpp` with deterministic two-phase flow:
   - pre-sim: validate intents, reconcile runtime bodies (create/rebuild/update/teardown), apply scene->physics transform push by ownership policy.
   - post-sim: apply physics->scene transform pull by ownership policy.
 - Consumes Phase 2 policy helpers from `include/karma/scene/physics_components.hpp`:
@@ -338,7 +339,7 @@ Landed in this bounded slice:
   - runtime trigger/filter APIs now expose deterministic success/failure and coherent reported state.
   - bounded deterministic fallback behavior is explicit where runtime mutation is unsupported:
     - Jolt reports unsupported runtime collision-mask transition mutations (enabling caller-driven deterministic fallback).
-- Updated ECS sync (`src/engine/physics/ecs_sync_system.cpp`) to:
+- Updated ECS sync (`src/engine/physics/sync/ecs_sync_system.cpp`) to:
   - pass collider shape parameters + trigger/filter intent into `BodyDesc` during runtime body creation,
   - execute `UpdateRuntimeProperties` via new substrate APIs,
   - preserve deterministic enabled teardown/recreate behavior,
@@ -364,7 +365,7 @@ Landed in this bounded slice:
 - Implemented backend support in `jolt.cpp` and `physx.cpp`:
   - valid dynamic bodies support linear/angular velocity set/get,
   - static/invalid/unknown/destroyed bodies deterministically return failure.
-- Updated ECS sync (`src/engine/physics/ecs_sync_system.hpp/.cpp`) controller path:
+- Updated ECS sync (`src/engine/physics/sync/ecs_sync_system.hpp/.cpp`) controller path:
   - compatible controller entities now push `desired_velocity` to runtime linear velocity each pre-sim pass,
   - `PlayerControllerIntentComponent.enabled == false` applies deterministic bounded behavior by pushing zero linear velocity effect while keeping controller metadata.
 - Added parity coverage in `physics_backend_parity_test.cpp` for:
@@ -384,7 +385,7 @@ Landed in this bounded slice:
 - Extended scene component policy contracts in `include/karma/scene/physics_components.hpp`:
   - added explicit controller velocity ownership policy helper (`ControllerVelocityOwnership` + classifier helpers),
   - extended controller/collider compatibility classifier to reject enabled controller intent on non-dynamic rigidbodies (`EnabledControllerRequiresDynamicRigidBody`).
-- Updated ECS sync runtime behavior in `src/engine/physics/ecs_sync_system.hpp/.cpp`:
+- Updated ECS sync runtime behavior in `src/engine/physics/sync/ecs_sync_system.hpp/.cpp`:
   - unified create/update runtime velocity application through policy-driven ownership,
   - enabled + compatible controller now owns runtime linear velocity (`desired_velocity`) and enforces zero runtime angular velocity,
   - disabled or absent controller now defers linear+angular runtime velocity ownership to rigidbody intent,
@@ -407,7 +408,7 @@ Explicit remaining deferrals after Phase 4c:
 Landed in this bounded slice:
 - Extended scene policy contracts in `include/karma/scene/physics_components.hpp`:
   - added controller-geometry reconcile contract helper (`NoOp` / `RebuildRuntimeShape` / `RejectInvalidIntent`).
-- Updated ECS sync behavior in `src/engine/physics/ecs_sync_system.hpp/.cpp`:
+- Updated ECS sync behavior in `src/engine/physics/sync/ecs_sync_system.hpp/.cpp`:
   - controller geometry mutations (`half_extents`, `center`) now trigger deterministic runtime rebuild when required.
   - enabled + compatible controllers now derive runtime collider geometry from controller dimensions for Box/Capsule runtime creation (bounded mapping), rather than stale collider dimensions.
   - geometry-driven rebuilds preserve runtime transform and linear/angular velocity.
@@ -427,7 +428,7 @@ Explicit remaining deferrals after Phase 4d:
 ## Phase 4e Controller Motion Parity Slice (2026-02-18)
 Landed in this bounded slice:
 - Reused scene contract helpers in `include/karma/scene/physics_components.hpp` for controller-runtime velocity composition and upward jump applicability (`HasControllerJumpUpwardIntent`, `ComposeControllerRuntimeLinearVelocity`) and added bounded contract assertions in parity tests.
-- Updated ECS sync controller velocity ownership behavior in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync controller velocity ownership behavior in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - enabled + compatible controller now preserves current runtime linear `y`, applies controller `desired_velocity.xz`, and enforces zero angular velocity,
   - one-shot jump is applied only when `jump_requested` is true with positive upward intent, and `jump_requested` is consumed only after successful runtime velocity writes,
   - disabled/absent/incompatible controller paths remain rigidbody-owned for linear+angular velocity and do not consume jump intent,
@@ -449,7 +450,7 @@ Landed in this bounded slice:
 - Removed jump-specific APIs from engine scene-physics contracts in `include/karma/scene/physics_components.hpp`:
   - removed `jump_requested` from `PlayerControllerIntentComponent`,
   - removed jump-specific helper APIs (`HasControllerJumpUpwardIntent`, `ComposeControllerRuntimeLinearVelocity`).
-- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - removed all jump read/consume/mutate behavior,
   - restored engine-generic controller velocity ownership behavior: enabled + compatible controller writes `desired_velocity` and zero angular velocity; disabled/absent/incompatible paths stay rigidbody-owned.
 - Updated parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp`:
@@ -470,7 +471,7 @@ Landed in this bounded slice:
   - `src/engine/physics/backends/jolt.cpp`: wraps Box/Sphere/Capsule shapes in a translated shape when `local_center` is non-zero.
   - `src/engine/physics/backends/physx.cpp`: applies `PxShape::setLocalPose` from `local_center` for Box/Sphere/Capsule.
 - Kept deterministic invalid-input behavior for the new offset path by rejecting non-finite local-center input in both backends.
-- Updated ECS sync runtime shape build path in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync runtime shape build path in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - removed controller-center placeholder extents expansion,
   - controller geometry now uses true dimensions (`half_extents`) plus `local_center = controller.center` in the substrate `BodyDesc`.
 - Added parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp` for:
@@ -497,7 +498,7 @@ Landed in this bounded slice:
   - create-time damping is consumed for dynamic bodies,
   - runtime damping set/get works for valid dynamic bodies,
   - deterministic `false` is returned for invalid/unknown/non-dynamic bodies and invalid damping values.
-- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - rigidbody damping is applied in runtime body creation via `BodyDesc`,
   - valid damping intent mutations are applied through runtime substrate APIs without forcing body rebuild/churn,
   - runtime damping mutation failure follows deterministic teardown behavior.
@@ -521,7 +522,7 @@ Landed in this bounded slice:
 - Implemented backend runtime behavior:
   - `src/engine/physics/backends/physx.cpp`: true runtime lock mutation for dynamic bodies using PhysX lock flags.
   - `src/engine/physics/backends/jolt.cpp`: deterministic unsupported runtime mutation for lock changes (`false`), with coherent lock-state query support for current runtime state.
-- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - lock transitions are no longer unconditional rebuild triggers,
   - runtime lock mutation is attempted first,
   - deterministic rebuild fallback is applied on unsupported/failure paths (no silent no-op).
@@ -560,7 +561,7 @@ Landed in this bounded slice:
     - create-time friction/restitution ingestion implemented,
     - runtime friction set/get supported,
     - runtime restitution mutation intentionally reports unsupported on value change (deterministic `false`) to drive fallback coverage.
-- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - collider material values are now passed through body creation/rebuild descriptor,
   - `UpdateRuntimeProperties` now applies trigger/filter/material runtime mutation first,
   - deterministic rebuild fallback preserved on any unsupported/failure mutation result.
@@ -595,7 +596,7 @@ Landed in this bounded slice:
     - create-time kinematic ingestion via `PxRigidBodyFlag::eKINEMATIC`,
     - runtime set/get kinematic mutation support for dynamic bodies,
     - deterministic `false` for invalid/unknown/non-dynamic/static-kinematic-invalid requests.
-- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - body creation now propagates rigidbody kinematic intent into `BodyDesc`,
   - kinematic intent transitions now reconcile via runtime mutation first,
   - deterministic rebuild fallback is applied when runtime kinematic mutation fails.
@@ -629,7 +630,7 @@ Landed in this bounded slice:
     - create-time awake ingestion mapped to `wakeUp`/`putToSleep` for dynamic bodies,
     - runtime awake set/get supported for dynamic bodies,
     - deterministic `false` for invalid/unknown/non-dynamic requests.
-- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - body creation now propagates rigidbody awake intent into `BodyDesc`,
   - awake transitions reconcile via runtime mutation first,
   - runtime mutation failures in velocity/awake paths now deterministically rebuild runtime bodies instead of leaving stale teardown-only state,
@@ -670,7 +671,7 @@ Landed in this bounded slice:
     - runtime force (`PxForceMode::eFORCE`) and impulse (`PxForceMode::eIMPULSE`) support added for dynamic non-kinematic bodies,
     - deterministic `false` returned for invalid/unknown/non-dynamic/ineligible requests,
     - zero-vector commands treated as deterministic bounded no-op success.
-- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - pre-sim runtime command application helper added and invoked in both create/update paths,
   - force commands are applied each pre-sim when non-zero,
   - impulse commands are consumed only after successful runtime application,
@@ -715,7 +716,7 @@ Landed in this bounded slice:
     - runtime torque (`PxForceMode::eFORCE`) and angular impulse (`PxForceMode::eIMPULSE`) support added for dynamic non-kinematic bodies,
     - deterministic `false` returned for invalid/unknown/non-dynamic/ineligible requests,
     - zero-vector commands treated as deterministic bounded no-op success.
-- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS sync in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - pre-sim runtime command helper now applies torque each pre-sim when non-zero,
   - angular-impulse commands are one-shot and consumed only after successful runtime application,
   - runtime command failure follows deterministic fallback behavior (teardown/rebuild/recovery path),
@@ -740,7 +741,7 @@ Landed in this bounded slice:
   - added explicit command clear/reset request (`clear_runtime_commands_requested`),
   - added lifecycle helpers (`HasRuntimeCommandClearRequest`, `ClearRuntimeCommandIntents`),
   - force/torque command detection helpers now honor persistent enable flags.
-- Updated ECS command reconciliation in `src/engine/physics/ecs_sync_system.cpp`:
+- Updated ECS command reconciliation in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - clear/reset request is reconciled first, clears force/torque/impulse intents, and consumes clear request on successful reconciliation,
   - command intents on ineligible bodies (static or kinematic) are now deterministically preserved without teardown/rebuild churn,
   - existing eligible-body runtime failure policy is preserved for real backend API failures (runtime call failure still returns failure for deterministic fallback path).
@@ -806,7 +807,7 @@ Explicit remaining deferrals after Phase 4p:
 
 ## Phase 4q Runtime Command Failure Observability Tags Slice (2026-02-18)
 Landed in this bounded slice:
-- Added explicit runtime-command outcome classification + tag mapping helpers in `src/engine/physics/ecs_sync_system.cpp` for `physics.system` trace emission:
+- Added explicit runtime-command outcome classification + tag mapping helpers in `src/engine/physics/sync/ecs_sync_system.cpp` for `physics.system` trace emission:
   - `stale_runtime_binding_body`,
   - `ineligible_non_dynamic`,
   - `ineligible_kinematic`,
@@ -832,7 +833,7 @@ Explicit remaining deferrals after Phase 4q:
 
 ## Phase 4r Runtime Command Operation+Outcome Trace Tags Slice (2026-02-18)
 Landed in this bounded slice:
-- Extended runtime-command trace tagging in `src/engine/physics/ecs_sync_system.cpp` with deterministic per-command operation labels:
+- Extended runtime-command trace tagging in `src/engine/physics/sync/ecs_sync_system.cpp` with deterministic per-command operation labels:
   - `linear_force`,
   - `linear_impulse`,
   - `angular_torque`,
@@ -855,7 +856,7 @@ Explicit remaining deferrals after Phase 4r:
 
 ## Phase 4s Runtime Command Stage+Operation+Outcome Trace Tags Slice (2026-02-18)
 Landed in this bounded slice:
-- Extended runtime-command trace helper surface in `src/engine/physics/ecs_sync_system.cpp` with deterministic stage classification/tag mapping:
+- Extended runtime-command trace helper surface in `src/engine/physics/sync/ecs_sync_system.cpp` with deterministic stage classification/tag mapping:
   - `create`,
   - `update`,
   - `recovery`.
@@ -883,7 +884,7 @@ Explicit remaining deferrals after Phase 4s:
 
 ## Phase 4t Runtime Command Failure-Cause Trace Sub-Tag Slice (2026-02-18)
 Landed in this bounded slice:
-- Extended runtime-command trace helper surface in `src/engine/physics/ecs_sync_system.cpp` with deterministic failure-cause sub-tag mapping:
+- Extended runtime-command trace helper surface in `src/engine/physics/sync/ecs_sync_system.cpp` with deterministic failure-cause sub-tag mapping:
   - `stale_binding`,
   - `backend_reject`.
 - Trace emission now includes failure cause only for runtime command failure outcomes:
@@ -906,7 +907,7 @@ Explicit remaining deferrals after Phase 4t:
 
 ## Phase 4v Runtime Command Decision-Path Trace Tag Slice (2026-02-18)
 Landed in this bounded slice:
-- Extended `physics.system` runtime-command trace metadata in `src/engine/physics/ecs_sync_system.cpp` with deterministic decision-path tags:
+- Extended `physics.system` runtime-command trace metadata in `src/engine/physics/sync/ecs_sync_system.cpp` with deterministic decision-path tags:
   - `skipped_no_command`,
   - `skipped_ineligible_non_dynamic`,
   - `skipped_ineligible_kinematic`,
@@ -959,7 +960,7 @@ Explicit remaining deferrals after Phase 4w:
 Landed in this bounded slice:
 - Extended substrate shape contract in `include/karma/physics/backend.hpp` with backend-neutral mesh create-time metadata (`ColliderShapeKind::Mesh` + `ColliderShapeDesc::mesh_asset_path`).
 - Kept substrate ownership/passthrough model in `PhysicsSystem` while preserving existing BodyId-backed behavior.
-- Replaced ECS sync mesh placeholder mapping in `src/engine/physics/ecs_sync_system.cpp`:
+- Replaced ECS sync mesh placeholder mapping in `src/engine/physics/sync/ecs_sync_system.cpp`:
   - static mesh collider intent now emits real mesh shape intent/path into `BodyDesc`,
   - deterministic teardown/recreate behavior remains policy-driven for invalid/unsupported transitions.
 - Added minimal real static mesh collision ingestion paths in both backends:
@@ -981,10 +982,10 @@ Explicit remaining deferrals after Phase 4x:
 
 ## Phase 4y Static-Mesh Observability + Facade Parity Slice (2026-02-18)
 Landed in this bounded slice:
-- Wired facade `World::createStaticMesh(...)` in `src/engine/physics/world.cpp` to real static mesh substrate ingestion:
+- Wired facade `World::createStaticMesh(...)` in `src/engine/physics/facade/world.cpp` to real static mesh substrate ingestion:
   - now emits `BodyDesc` with `shape=Mesh` + `mesh_asset_path`,
   - removes prior placeholder static-body behavior for valid static mesh intent.
-- Added deterministic static-mesh ingest trace tags in `src/engine/physics/ecs_sync_system.cpp` (`physics.system`):
+- Added deterministic static-mesh ingest trace tags in `src/engine/physics/sync/ecs_sync_system.cpp` (`physics.system`):
   - `create_success`,
   - `invalid_intent_reject`,
   - `backend_reject`,
@@ -1004,7 +1005,7 @@ Explicit remaining deferrals after Phase 4y:
 
 ## Phase 4z Static-Mesh Reject-Cause Observability Breadth Slice (2026-02-18)
 Landed in this bounded slice:
-- Extended static-mesh ingest tracing in `src/engine/physics/ecs_sync_system.cpp` and `src/engine/physics/world.cpp` to emit deterministic `outcome` + `cause` metadata for `physics.system`:
+- Extended static-mesh ingest tracing in `src/engine/physics/sync/ecs_sync_system.cpp` and `src/engine/physics/facade/world.cpp` to emit deterministic `outcome` + `cause` metadata for `physics.system`:
   - reject causes now include:
     - `invalid_intent`,
     - `ineligible_dynamic_mesh_intent`,
@@ -1027,10 +1028,10 @@ Explicit remaining deferrals after Phase 4z:
 ## Phase 4 Follow-up Static-Mesh Reject-Cause Helper Unification Slice (2026-02-18)
 Landed in this bounded slice:
 - Removed duplicate static-mesh reject-cause classification/tag logic from:
-  - `src/engine/physics/ecs_sync_system.cpp`,
-  - `src/engine/physics/world.cpp`.
+  - `src/engine/physics/sync/ecs_sync_system.cpp`,
+  - `src/engine/physics/facade/world.cpp`.
 - Introduced one shared internal helper in:
-  - `src/engine/physics/static_mesh_ingest_observability.hpp`.
+  - `src/engine/physics/sync/static_mesh_ingest_observability.hpp`.
 - Routed both ECS sync and world facade trace paths through the shared helper:
   - common cause enum/tag mapping,
   - common create-reject cause classifier.
@@ -1076,7 +1077,7 @@ Landed in this bounded slice:
 ## Phase 5b Validation Coverage Slice (2026-02-18)
 Landed in this bounded slice:
 - Added deterministic fixed-step ordering/lifecycle validation seams under engine physics internals:
-  - `src/engine/physics/engine_fixed_step_sync.hpp` now centralizes:
+  - `src/engine/physics/sync/engine_fixed_step_sync.hpp` now centralizes:
     - create sync only when physics is initialized,
     - clear/reset sync before physics shutdown,
     - fixed-step helper that enforces `preSimulate -> simulateFixedStep -> postSimulate` ordering per substep.
@@ -1090,6 +1091,47 @@ Landed in this bounded slice:
   - no gameplay wiring,
   - no gameplay semantics,
   - no backend behavior changes.
+
+## Phase 5c Engine-Loop Hardening Smoke Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended fixed-step sync helper seam in `src/engine/physics/sync/engine_fixed_step_sync.hpp` with internal lifecycle observer coverage for:
+  - sync create-succeeded / create-skipped transitions,
+  - sync reset-applied / reset-skipped transitions,
+  - physics-initialized state at reset points (to prove reset-before-shutdown ordering).
+- Added app-level smoke coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp`:
+  - server init-failure path:
+    - engine remains non-running,
+    - game callbacks do not fire,
+    - no sync create/reset-applied lifecycle events leak.
+  - server normal shutdown path:
+    - sync create occurs exactly once,
+    - sync reset-applied occurs exactly once,
+    - reset-applied is observed while physics is still initialized (before physics shutdown),
+    - repeated stop/tick calls remain stable with no extra shutdown churn.
+  - client init-failure path:
+    - engine remains non-running,
+    - no sync create/reset-applied lifecycle events leak,
+    - coverage tolerates deterministic early-init config exceptions while still asserting no sync-state leak.
+- Updated parity test linking (`src/engine/CMakeLists.txt`) so app-engine smoke checks (server/client) execute within `physics_backend_parity_test` without backend behavior changes.
+- Scope guardrails preserved:
+  - no gameplay wiring,
+  - no gameplay semantics,
+  - no backend API/behavior expansion.
+
+## Structure-Only Physics Source Layout Cleanup Slice (2026-02-18)
+Landed in this bounded maintenance slice:
+- Reorganized physics internal source layout under logical subdirectories without behavior/API changes:
+  - `src/engine/physics/facade/`
+    - `world.cpp`, `rigid_body.cpp`, `static_body.cpp`, `player_controller.cpp`, `facade_state.hpp`
+  - `src/engine/physics/sync/`
+    - `ecs_sync_system.cpp`, `ecs_sync_system.hpp`, `engine_fixed_step_sync.hpp`,
+      `static_mesh_ingest_observability.hpp`
+- Updated include paths and source references across engine/tests/CMake to match relocated files.
+- Kept substrate/backends/public headers untouched for this slice:
+  - `src/engine/physics/physics_system.cpp`
+  - `src/engine/physics/backend_factory.cpp`
+  - `src/engine/physics/backends/*`
+  - `src/engine/physics/tests/*` behavior semantics.
 
 ## Current Status
 - `2026-02-17`: Project created as full replacement for backend-only parity track.
@@ -1369,7 +1411,7 @@ Landed in this bounded slice:
   - `./docs/scripts/lint-project-docs.sh` (pass)
   - `./abuild.py --lock-status -d build-a3` (owner verified)
 - `2026-02-18`: Phase 4 follow-up static-mesh reject-cause helper unification slice landed:
-  - ECS sync + world facade now share one internal static-mesh reject-cause classifier/tag helper (`src/engine/physics/static_mesh_ingest_observability.hpp`),
+  - ECS sync + world facade now share one internal static-mesh reject-cause classifier/tag helper (`src/engine/physics/sync/static_mesh_ingest_observability.hpp`),
   - duplicated reject-cause logic was removed from both call sites while preserving emitted tags and behavior.
 - `2026-02-18`: Phase 4 follow-up validation completed in `build-a3`:
   - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
@@ -1396,7 +1438,62 @@ Landed in this bounded slice:
   - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
   - `./scripts/test-engine-backends.sh build-a3` (pass)
   - `./docs/scripts/lint-project-docs.sh` (pass)
-- Next implementation slice: execute bounded Phase 5c engine-loop hardening coverage for fixed-step sync lifecycle on init-failure/shutdown app paths (engine-only, game-agnostic).
+- `2026-02-18`: Phase 5c engine-loop hardening smoke slice landed:
+  - app-level server/client fixed-step sync lifecycle smoke checks added in parity tests,
+  - sync lifecycle observer seam added to validate create/reset invariants and reset-before-physics-shutdown ordering.
+- `2026-02-18`: Phase 5c validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- `2026-02-18`: Structure-only physics source layout cleanup slice landed:
+  - relocated facade internals to `src/engine/physics/facade/*`,
+  - relocated sync internals to `src/engine/physics/sync/*`,
+  - updated include paths + `src/engine/CMakeLists.txt` source paths only (no runtime/API behavior change).
+- `2026-02-18`: Structure-only layout cleanup validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- `2026-02-18`: Phase 5d lifecycle-smoke hardening slice landed:
+  - lifecycle smoke now provisions deterministic in-test client bindings config (`bindings.global/game/roaming`) instead of throw-based optional-config dependence,
+  - client init-failure lifecycle smoke no longer relies on try/catch for missing startup config,
+  - client shutdown lifecycle smoke now validates sync create/reset-before-physics-shutdown deterministically through a render-backend reject path that avoids startup-scene/runtime-asset prerequisites.
+- `2026-02-18`: Phase 5d validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- `2026-02-18`: Phase 5e running-path lifecycle smoke slice landed:
+  - parity harness now prepares deterministic client startup prerequisites in-test (data-root override + config bootstrap prerequisites) instead of depending on ambient `DATA_DIR`,
+  - app lifecycle smoke now includes a true client running-path shutdown check (`engine.isRunning()==true`) with deterministic sync create/reset ordering assertions,
+  - retained non-running client shutdown path coverage from Phase 5d; runtime/API behavior unchanged.
+- `2026-02-18`: Phase 5e validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- `2026-02-18`: Phase 5f repeated-shutdown idempotence smoke slice landed:
+  - running-path client lifecycle smoke now includes repeated `requestStop()` + `tick()` attempts after a successful running start,
+  - asserts sync lifecycle invariants remain deterministic and single-shot (`CreateSucceeded=1`, `ResetApplied=1`, create-before-reset ordering) across repeated shutdown attempts,
+  - keeps runtime/API behavior unchanged (test/harness hardening only).
+- `2026-02-18`: Phase 5f validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- `2026-02-18`: Phase 5g running-path requestStop+tick contract coverage slice landed:
+  - server lifecycle smoke now asserts current running-path contract semantics for `requestStop()+tick`: no additional `onTick` dispatch after stop request, no sync reset before teardown, single deterministic shutdown/reset on teardown.
+  - client running-path repeated-stop smoke now asserts current `requestStop()+tick` semantics explicitly (no `onUpdate`/`onShutdown` dispatch after stop request, no sync reset before teardown, single deterministic reset on teardown).
+  - runtime/API behavior remains unchanged (test/harness hardening only).
+- `2026-02-18`: Phase 5g validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- `2026-02-18`: Phase 5h repeated start/stop lifecycle cycling smoke slice landed:
+  - app lifecycle smoke now includes repeated running-path start/stop cycles for both server and client with deterministic callback/lifecycle assertions aligned to the Phase 5g `requestStop()+tick` contract.
+  - coverage asserts per-cycle stability plus aggregate sync lifecycle pairing (`CreateSucceeded`/`ResetApplied`) across repeated cycles.
+  - runtime/API behavior remains unchanged (test/harness hardening only).
+- `2026-02-18`: Phase 5h validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- Next implementation slice: execute bounded Phase 5i follow-up to add deterministic mixed-cycle lifecycle coverage (init-failure then running-path start/stop) while preserving current callback contracts (engine-only, game-agnostic).
 
 ## Handoff Checklist
 - [x] `physics-refactor.md` remains the single active physics project doc in `docs/projects/`.

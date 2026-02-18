@@ -87,13 +87,13 @@ Format:
 - Impact:
   - can be scheduled later with low integration risk.
 
-#### 10) Platform backend breadth (GLFW/SDL2 expansion) remains deferred
+#### 10) Window backend breadth (GLFW/SDL2 expansion) remains deferred
 - Decision:
   - continue SDL3-first and defer GLFW/SDL2 completion unless a concrete blocker emerges.
 - Why:
   - backend breadth is not currently on the critical path.
 - Impact:
-  - platform expansion stays on TODO without consuming top-priority bandwidth.
+  - window backend expansion stays on TODO without consuming top-priority bandwidth.
   - any non-SDL3 backend proposal must satisfy the admission/conformance policy in `docs/foundation/policy/execution-policy.md`.
 
 ## Standing Operating Decisions (Always On)

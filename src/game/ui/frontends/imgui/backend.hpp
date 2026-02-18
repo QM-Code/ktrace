@@ -12,7 +12,7 @@
 #include "ui/frontends/imgui/console/console.hpp"
 #include "ui/core/backend.hpp"
 
-namespace platform {
+namespace window {
 class Window;
 }
 

@@ -42,7 +42,7 @@ ImGuiBackend::ImGuiBackend(window::Window &windowRef) : window(&windowRef) {
 
     ImGuiIO &io = ImGui::GetIO();
     io.IniFilename = nullptr;
-    io.BackendPlatformName = "bz3-platform";
+    io.BackendPlatformName = "bz3-window";
     io.SetClipboardTextFn = SetClipboardText;
     io.GetClipboardTextFn = GetClipboardText;
     io.ClipboardUserData = window;

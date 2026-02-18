@@ -96,16 +96,16 @@ Wrapper gate policy:
 - `build-dev` default runs are serialized shared resources.
 - Wrapper internals may still use direct `cmake`/`ctest`; this does not change operator policy above.
 
-## Platform Backend Expansion Admission (Required for non-SDL3 work)
-- SDL3 remains the default active platform backend unless a separate explicit default-switch acceptance is approved.
+## Window Backend Expansion Admission (Required for non-SDL3 work)
+- SDL3 remains the default active window backend unless a separate explicit default-switch acceptance is approved.
 - No second-backend implementation work starts until all entry criteria are met:
   - concrete blocker documented (cannot be resolved inside SDL3-only policy),
   - named owner assigned with isolated build dirs,
   - proposal includes seam changes, validation commands, and rollback plan,
   - overseer approval recorded.
 - Required seam invariants:
-  - engine-facing platform contract stays centered on `karma::window::Window`,
-  - `./scripts/check-platform-seam.sh` stays passing,
+  - engine-facing window contract stays centered on `karma::window::Window`,
+  - `./scripts/check-window-seam.sh` stays passing,
   - backend headers/types stay out of `src/game/*` and engine/game-facing public contracts,
   - no dormant/stub-only backend trees.
 - Required conformance evidence (in one handoff):

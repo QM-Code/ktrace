@@ -1,11 +1,15 @@
+#include "karma/app/client/engine.hpp"
+#include "karma/app/server/engine.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/data/path_resolver.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/common/logging/logging.hpp"
 #include "karma/physics/backend.hpp"
 #include "karma/physics/physics_system.hpp"
 #include "karma/physics/world.hpp"
 #include "karma/scene/components.hpp"
-#include "physics/ecs_sync_system.hpp"
-#include "physics/engine_fixed_step_sync.hpp"
+#include "physics/sync/ecs_sync_system.hpp"
+#include "physics/sync/engine_fixed_step_sync.hpp"
 
 #include <spdlog/sinks/base_sink.h>
 
@@ -16,6 +20,7 @@
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -146,6 +151,171 @@ class RuntimeTraceCaptureSink final : public spdlog::sinks::base_sink<std::mutex
 
  private:
     std::vector<CapturedTraceEvent> events_{};
+};
+
+class ServerEngineSmokeGame final : public karma::app::server::GameInterface {
+ public:
+    void onStart() override { ++start_calls; }
+    void onTick(float /*dt*/) override { ++tick_calls; }
+    void onShutdown() override { ++shutdown_calls; }
+
+    int start_calls = 0;
+    int tick_calls = 0;
+    int shutdown_calls = 0;
+};
+
+class ClientEngineSmokeGame final : public karma::app::client::GameInterface {
+ public:
+    void onStart() override { ++start_calls; }
+    void onUpdate(float /*dt*/) override { ++update_calls; }
+    void onShutdown() override { ++shutdown_calls; }
+
+    int start_calls = 0;
+    int update_calls = 0;
+    int shutdown_calls = 0;
+};
+
+class EngineSyncLifecycleCapture final : public karma::physics::detail::EngineSyncLifecycleObserver {
+ public:
+    void onEngineSyncLifecycleEvent(const karma::physics::detail::EngineSyncLifecycleEvent& event) override {
+        events.push_back(event);
+    }
+
+    int countPhase(karma::physics::detail::EngineSyncLifecyclePhase phase) const {
+        return static_cast<int>(std::count_if(events.begin(), events.end(), [phase](const auto& event) {
+            return event.phase == phase;
+        }));
+    }
+
+    bool hasResetWhilePhysicsInitialized() const {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.phase == karma::physics::detail::EngineSyncLifecyclePhase::ResetApplied
+                && event.physics_initialized;
+        });
+    }
+
+    bool hasCreateBeforeReset() const {
+        std::optional<size_t> create_index{};
+        std::optional<size_t> reset_index{};
+        for (size_t i = 0; i < events.size(); ++i) {
+            if (!create_index
+                && events[i].phase == karma::physics::detail::EngineSyncLifecyclePhase::CreateSucceeded) {
+                create_index = i;
+            }
+            if (!reset_index
+                && events[i].phase == karma::physics::detail::EngineSyncLifecyclePhase::ResetApplied) {
+                reset_index = i;
+            }
+        }
+        return create_index && reset_index && (*create_index < *reset_index);
+    }
+
+    bool hasDeterministicCreateResetPairs(int expected_pairs) const {
+        if (expected_pairs < 0) {
+            return false;
+        }
+
+        int unmatched_creates = 0;
+        int paired_resets = 0;
+        for (const auto& event : events) {
+            if (event.phase == karma::physics::detail::EngineSyncLifecyclePhase::CreateSucceeded) {
+                ++unmatched_creates;
+                continue;
+            }
+            if (event.phase == karma::physics::detail::EngineSyncLifecyclePhase::ResetApplied) {
+                if (unmatched_creates <= 0) {
+                    return false;
+                }
+                --unmatched_creates;
+                ++paired_resets;
+            }
+        }
+
+        return unmatched_creates == 0 && paired_resets == expected_pairs;
+    }
+
+ private:
+    std::vector<karma::physics::detail::EngineSyncLifecycleEvent> events{};
+};
+
+class ScopedClientStartupPrerequisites final {
+ public:
+    ScopedClientStartupPrerequisites() {
+        using karma::common::config::ConfigFileSpec;
+        using karma::common::config::ConfigStore;
+        using karma::common::data::DataRoot;
+        using karma::common::data::SetDataRootOverride;
+
+        const std::filesystem::path expected_data_root = ResolveTestAssetPath("data");
+        std::error_code root_ec;
+        if (!std::filesystem::exists(expected_data_root, root_ec) || !std::filesystem::is_directory(expected_data_root, root_ec)) {
+            failure_reason_ = "startup data root is missing";
+            return;
+        }
+        const std::filesystem::path expected_shader_path = expected_data_root / "bgfx" / "shaders" / "bin" / "vk" / "mesh" / "vs_mesh.bin";
+        if (!std::filesystem::exists(expected_shader_path, root_ec)) {
+            failure_reason_ = "bgfx shader prerequisite is missing under startup data root";
+            return;
+        }
+
+        try {
+            SetDataRootOverride(expected_data_root);
+        } catch (const std::exception&) {
+            try {
+                const std::filesystem::path existing_root = DataRoot();
+                const std::filesystem::path existing_shader_path =
+                    existing_root / "bgfx" / "shaders" / "bin" / "vk" / "mesh" / "vs_mesh.bin";
+                const std::filesystem::path existing_client_config_path = existing_root / "client" / "config.json";
+                if (!std::filesystem::exists(existing_shader_path, root_ec)
+                    || !std::filesystem::exists(existing_client_config_path, root_ec)) {
+                    failure_reason_ = "existing data root is initialized without required client startup assets";
+                    return;
+                }
+            } catch (const std::exception& ex) {
+                failure_reason_ = std::string("failed to prepare data root override: ") + ex.what();
+                return;
+            }
+        }
+
+        ConfigFileSpec client_config_spec{};
+        client_config_spec.path = "client/config.json";
+        client_config_spec.label = "data/client/config.json";
+        client_config_spec.missingLevel = spdlog::level::err;
+        client_config_spec.required = true;
+        client_config_spec.resolveRelativeToDataRoot = true;
+        ConfigStore::Initialize({client_config_spec}, std::nullopt);
+
+        auto* bindings = ConfigStore::Get("bindings");
+        const bool bindings_valid = bindings && bindings->is_object()
+            && bindings->contains("global") && (*bindings)["global"].is_object()
+            && bindings->contains("game") && (*bindings)["game"].is_object()
+            && bindings->contains("roaming") && (*bindings)["roaming"].is_object();
+        if (!bindings_valid) {
+            auto fallback_bindings = karma::common::serialization::Object();
+            fallback_bindings["global"] = karma::common::serialization::Object();
+            fallback_bindings["game"] = karma::common::serialization::Object();
+            fallback_bindings["roaming"] = karma::common::serialization::Object();
+            if (!ConfigStore::Set("bindings", std::move(fallback_bindings))) {
+                failure_reason_ = "failed to configure deterministic client bindings";
+                return;
+            }
+        }
+
+        const std::filesystem::path resolved_world_asset = ConfigStore::ResolveAssetPath("assets.models.world", {});
+        if (resolved_world_asset.empty() || !std::filesystem::exists(resolved_world_asset, root_ec)) {
+            failure_reason_ = "startup world asset key did not resolve to an existing path";
+            return;
+        }
+
+        configured_ = true;
+    }
+
+    bool configured() const { return configured_; }
+    const std::string& failureReason() const { return failure_reason_; }
+
+ private:
+    bool configured_ = false;
+    std::string failure_reason_{};
 };
 
 bool ValidateTransform(const BodyTransform& actual,
@@ -6587,6 +6757,534 @@ bool RunEngineFixedStepSyncValidationChecks(BackendKind backend) {
     return true;
 }
 
+bool RunAppEngineSyncLifecycleSmokeChecks(BackendKind backend) {
+    using karma::physics::detail::EngineSyncLifecyclePhase;
+    using karma::physics::detail::ScopedEngineSyncLifecycleObserver;
+
+    constexpr BackendKind kInvalidBackend = static_cast<BackendKind>(999);
+    ScopedClientStartupPrerequisites client_startup_prereqs{};
+    if (!client_startup_prereqs.configured()) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " failed to configure deterministic client startup prerequisites for lifecycle smoke checks";
+        if (!client_startup_prereqs.failureReason().empty()) {
+            std::cerr << ": " << client_startup_prereqs.failureReason();
+        }
+        std::cerr << "\n";
+        return false;
+    }
+
+    // Server init-failure path: failed physics init must not leave sync active or start the engine.
+    {
+        EngineSyncLifecycleCapture capture{};
+        ScopedEngineSyncLifecycleObserver lifecycle_scope(&capture);
+
+        {
+            karma::app::server::Engine engine{};
+            ServerEngineSmokeGame game{};
+            karma::app::server::EngineConfig config{};
+            config.physics_backend = kInvalidBackend;
+            config.enable_audio = false;
+            engine.start(game, config);
+            if (engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server engine unexpectedly running after physics init failure\n";
+                return false;
+            }
+            engine.requestStop();
+            engine.tick();
+
+            if (game.start_calls != 0 || game.tick_calls != 0 || game.shutdown_calls != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server game callbacks fired during init-failure path\n";
+                return false;
+            }
+        }
+
+        if (capture.countPhase(EngineSyncLifecyclePhase::CreateSucceeded) != 0
+            || capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 0) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server init-failure path left unexpected sync lifecycle activity\n";
+            return false;
+        }
+    }
+
+    // Server running-path requestStop()+tick behavior: no extra ticks after stop request, shutdown occurs once on teardown.
+    {
+        EngineSyncLifecycleCapture capture{};
+        ScopedEngineSyncLifecycleObserver lifecycle_scope(&capture);
+        ServerEngineSmokeGame game{};
+
+        {
+            karma::app::server::Engine engine{};
+            karma::app::server::EngineConfig config{};
+            config.physics_backend = backend;
+            config.enable_audio = false;
+            config.target_tick_hz = 1000.0f;
+            config.max_substeps = 1;
+            engine.start(game, config);
+            if (!engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server engine failed to start for shutdown lifecycle smoke check\n";
+                return false;
+            }
+
+            engine.requestStop();
+            engine.tick();
+            if (engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server engine still running after first requestStop+tick\n";
+                return false;
+            }
+            if (game.tick_calls != 0 || game.shutdown_calls != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server requestStop+tick unexpectedly advanced callbacks before teardown\n";
+                return false;
+            }
+            if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server requestStop+tick reset sync before teardown\n";
+                return false;
+            }
+
+            engine.requestStop();
+            engine.tick();
+            if (engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server engine still running after repeated requestStop+tick\n";
+                return false;
+            }
+            if (game.tick_calls != 0 || game.shutdown_calls != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server repeated requestStop+tick unexpectedly advanced callbacks before teardown\n";
+                return false;
+            }
+            if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " server repeated requestStop+tick reset sync before teardown\n";
+                return false;
+            }
+        }
+
+        if (game.start_calls != 1 || game.tick_calls != 0 || game.shutdown_calls != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server requestStop+tick callbacks not deterministic\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::CreateSucceeded) != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server requestStop+tick lifecycle missing sync-create event\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server requestStop+tick lifecycle missing deterministic sync-reset event\n";
+            return false;
+        }
+        if (!capture.hasResetWhilePhysicsInitialized()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server requestStop+tick lifecycle reset was not observed before physics shutdown\n";
+            return false;
+        }
+        if (!capture.hasCreateBeforeReset()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server requestStop+tick lifecycle create/reset ordering was not deterministic\n";
+            return false;
+        }
+    }
+
+    // Server repeated start/stop lifecycle cycling: each cycle preserves Phase 5g callback semantics and deterministic sync
+    // create/reset pairing.
+    {
+        constexpr int kCycleCount = 2;
+        EngineSyncLifecycleCapture capture{};
+        ScopedEngineSyncLifecycleObserver lifecycle_scope(&capture);
+        int aggregate_start_calls = 0;
+        int aggregate_tick_calls = 0;
+        int aggregate_shutdown_calls = 0;
+
+        for (int cycle = 0; cycle < kCycleCount; ++cycle) {
+            ServerEngineSmokeGame game{};
+
+            {
+                karma::app::server::Engine engine{};
+                karma::app::server::EngineConfig config{};
+                config.physics_backend = backend;
+                config.enable_audio = false;
+                config.target_tick_hz = 1000.0f;
+                config.max_substeps = 1;
+                engine.start(game, config);
+                if (!engine.isRunning()) {
+                    std::cerr << "backend=" << BackendKindName(backend)
+                              << " server cycle " << cycle
+                              << " failed to reach running state for repeated lifecycle cycling\n";
+                    return false;
+                }
+
+                engine.requestStop();
+                engine.tick();
+                if (engine.isRunning()) {
+                    std::cerr << "backend=" << BackendKindName(backend)
+                              << " server cycle " << cycle
+                              << " still running after requestStop+tick in repeated lifecycle cycling\n";
+                    return false;
+                }
+                if (game.tick_calls != 0 || game.shutdown_calls != 0) {
+                    std::cerr << "backend=" << BackendKindName(backend)
+                              << " server cycle " << cycle
+                              << " requestStop+tick advanced callbacks before teardown in repeated lifecycle cycling\n";
+                    return false;
+                }
+                if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != cycle) {
+                    std::cerr << "backend=" << BackendKindName(backend)
+                              << " server cycle " << cycle
+                              << " observed premature sync reset before teardown in repeated lifecycle cycling\n";
+                    return false;
+                }
+            }
+
+            aggregate_start_calls += game.start_calls;
+            aggregate_tick_calls += game.tick_calls;
+            aggregate_shutdown_calls += game.shutdown_calls;
+        }
+
+        if (aggregate_start_calls != kCycleCount || aggregate_tick_calls != 0
+            || aggregate_shutdown_calls != kCycleCount) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server repeated lifecycle cycling callbacks were not deterministic\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::CreateSucceeded) != kCycleCount) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server repeated lifecycle cycling missing sync-create events\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != kCycleCount) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server repeated lifecycle cycling missing sync-reset events\n";
+            return false;
+        }
+        if (!capture.hasResetWhilePhysicsInitialized()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server repeated lifecycle cycling reset was not observed before physics shutdown\n";
+            return false;
+        }
+        if (!capture.hasDeterministicCreateResetPairs(kCycleCount)) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " server repeated lifecycle cycling create/reset pairing was not deterministic\n";
+            return false;
+        }
+    }
+
+    // Client init-failure path: failed physics init must not leave sync active or start the game loop.
+    {
+        EngineSyncLifecycleCapture capture{};
+        ScopedEngineSyncLifecycleObserver lifecycle_scope(&capture);
+
+        {
+            karma::app::client::Engine engine{};
+            ClientEngineSmokeGame game{};
+            karma::app::client::EngineConfig config{};
+            config.enable_audio = false;
+            config.physics_backend = kInvalidBackend;
+            config.window.title = "phase5c-client-init-failure-smoke";
+            config.window.width = 64;
+            config.window.height = 64;
+            engine.start(game, config);
+            if (engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client engine unexpectedly running after physics init failure\n";
+                return false;
+            }
+            engine.requestStop();
+            engine.tick();
+
+            if (game.start_calls != 0 || game.update_calls != 0 || game.shutdown_calls != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client game callbacks fired during init-failure path\n";
+                return false;
+            }
+        }
+
+        if (capture.countPhase(EngineSyncLifecyclePhase::CreateSucceeded) != 0
+            || capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 0) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client init-failure path left unexpected sync lifecycle activity\n";
+            return false;
+        }
+    }
+
+    // Client normal-shutdown path: sync reset is invoked once before physics shutdown.
+    {
+        EngineSyncLifecycleCapture capture{};
+        ScopedEngineSyncLifecycleObserver lifecycle_scope(&capture);
+        ClientEngineSmokeGame game{};
+
+        {
+            karma::app::client::Engine engine{};
+            karma::app::client::EngineConfig config{};
+            config.enable_audio = false;
+            config.physics_backend = backend;
+            config.render_backend = static_cast<karma::renderer::backend::BackendKind>(999);
+            config.window.title = "phase5d-client-shutdown-smoke";
+            config.window.width = 64;
+            config.window.height = 64;
+            engine.start(game, config);
+            if (engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client engine unexpectedly running for deterministic shutdown lifecycle smoke check\n";
+                return false;
+            }
+            engine.requestStop();
+            engine.tick();
+        }
+
+        if (game.start_calls != 0 || game.update_calls != 0 || game.shutdown_calls != 0) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client shutdown lifecycle callbacks not deterministic for non-running path\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::CreateSucceeded) != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client shutdown lifecycle missing sync-create event\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client shutdown lifecycle missing deterministic sync-reset event\n";
+            return false;
+        }
+        if (!capture.hasResetWhilePhysicsInitialized()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client shutdown lifecycle reset was not observed before physics shutdown\n";
+            return false;
+        }
+        if (!capture.hasCreateBeforeReset()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client shutdown lifecycle create/reset ordering was not deterministic for non-running path\n";
+            return false;
+        }
+    }
+
+    // Client running-path shutdown: engine reaches running state and then resets sync deterministically on shutdown.
+    {
+        EngineSyncLifecycleCapture capture{};
+        ScopedEngineSyncLifecycleObserver lifecycle_scope(&capture);
+        ClientEngineSmokeGame game{};
+
+        {
+            karma::app::client::Engine engine{};
+            karma::app::client::EngineConfig config{};
+            config.enable_audio = false;
+            config.physics_backend = backend;
+            config.window.title = "phase5e-client-running-shutdown-smoke";
+            config.window.width = 64;
+            config.window.height = 64;
+            engine.start(game, config);
+            if (!engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client engine failed to reach running state for running-path shutdown smoke check\n";
+                return false;
+            }
+        }
+
+        if (game.start_calls != 1 || game.shutdown_calls != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client running-path shutdown callbacks were not deterministic\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::CreateSucceeded) != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client running-path shutdown missing sync-create event\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client running-path shutdown missing deterministic sync-reset event\n";
+            return false;
+        }
+        if (!capture.hasResetWhilePhysicsInitialized()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client running-path shutdown reset was not observed before physics shutdown\n";
+            return false;
+        }
+        if (!capture.hasCreateBeforeReset()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client running-path shutdown create/reset ordering was not deterministic\n";
+            return false;
+        }
+    }
+
+    // Client running-path repeated requestStop()+tick attempts remain idempotent for callback/lifecycle semantics.
+    {
+        EngineSyncLifecycleCapture capture{};
+        ScopedEngineSyncLifecycleObserver lifecycle_scope(&capture);
+        ClientEngineSmokeGame game{};
+
+        {
+            karma::app::client::Engine engine{};
+            karma::app::client::EngineConfig config{};
+            config.enable_audio = false;
+            config.physics_backend = backend;
+            config.window.title = "phase5f-client-repeated-stop-idempotence-smoke";
+            config.window.width = 64;
+            config.window.height = 64;
+            engine.start(game, config);
+            if (!engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client engine failed to reach running state for repeated-stop idempotence smoke check\n";
+                return false;
+            }
+
+            engine.requestStop();
+            engine.tick();
+            if (engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client engine still running after first requestStop+tick attempt\n";
+                return false;
+            }
+            if (game.update_calls != 0 || game.shutdown_calls != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client requestStop+tick unexpectedly advanced callbacks before teardown\n";
+                return false;
+            }
+            if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client requestStop+tick reset sync before teardown\n";
+                return false;
+            }
+
+            engine.requestStop();
+            engine.tick();
+            if (engine.isRunning()) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client engine still running after repeated requestStop+tick attempt\n";
+                return false;
+            }
+            if (game.update_calls != 0 || game.shutdown_calls != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client repeated requestStop+tick unexpectedly advanced callbacks before teardown\n";
+                return false;
+            }
+            if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 0) {
+                std::cerr << "backend=" << BackendKindName(backend)
+                          << " client repeated requestStop+tick reset sync before teardown\n";
+                return false;
+            }
+        }
+
+        if (game.start_calls != 1 || game.update_calls != 0 || game.shutdown_calls != 0) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client requestStop+tick callbacks were not deterministic\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::CreateSucceeded) != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client requestStop+tick lifecycle missing sync-create event\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != 1) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client requestStop+tick lifecycle missing deterministic sync-reset event\n";
+            return false;
+        }
+        if (!capture.hasResetWhilePhysicsInitialized()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client requestStop+tick lifecycle reset was not observed before physics shutdown\n";
+            return false;
+        }
+        if (!capture.hasCreateBeforeReset()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client requestStop+tick lifecycle create/reset ordering was not deterministic\n";
+            return false;
+        }
+    }
+
+    // Client repeated start/stop lifecycle cycling: each running-path cycle preserves Phase 5g requestStop()+tick callback
+    // semantics and deterministic sync lifecycle pairing.
+    {
+        constexpr int kCycleCount = 2;
+        EngineSyncLifecycleCapture capture{};
+        ScopedEngineSyncLifecycleObserver lifecycle_scope(&capture);
+        int aggregate_start_calls = 0;
+        int aggregate_update_calls = 0;
+        int aggregate_shutdown_calls = 0;
+
+        for (int cycle = 0; cycle < kCycleCount; ++cycle) {
+            ClientEngineSmokeGame game{};
+
+            {
+                karma::app::client::Engine engine{};
+                karma::app::client::EngineConfig config{};
+                config.enable_audio = false;
+                config.physics_backend = backend;
+                config.window.title = "phase5h-client-start-stop-cycle-" + std::to_string(cycle);
+                config.window.width = 64;
+                config.window.height = 64;
+                engine.start(game, config);
+                if (!engine.isRunning()) {
+                    std::cerr << "backend=" << BackendKindName(backend)
+                              << " client cycle " << cycle
+                              << " failed to reach running state for repeated lifecycle cycling\n";
+                    return false;
+                }
+
+                engine.requestStop();
+                engine.tick();
+                if (engine.isRunning()) {
+                    std::cerr << "backend=" << BackendKindName(backend)
+                              << " client cycle " << cycle
+                              << " still running after requestStop+tick in repeated lifecycle cycling\n";
+                    return false;
+                }
+                if (game.update_calls != 0 || game.shutdown_calls != 0) {
+                    std::cerr << "backend=" << BackendKindName(backend)
+                              << " client cycle " << cycle
+                              << " requestStop+tick advanced callbacks before teardown in repeated lifecycle cycling\n";
+                    return false;
+                }
+                if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != cycle) {
+                    std::cerr << "backend=" << BackendKindName(backend)
+                              << " client cycle " << cycle
+                              << " observed premature sync reset before teardown in repeated lifecycle cycling\n";
+                    return false;
+                }
+            }
+
+            aggregate_start_calls += game.start_calls;
+            aggregate_update_calls += game.update_calls;
+            aggregate_shutdown_calls += game.shutdown_calls;
+        }
+
+        if (aggregate_start_calls != kCycleCount || aggregate_update_calls != 0 || aggregate_shutdown_calls != 0) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client repeated lifecycle cycling callbacks were not deterministic\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::CreateSucceeded) != kCycleCount) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client repeated lifecycle cycling missing sync-create events\n";
+            return false;
+        }
+        if (capture.countPhase(EngineSyncLifecyclePhase::ResetApplied) != kCycleCount) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client repeated lifecycle cycling missing sync-reset events\n";
+            return false;
+        }
+        if (!capture.hasResetWhilePhysicsInitialized()) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client repeated lifecycle cycling reset was not observed before physics shutdown\n";
+            return false;
+        }
+        if (!capture.hasDeterministicCreateResetPairs(kCycleCount)) {
+            std::cerr << "backend=" << BackendKindName(backend)
+                      << " client repeated lifecycle cycling create/reset pairing was not deterministic\n";
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool RunFacadeScaffoldChecks(BackendKind backend) {
     const std::string static_mesh_asset = ResolveTestAssetPath("demo/worlds/r55man-2/world.glb");
     const std::string missing_mesh_asset = ResolveTestAssetPath("demo/worlds/phase4y-missing-static-mesh.glb");
@@ -6927,6 +7625,9 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         if (!RunEngineFixedStepSyncValidationChecks(backend)) {
+            return EXIT_FAILURE;
+        }
+        if (!RunAppEngineSyncLifecycleSmokeChecks(backend)) {
             return EXIT_FAILURE;
         }
         if (!RunRepeatabilityChecks(backend)) {

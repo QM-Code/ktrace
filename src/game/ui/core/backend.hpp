@@ -13,7 +13,7 @@
 #include "karma/app/ui_context.h"
 #include "ui/console/console_interface.hpp"
 
-namespace platform {
+namespace window {
 class Window;
 }
 

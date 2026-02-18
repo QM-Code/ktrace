@@ -1,3 +1,4 @@
+#include "karma/window/backend.hpp"
 #include "karma/window/window.hpp"
 
 #include "window/backends/factory_internal.hpp"

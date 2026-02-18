@@ -5,9 +5,10 @@
 #include "karma/renderer/device.hpp"
 #include "karma/renderer/layers.hpp"
 #include "karma/renderer/render_system.hpp"
-#include "ui/backend.hpp"
+#include "ui/backends/driver.hpp"
 
 #include <cmath>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -63,27 +64,11 @@ renderer::MeshData BuildOverlayQuadMesh() {
     return mesh;
 }
 
-const char* BackendName(Backend backend) {
-    switch (backend) {
-        case Backend::ImGui:
-            return "imgui";
-        case Backend::RmlUi:
-            return "rmlui";
-        default:
-            return "unknown";
+backend::BackendKind ParseBackendKindFromConfig(backend::BackendKind current) {
+    std::string current_name = backend::BackendKindName(current);
+    if (current_name == "unknown") {
+        current_name = "rmlui";
     }
-}
-
-backend::BackendKind PreferredKindFromMode(Backend backend) {
-    switch (backend) {
-        case Backend::ImGui: return backend::BackendKind::ImGui;
-        case Backend::RmlUi: return backend::BackendKind::RmlUi;
-        default: return backend::BackendKind::Auto;
-    }
-}
-
-backend::BackendKind ParseBackendKindFromConfig(Backend current) {
-    const std::string current_name = current == Backend::ImGui ? "imgui" : "rmlui";
     const std::string configured = common::config::ReadStringConfig("ui.backend", current_name);
     const auto parsed = backend::ParseBackendKind(configured);
     if (parsed) {
@@ -93,29 +78,98 @@ backend::BackendKind ParseBackendKindFromConfig(Backend current) {
                 "UiSystem: unknown ui.backend '{}', keeping '{}'",
                 configured,
                 current_name);
-    return PreferredKindFromMode(current);
-}
-
-std::unique_ptr<backend::BackendDriver, BackendDriverDeleter> adopt_backend(
-    std::unique_ptr<backend::BackendDriver> backend) {
-    return std::unique_ptr<backend::BackendDriver, BackendDriverDeleter>(backend.release());
+    return current;
 }
 
 } // namespace
 
-UiSystem::~UiSystem() = default;
-void BackendDriverDeleter::operator()(backend::BackendDriver* backend) const { delete backend; }
+class UiSystem::Impl {
+ public:
+    renderer::GraphicsDevice* graphics = nullptr;
+    std::unique_ptr<backend::BackendDriver> backend_impl{};
+    renderer::MeshId overlay_mesh = renderer::kInvalidMesh;
+    renderer::MaterialId overlay_material = renderer::kInvalidMaterial;
+    uint64_t overlay_texture_revision = 0;
+    float overlay_distance = 1.0f;
+    float overlay_width = 1.2f;
+    float overlay_height = 0.7f;
+    float frame_dt = 0.0f;
+    backend::BackendKind requested_backend = backend::BackendKind::RmlUi;
+    bool backend_forced = false;
+    bool initialized = false;
+    bool capture_input_enabled = false;
+    bool overlay_fallback_enabled = true;
+    renderer::MeshData::TextureData fallback_texture{};
+    uint64_t fallback_texture_revision = 1;
+    bool fallback_texture_ready = false;
+    std::string overlay_source_name = "none";
+    bool wants_mouse_capture = false;
+    bool wants_keyboard_capture = false;
+    std::vector<UiSystem::ImGuiDrawCallback> imgui_draw_callbacks{};
+    std::vector<UiSystem::RmlUiDrawCallback> rmlui_draw_callbacks{};
+    std::vector<UiSystem::TextPanel> text_panels{};
+};
 
-void UiSystem::setBackend(Backend backend) {
-    backend_ = backend;
-    backend_forced_ = true;
+UiSystem::UiSystem()
+    : impl_(std::make_unique<Impl>()) {}
+
+UiSystem::~UiSystem() = default;
+
+void UiSystem::setBackend(backend::BackendKind backend_kind) {
+    if (!impl_) {
+        impl_ = std::make_unique<Impl>();
+    }
+    impl_->requested_backend = backend_kind;
+    impl_->backend_forced = true;
+}
+
+backend::BackendKind UiSystem::backend() const {
+    if (!impl_) {
+        return backend::BackendKind::Auto;
+    }
+    return impl_->requested_backend;
+}
+
+bool UiSystem::wantsMouseCapture() const {
+    if (!impl_) {
+        return false;
+    }
+    return impl_->wants_mouse_capture;
+}
+
+bool UiSystem::wantsKeyboardCapture() const {
+    if (!impl_) {
+        return false;
+    }
+    return impl_->wants_keyboard_capture;
+}
+
+size_t UiSystem::imguiDrawCount() const {
+    if (!impl_) {
+        return 0;
+    }
+    return impl_->imgui_draw_callbacks.size();
+}
+
+size_t UiSystem::rmluiDrawCount() const {
+    if (!impl_) {
+        return 0;
+    }
+    return impl_->rmlui_draw_callbacks.size();
+}
+
+size_t UiSystem::textPanelCount() const {
+    if (!impl_) {
+        return 0;
+    }
+    return impl_->text_panels.size();
 }
 
 UiBackendKind UiSystem::backendKind() const {
-    if (!backend_impl_) {
+    if (!impl_ || !impl_->backend_impl) {
         return UiBackendKind::None;
     }
-    const std::string_view name = backend_impl_->name();
+    const std::string_view name = impl_->backend_impl->name();
     if (name == "imgui") {
         return UiBackendKind::ImGui;
     }
@@ -129,147 +183,168 @@ void UiSystem::addImGuiDraw(ImGuiDrawCallback callback) {
     if (!callback) {
         return;
     }
-    imgui_draw_callbacks_.push_back(std::move(callback));
+    if (!impl_) {
+        impl_ = std::make_unique<Impl>();
+    }
+    impl_->imgui_draw_callbacks.push_back(std::move(callback));
 }
 
 void UiSystem::addRmlUiDraw(RmlUiDrawCallback callback) {
     if (!callback) {
         return;
     }
-    rmlui_draw_callbacks_.push_back(std::move(callback));
+    if (!impl_) {
+        impl_ = std::make_unique<Impl>();
+    }
+    impl_->rmlui_draw_callbacks.push_back(std::move(callback));
 }
 
 void UiSystem::addTextPanel(TextPanel panel) {
     if (panel.title.empty() && panel.lines.empty()) {
         return;
     }
-    text_panels_.push_back(std::move(panel));
+    if (!impl_) {
+        impl_ = std::make_unique<Impl>();
+    }
+    impl_->text_panels.push_back(std::move(panel));
 }
 
 void UiSystem::init(renderer::GraphicsDevice& graphics) {
-    if (initialized_) {
+    if (!impl_) {
+        impl_ = std::make_unique<Impl>();
+    }
+    auto& state = *impl_;
+    if (state.initialized) {
         return;
     }
-    initialized_ = true;
-    graphics_ = &graphics;
-    overlay_texture_revision_ = 0;
-    overlay_source_name_ = "none";
-    wants_mouse_capture_ = false;
-    wants_keyboard_capture_ = false;
-    imgui_draw_callbacks_.clear();
-    rmlui_draw_callbacks_.clear();
-    text_panels_.clear();
+    state.initialized = true;
+    state.graphics = &graphics;
+    state.overlay_texture_revision = 0;
+    state.overlay_source_name = "none";
+    state.wants_mouse_capture = false;
+    state.wants_keyboard_capture = false;
+    state.imgui_draw_callbacks.clear();
+    state.rmlui_draw_callbacks.clear();
+    state.text_panels.clear();
 
     const backend::BackendKind preferred_backend =
-        backend_forced_ ? PreferredKindFromMode(backend_) : ParseBackendKindFromConfig(backend_);
-    if (preferred_backend == backend::BackendKind::ImGui) {
-        backend_ = Backend::ImGui;
-    } else if (preferred_backend == backend::BackendKind::RmlUi) {
-        backend_ = Backend::RmlUi;
-    }
-    capture_input_enabled_ = common::config::ReadBoolConfig({"ui.captureInput"}, false);
-    overlay_fallback_enabled_ = common::config::ReadBoolConfig({"ui.overlayFallback.Enabled"}, true);
-    overlay_distance_ = common::config::ReadFloatConfig({"ui.overlayFallback.Distance", "ui.overlayTest.Distance"}, 0.75f);
-    overlay_width_ = common::config::ReadFloatConfig({"ui.overlayFallback.Width", "ui.overlayTest.Width"}, 1.2f);
-    overlay_height_ = common::config::ReadFloatConfig({"ui.overlayFallback.Height", "ui.overlayTest.Height"}, 0.7f);
+        state.backend_forced ? state.requested_backend : ParseBackendKindFromConfig(state.requested_backend);
+    state.requested_backend = preferred_backend;
+    state.capture_input_enabled = common::config::ReadBoolConfig({"ui.captureInput"}, false);
+    state.overlay_fallback_enabled = common::config::ReadBoolConfig({"ui.overlayFallback.Enabled"}, true);
+    state.overlay_distance = common::config::ReadFloatConfig({"ui.overlayFallback.Distance", "ui.overlayTest.Distance"}, 0.75f);
+    state.overlay_width = common::config::ReadFloatConfig({"ui.overlayFallback.Width", "ui.overlayTest.Width"}, 1.2f);
+    state.overlay_height = common::config::ReadFloatConfig({"ui.overlayFallback.Height", "ui.overlayTest.Height"}, 0.7f);
 
-    overlay_mesh_ = graphics.createMesh(BuildOverlayQuadMesh());
-    if (overlay_mesh_ == renderer::kInvalidMesh) {
+    state.overlay_mesh = graphics.createMesh(BuildOverlayQuadMesh());
+    if (state.overlay_mesh == renderer::kInvalidMesh) {
         KARMA_TRACE("ui.system", "UiSystem: failed to create overlay mesh");
     }
 
     backend::BackendKind selected_backend = backend::BackendKind::Auto;
-    backend_impl_ = adopt_backend(backend::CreateBackend(preferred_backend, &selected_backend));
-    if (backend_impl_) {
-        if (!backend_impl_->init()) {
-            KARMA_TRACE("ui.system", "UiSystem: backend '{}' init failed", backend_impl_->name());
+    state.backend_impl = backend::CreateBackend(preferred_backend, &selected_backend);
+    if (state.backend_impl) {
+        if (!state.backend_impl->init()) {
+            KARMA_TRACE("ui.system", "UiSystem: backend '{}' init failed", state.backend_impl->name());
             selected_backend = backend::BackendKind::Auto;
-            backend_impl_ = adopt_backend(
-                backend::CreateBackend(backend::BackendKind::Software, &selected_backend));
-            if (backend_impl_ && backend_impl_->init()) {
+            state.backend_impl = backend::CreateBackend(backend::BackendKind::Software, &selected_backend);
+            if (state.backend_impl && state.backend_impl->init()) {
                 KARMA_TRACE("ui.system",
                             "UiSystem: fallback backend selected '{}'",
-                            backend_impl_->name());
+                            state.backend_impl->name());
             } else {
-                backend_impl_.reset();
+                state.backend_impl.reset();
             }
         } else {
             KARMA_TRACE("ui.system",
                         "UiSystem: backend selected '{}', requested='{}', resolved='{}', captureInput={}",
-                        backend_impl_->name(),
-                        BackendName(backend_),
+                        state.backend_impl->name(),
+                        backend::BackendKindName(state.requested_backend),
                         backend::BackendKindName(selected_backend),
-                        capture_input_enabled_ ? 1 : 0);
+                        state.capture_input_enabled ? 1 : 0);
         }
     }
 }
 
 void UiSystem::shutdown(renderer::GraphicsDevice& graphics) {
-    if (backend_impl_) {
-        backend_impl_->shutdown();
-        backend_impl_.reset();
+    if (!impl_) {
+        return;
+    }
+    auto& state = *impl_;
+
+    if (state.backend_impl) {
+        state.backend_impl->shutdown();
+        state.backend_impl.reset();
     }
 
-    if (overlay_material_ != renderer::kInvalidMaterial) {
-        graphics.destroyMaterial(overlay_material_);
-        overlay_material_ = renderer::kInvalidMaterial;
+    if (state.overlay_material != renderer::kInvalidMaterial) {
+        graphics.destroyMaterial(state.overlay_material);
+        state.overlay_material = renderer::kInvalidMaterial;
     }
-    if (overlay_mesh_ != renderer::kInvalidMesh) {
-        graphics.destroyMesh(overlay_mesh_);
-        overlay_mesh_ = renderer::kInvalidMesh;
+    if (state.overlay_mesh != renderer::kInvalidMesh) {
+        graphics.destroyMesh(state.overlay_mesh);
+        state.overlay_mesh = renderer::kInvalidMesh;
     }
 
-    fallback_texture_ = renderer::MeshData::TextureData{};
-    fallback_texture_ready_ = false;
-    overlay_texture_revision_ = 0;
-    overlay_source_name_ = "none";
-    wants_mouse_capture_ = false;
-    wants_keyboard_capture_ = false;
-    imgui_draw_callbacks_.clear();
-    rmlui_draw_callbacks_.clear();
-    text_panels_.clear();
-    graphics_ = nullptr;
-    initialized_ = false;
+    state.fallback_texture = renderer::MeshData::TextureData{};
+    state.fallback_texture_ready = false;
+    state.overlay_texture_revision = 0;
+    state.overlay_source_name = "none";
+    state.wants_mouse_capture = false;
+    state.wants_keyboard_capture = false;
+    state.imgui_draw_callbacks.clear();
+    state.rmlui_draw_callbacks.clear();
+    state.text_panels.clear();
+    state.graphics = nullptr;
+    state.initialized = false;
 }
 
 void UiSystem::beginFrame(float dt, const std::vector<window::Event>& events) {
-    frame_dt_ = dt;
-    imgui_draw_callbacks_.clear();
-    rmlui_draw_callbacks_.clear();
-    text_panels_.clear();
-    if (backend_impl_) {
-        backend_impl_->beginFrame(dt, events);
+    if (!impl_) {
+        impl_ = std::make_unique<Impl>();
+    }
+    auto& state = *impl_;
+    state.frame_dt = dt;
+    state.imgui_draw_callbacks.clear();
+    state.rmlui_draw_callbacks.clear();
+    state.text_panels.clear();
+    if (state.backend_impl) {
+        state.backend_impl->beginFrame(dt, events);
     }
 }
 
 void UiSystem::update(renderer::RenderSystem& render) {
-    (void)frame_dt_;
+    if (!impl_) {
+        return;
+    }
+    auto& state = *impl_;
+    (void)state.frame_dt;
 
-    if (!initialized_ || !graphics_ || overlay_mesh_ == renderer::kInvalidMesh) {
+    if (!state.initialized || !state.graphics || state.overlay_mesh == renderer::kInvalidMesh) {
         return;
     }
 
     backend::OverlayFrame frame{};
-    if (backend_impl_) {
-        backend_impl_->build(imgui_draw_callbacks_, rmlui_draw_callbacks_, text_panels_, frame);
+    if (state.backend_impl) {
+        state.backend_impl->build(state.imgui_draw_callbacks, state.rmlui_draw_callbacks, state.text_panels, frame);
     }
-    const bool prev_mouse_capture = wants_mouse_capture_;
-    const bool prev_keyboard_capture = wants_keyboard_capture_;
-    wants_mouse_capture_ = capture_input_enabled_ ? frame.wants_mouse_capture : false;
-    wants_keyboard_capture_ = capture_input_enabled_ ? frame.wants_keyboard_capture : false;
-    if (prev_mouse_capture != wants_mouse_capture_ ||
-        prev_keyboard_capture != wants_keyboard_capture_) {
+    const bool prev_mouse_capture = state.wants_mouse_capture;
+    const bool prev_keyboard_capture = state.wants_keyboard_capture;
+    state.wants_mouse_capture = state.capture_input_enabled ? frame.wants_mouse_capture : false;
+    state.wants_keyboard_capture = state.capture_input_enabled ? frame.wants_keyboard_capture : false;
+    if (prev_mouse_capture != state.wants_mouse_capture ||
+        prev_keyboard_capture != state.wants_keyboard_capture) {
         KARMA_TRACE("ui.system",
                     "UiSystem: capture mouse={} keyboard={}",
-                    wants_mouse_capture_,
-                    wants_keyboard_capture_);
+                    state.wants_mouse_capture,
+                    state.wants_keyboard_capture);
     }
 
     const renderer::MeshData::TextureData* active_texture = nullptr;
     uint64_t active_revision = 0;
-    float distance = overlay_distance_;
-    float width = overlay_width_;
-    float height = overlay_height_;
+    float distance = state.overlay_distance;
+    float width = state.overlay_width;
+    float height = state.overlay_height;
     std::string source = "none";
 
     if (frame.texture && !frame.texture->pixels.empty()) {
@@ -278,14 +353,14 @@ void UiSystem::update(renderer::RenderSystem& render) {
         distance = frame.distance;
         width = frame.width;
         height = frame.height;
-        source = backend_impl_ ? backend_impl_->name() : "backend";
-    } else if (overlay_fallback_enabled_ && frame.allow_fallback) {
-        if (!fallback_texture_ready_) {
-            fallback_texture_ = BuildFallbackTexture(64, 64);
-            fallback_texture_ready_ = true;
+        source = state.backend_impl ? state.backend_impl->name() : "backend";
+    } else if (state.overlay_fallback_enabled && frame.allow_fallback) {
+        if (!state.fallback_texture_ready) {
+            state.fallback_texture = BuildFallbackTexture(64, 64);
+            state.fallback_texture_ready = true;
         }
-        active_texture = &fallback_texture_;
-        active_revision = fallback_texture_revision_;
+        active_texture = &state.fallback_texture;
+        active_revision = state.fallback_texture_revision;
         source = "fallback";
     } else {
         return;
@@ -295,31 +370,31 @@ void UiSystem::update(renderer::RenderSystem& render) {
         return;
     }
 
-    if (overlay_material_ == renderer::kInvalidMaterial ||
-        overlay_texture_revision_ != active_revision ||
-        overlay_source_name_ != source) {
-        if (overlay_material_ != renderer::kInvalidMaterial) {
-            graphics_->destroyMaterial(overlay_material_);
-            overlay_material_ = renderer::kInvalidMaterial;
+    if (state.overlay_material == renderer::kInvalidMaterial ||
+        state.overlay_texture_revision != active_revision ||
+        state.overlay_source_name != source) {
+        if (state.overlay_material != renderer::kInvalidMaterial) {
+            state.graphics->destroyMaterial(state.overlay_material);
+            state.overlay_material = renderer::kInvalidMaterial;
         }
         renderer::MaterialDesc material{};
         material.base_color = {1.0f, 1.0f, 1.0f, 1.0f};
         material.albedo = *active_texture;
         material.alpha_mode = renderer::MaterialAlphaMode::Blend;
         material.double_sided = true;
-        overlay_material_ = graphics_->createMaterial(material);
-        if (overlay_material_ == renderer::kInvalidMaterial) {
+        state.overlay_material = state.graphics->createMaterial(material);
+        if (state.overlay_material == renderer::kInvalidMaterial) {
             KARMA_TRACE("ui.system",
                         "UiSystem: failed to create overlay material from '{}'",
                         source);
             return;
         }
-        overlay_texture_revision_ = active_revision;
-        overlay_source_name_ = source;
+        state.overlay_texture_revision = active_revision;
+        state.overlay_source_name = source;
         KARMA_TRACE_CHANGED("ui.system.overlay",
-                            overlay_source_name_,
+                            state.overlay_source_name,
                             "UiSystem: overlay material source='{}'",
-                            overlay_source_name_);
+                            state.overlay_source_name);
     }
 
     const renderer::CameraData& camera = render.camera();
@@ -345,18 +420,18 @@ void UiSystem::update(renderer::RenderSystem& render) {
     transform[3] = glm::vec4(center, 1.0f);
 
     renderer::DrawItem overlay{};
-    overlay.mesh = overlay_mesh_;
-    overlay.material = overlay_material_;
+    overlay.mesh = state.overlay_mesh;
+    overlay.material = state.overlay_material;
     overlay.layer = renderer::kLayerUI;
     overlay.transform = transform;
     render.submit(overlay);
 
     KARMA_TRACE_CHANGED("ui.system.overlay",
-                        overlay_source_name_ + ":" + std::to_string(overlay_mesh_),
+                        state.overlay_source_name + ":" + std::to_string(state.overlay_mesh),
                         "UiSystem: overlay submit source='{}' mesh={} material={} layer={}",
-                        overlay_source_name_,
-                        overlay_mesh_,
-                        overlay_material_,
+                        state.overlay_source_name,
+                        state.overlay_mesh,
+                        state.overlay_material,
                         renderer::kLayerUI);
 }
 

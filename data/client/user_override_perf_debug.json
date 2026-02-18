@@ -1,5 +1,5 @@
 {
-  "platform": {
+  "window": {
     "VSync": false
   },
   "roamingMode": {

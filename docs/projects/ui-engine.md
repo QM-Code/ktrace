@@ -16,7 +16,8 @@ Port and stabilize BZ3 UI behavior in `m-rewrite` while preserving engine owners
 4. Game owns UI content/state mapping and gameplay-to-UI translation.
 
 ## Owned Paths
-- `m-rewrite/src/engine/ui/backend.hpp`
+- `m-rewrite/include/karma/ui/backend.hpp`
+- `m-rewrite/src/engine/ui/backends/driver.hpp`
 - `m-rewrite/src/engine/ui/system.cpp`
 - `m-rewrite/src/engine/ui/backends/*`
 - `m-rewrite/include/karma/ui/*`
@@ -24,7 +25,8 @@ Port and stabilize BZ3 UI behavior in `m-rewrite` while preserving engine owners
 
 ## Layout + Naming Convention (Current)
 - Top-level UI runtime plumbing lives at:
-  - `m-rewrite/src/engine/ui/backend.hpp`
+  - `m-rewrite/include/karma/ui/backend.hpp` (public backend selection API)
+  - `m-rewrite/src/engine/ui/backends/driver.hpp` (internal backend driver contract)
   - `m-rewrite/src/engine/ui/system.cpp`
 - Backend-specific implementations live under:
   - `m-rewrite/src/engine/ui/backends/software/*`
@@ -32,10 +34,12 @@ Port and stabilize BZ3 UI behavior in `m-rewrite` while preserving engine owners
   - `m-rewrite/src/engine/ui/backends/rmlui/*`
 - Use directory-scoped filenames with no redundant `ui_` prefixes.
 - Inside backend directories, do not repeat backend names in filenames (for example use `backend.cpp`, `input.cpp`, `markup.cpp`, `cpu_renderer.cpp`, `system_interface.cpp`, `stub.cpp`).
+- Public `UiSystem` header remains boundary-clean and does not expose backend driver internals.
 
 ## Interface Boundaries
 - Inputs: engine frame events + game UI intent.
 - Outputs: backend UI frame output and overlay presentation.
+- Public backend override/config surface is `karma::ui::backend::BackendKind` (`imgui`, `rmlui`; `software` is internal fallback policy).
 - Coordinate before changing:
   - `m-rewrite/src/engine/renderer/*` (overlay integration)
   - `m-rewrite/src/game/client/game/*` and related game UI call sites

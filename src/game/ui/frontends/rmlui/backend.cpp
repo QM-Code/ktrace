@@ -17,9 +17,9 @@
 #include <cmath>
 
 #if defined(KARMA_RENDER_BACKEND_BGFX)
-#include "karma_extras/ui/platform/rmlui/renderer_bgfx.hpp"
+#include "karma_extras/ui/window/rmlui/renderer_bgfx.hpp"
 #elif defined(KARMA_RENDER_BACKEND_DILIGENT)
-#include "karma_extras/ui/platform/rmlui/renderer_diligent.hpp"
+#include "karma_extras/ui/window/rmlui/renderer_diligent.hpp"
 #else
 #error "RmlUi backend requires BGFX or Diligent renderer."
 #endif
@@ -67,7 +67,7 @@ ui::RmlUiPanel *findPanelByKey(const std::vector<std::unique_ptr<ui::RmlUiPanel>
     return nullptr;
 }
 
-class SystemInterface_Platform final : public Rml::SystemInterface {
+class SystemInterface_Window final : public Rml::SystemInterface {
 public:
     void SetWindow(window::Window *window) {
         windowRef = window;
@@ -171,7 +171,7 @@ std::string escapeRmlText(const std::string &text) {
 
 
 struct RmlUiBackend::RmlUiState {
-    SystemInterface_Platform systemInterface;
+    SystemInterface_Window systemInterface;
 #if defined(KARMA_RENDER_BACKEND_BGFX)
     RenderInterface_BGFX renderInterface;
 #elif defined(KARMA_RENDER_BACKEND_DILIGENT)
