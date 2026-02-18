@@ -1095,7 +1095,7 @@ Ready for broad multi-agent parallelization when all are true:
 ---
 
 ## References
-- UI integration project: `docs/projects/ui-integration.md`
+- UI engine project: `docs/projects/ui-engine.md`
 - Gameplay migration project (includes netcode lane): `docs/projects/gameplay-migration.md`
 - Engine backend testing governance: `docs/foundation/governance/engine-backend-testing.md`
 - Testing/CI governance: `docs/foundation/governance/testing-ci-governance.md`

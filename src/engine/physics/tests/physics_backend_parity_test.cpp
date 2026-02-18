@@ -3,6 +3,7 @@
 #include "karma/physics/physics_system.hpp"
 #include "karma/physics/world.hpp"
 #include "karma/scene/components.hpp"
+#include "physics/ecs_sync_system.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -20,6 +21,8 @@ using karma::physics_backend::BackendKindName;
 using karma::physics_backend::BodyDesc;
 using karma::physics_backend::BodyId;
 using karma::physics_backend::BodyTransform;
+using karma::physics_backend::CollisionMask;
+using BackendColliderShapeKind = karma::physics_backend::ColliderShapeKind;
 using karma::physics_backend::RaycastHit;
 using karma::physics_backend::CompiledBackends;
 using karma::physics_backend::ParseBackendKind;
@@ -41,6 +44,10 @@ bool NearlyEqualQuat(const glm::quat& lhs, const glm::quat& rhs, float epsilon =
     const glm::quat rhs_norm = glm::normalize(rhs);
     const float dot = std::fabs(glm::dot(lhs_norm, rhs_norm));
     return NearlyEqual(dot, 1.0f, epsilon);
+}
+
+bool EqualCollisionMask(const CollisionMask& lhs, const CollisionMask& rhs) {
+    return lhs.layer == rhs.layer && lhs.collides_with == rhs.collides_with;
 }
 
 bool ContainsBackend(const std::vector<BackendKind>& values, BackendKind needle) {
@@ -182,6 +189,187 @@ bool RunLifecycleChecks(BackendKind backend) {
         return false;
     }
 
+    physics.shutdown();
+    return true;
+}
+
+bool RunColliderShapeAndRuntimePropertyChecks(BackendKind backend) {
+    karma::physics::PhysicsSystem physics;
+    physics.setBackend(backend);
+    physics.init();
+
+    if (!physics.isInitialized()) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " failed to initialize (shape/property check)\n";
+        return false;
+    }
+
+    BodyDesc box_desc{};
+    box_desc.is_static = true;
+    box_desc.collider_shape.kind = BackendColliderShapeKind::Box;
+    box_desc.collider_shape.box_half_extents = glm::vec3(0.75f, 0.4f, 1.2f);
+    box_desc.transform.position = glm::vec3(-2.0f, 1.0f, 0.0f);
+    const BodyId box_body = physics.createBody(box_desc);
+    if (box_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " failed to create box-shape body\n";
+        physics.shutdown();
+        return false;
+    }
+
+    BodyDesc sphere_desc{};
+    sphere_desc.is_static = false;
+    sphere_desc.mass = 1.0f;
+    sphere_desc.collider_shape.kind = BackendColliderShapeKind::Sphere;
+    sphere_desc.collider_shape.sphere_radius = 0.6f;
+    sphere_desc.transform.position = glm::vec3(0.0f, 4.0f, 0.0f);
+    const BodyId sphere_body = physics.createBody(sphere_desc);
+    if (sphere_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " failed to create sphere-shape body\n";
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+
+    BodyDesc capsule_desc{};
+    capsule_desc.is_static = true;
+    capsule_desc.collider_shape.kind = BackendColliderShapeKind::Capsule;
+    capsule_desc.collider_shape.capsule_radius = 0.45f;
+    capsule_desc.collider_shape.capsule_half_height = 0.9f;
+    capsule_desc.transform.position = glm::vec3(2.0f, 1.5f, 0.0f);
+    const BodyId capsule_body = physics.createBody(capsule_desc);
+    if (capsule_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " failed to create capsule-shape body\n";
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+
+    BodyTransform observed{};
+    if (!physics.getBodyTransform(box_body, observed)
+        || !ValidateTransform(observed, box_desc.transform, "box-shape transform", backend)) {
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!physics.getBodyTransform(sphere_body, observed)
+        || !ValidateTransform(observed, sphere_desc.transform, "sphere-shape transform", backend)) {
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!physics.getBodyTransform(capsule_body, observed)
+        || !ValidateTransform(observed, capsule_desc.transform, "capsule-shape transform", backend)) {
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+
+    bool trigger_enabled = false;
+    if (!physics.getBodyTrigger(sphere_body, trigger_enabled) || trigger_enabled) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " trigger default state mismatch (shape/property check)\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!physics.setBodyTrigger(sphere_body, true)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " setBodyTrigger failed for valid body\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!physics.getBodyTrigger(sphere_body, trigger_enabled) || !trigger_enabled) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " trigger roundtrip mismatch after set\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+
+    const CollisionMask default_mask{};
+    CollisionMask observed_mask{};
+    if (!physics.getBodyCollisionMask(sphere_body, observed_mask) || !EqualCollisionMask(observed_mask, default_mask)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " collision mask default mismatch\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+
+    const CollisionMask updated_mask{0x2u, 0x3u};
+    const bool set_mask_result = physics.setBodyCollisionMask(sphere_body, updated_mask);
+    if (!physics.getBodyCollisionMask(sphere_body, observed_mask)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " getBodyCollisionMask failed after runtime set attempt\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+    if (set_mask_result && !EqualCollisionMask(observed_mask, updated_mask)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " collision mask roundtrip mismatch on successful runtime mutation\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+    if (!set_mask_result && !EqualCollisionMask(observed_mask, default_mask)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " collision mask state changed despite failed runtime mutation\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+
+    const CollisionMask invalid_mask{0u, 0xFFFFFFFFu};
+    if (physics.setBodyCollisionMask(sphere_body, invalid_mask)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " setBodyCollisionMask unexpectedly succeeded for invalid mask\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+    const CollisionMask expected_after_invalid = set_mask_result ? updated_mask : default_mask;
+    if (!physics.getBodyCollisionMask(sphere_body, observed_mask)
+        || !EqualCollisionMask(observed_mask, expected_after_invalid)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " collision mask changed after invalid mask rejection\n";
+        physics.destroyBody(capsule_body);
+        physics.destroyBody(sphere_body);
+        physics.destroyBody(box_body);
+        physics.shutdown();
+        return false;
+    }
+
+    physics.destroyBody(capsule_body);
+    physics.destroyBody(sphere_body);
+    physics.destroyBody(box_body);
     physics.shutdown();
     return true;
 }
@@ -414,6 +602,31 @@ bool RunInvalidBodyApiChecks(BackendKind backend) {
         physics.shutdown();
         return false;
     }
+    if (physics.setBodyTrigger(karma::physics_backend::kInvalidBodyId, true)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " setBodyTrigger unexpectedly succeeded for invalid id\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.getBodyTrigger(karma::physics_backend::kInvalidBodyId, gravity_enabled)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " getBodyTrigger unexpectedly succeeded for invalid id\n";
+        physics.shutdown();
+        return false;
+    }
+    CollisionMask mask_out{};
+    if (physics.setBodyCollisionMask(karma::physics_backend::kInvalidBodyId, CollisionMask{})) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " setBodyCollisionMask unexpectedly succeeded for invalid id\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.getBodyCollisionMask(karma::physics_backend::kInvalidBodyId, mask_out)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " getBodyCollisionMask unexpectedly succeeded for invalid id\n";
+        physics.shutdown();
+        return false;
+    }
     physics.destroyBody(karma::physics_backend::kInvalidBodyId);
 
     BodyDesc desc{};
@@ -453,6 +666,30 @@ bool RunInvalidBodyApiChecks(BackendKind backend) {
         physics.shutdown();
         return false;
     }
+    if (physics.setBodyTrigger(bogus, true)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " setBodyTrigger unexpectedly succeeded for unknown id\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.getBodyTrigger(bogus, gravity_enabled)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " getBodyTrigger unexpectedly succeeded for unknown id\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.setBodyCollisionMask(bogus, CollisionMask{})) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " setBodyCollisionMask unexpectedly succeeded for unknown id\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.getBodyCollisionMask(bogus, mask_out)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " getBodyCollisionMask unexpectedly succeeded for unknown id\n";
+        physics.shutdown();
+        return false;
+    }
     physics.destroyBody(bogus);
 
     physics.destroyBody(body);
@@ -477,6 +714,30 @@ bool RunInvalidBodyApiChecks(BackendKind backend) {
     if (physics.setBodyGravityEnabled(body, false)) {
         std::cerr << "backend=" << BackendKindName(backend)
                   << " setBodyGravityEnabled unexpectedly succeeded after destroy\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.setBodyTrigger(body, false)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " setBodyTrigger unexpectedly succeeded after destroy\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.getBodyTrigger(body, gravity_enabled)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " getBodyTrigger unexpectedly succeeded after destroy\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.setBodyCollisionMask(body, CollisionMask{})) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " setBodyCollisionMask unexpectedly succeeded after destroy\n";
+        physics.shutdown();
+        return false;
+    }
+    if (physics.getBodyCollisionMask(body, mask_out)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " getBodyCollisionMask unexpectedly succeeded after destroy\n";
         physics.shutdown();
         return false;
     }
@@ -1828,6 +2089,447 @@ bool RunScenePhysicsComponentContractChecks() {
     return true;
 }
 
+bool RunEcsSyncSystemPolicyChecks(BackendKind backend) {
+    using karma::scene::ColliderIntentComponent;
+    using karma::scene::ColliderReconcileAction;
+    using karma::scene::ColliderShapeKind;
+    using karma::scene::ControllerColliderCompatibility;
+    using karma::scene::PhysicsTransformAuthority;
+    using karma::scene::PhysicsTransformOwnershipComponent;
+    using karma::scene::PlayerControllerIntentComponent;
+    using karma::scene::RigidBodyIntentComponent;
+    using karma::scene::TransformComponent;
+
+    auto make_transform_component = [](const glm::vec3& position) {
+        TransformComponent transform{};
+        transform.local = glm::mat4(1.0f);
+        transform.world = glm::mat4(1.0f);
+        transform.local[3] = glm::vec4(position, 1.0f);
+        transform.world[3] = glm::vec4(position, 1.0f);
+        return transform;
+    };
+    auto world_position = [](const TransformComponent& transform) {
+        return glm::vec3(transform.world[3]);
+    };
+
+    karma::physics::PhysicsSystem physics;
+    physics.setBackend(backend);
+    physics.init();
+    if (!physics.isInitialized()) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " failed to initialize (ecs-sync check)\n";
+        return false;
+    }
+
+    karma::physics::EcsSyncSystem sync(physics);
+    karma::ecs::World world{};
+
+    const auto entity_create = world.createEntity();
+    world.add<TransformComponent>(entity_create, make_transform_component(glm::vec3(0.0f, 3.0f, 0.0f)));
+    world.add<RigidBodyIntentComponent>(entity_create, RigidBodyIntentComponent{});
+    world.add<ColliderIntentComponent>(entity_create, ColliderIntentComponent{});
+    world.add<PhysicsTransformOwnershipComponent>(entity_create, PhysicsTransformOwnershipComponent{});
+
+    sync.preSimulate(world);
+    BodyId created_body = karma::physics_backend::kInvalidBodyId;
+    if (!sync.tryGetRuntimeBody(entity_create, created_body)
+        || created_body == karma::physics_backend::kInvalidBodyId
+        || sync.runtimeBindingCount() != 1u) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync failed to create runtime body for valid entity\n";
+        physics.shutdown();
+        return false;
+    }
+
+    BodyTransform created_snapshot{};
+    if (!sync.tryGetRuntimeTransformSnapshot(entity_create, created_snapshot)
+        || !NearlyEqualVec3(created_snapshot.position, glm::vec3(0.0f, 3.0f, 0.0f), 1e-3f)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync snapshot mismatch after create\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const ColliderIntentComponent before_rebuild = world.get<ColliderIntentComponent>(entity_create);
+    auto* rebuild_collider = world.tryGet<ColliderIntentComponent>(entity_create);
+    rebuild_collider->half_extents.x += 0.4f;
+    if (karma::scene::ClassifyColliderReconcileAction(before_rebuild, *rebuild_collider)
+        != ColliderReconcileAction::RebuildRuntimeShape) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync expected rebuild classification for shape parameter change\n";
+        physics.shutdown();
+        return false;
+    }
+
+    sync.preSimulate(world);
+    BodyId rebuilt_body = karma::physics_backend::kInvalidBodyId;
+    if (!sync.tryGetRuntimeBody(entity_create, rebuilt_body)
+        || rebuilt_body == karma::physics_backend::kInvalidBodyId
+        || rebuilt_body == created_body) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not rebuild runtime body after shape change\n";
+        physics.shutdown();
+        return false;
+    }
+
+    auto* invalid_collider = world.tryGet<ColliderIntentComponent>(entity_create);
+    invalid_collider->half_extents.x = 0.0f;
+    sync.preSimulate(world);
+    if (sync.hasRuntimeBinding(entity_create) || sync.runtimeBindingCount() != 0u) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not teardown runtime body for invalid intent\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const auto entity_mesh = world.createEntity();
+    world.add<TransformComponent>(entity_mesh, make_transform_component(glm::vec3(1.0f, 1.0f, 1.0f)));
+    RigidBodyIntentComponent mesh_static_rigidbody{};
+    mesh_static_rigidbody.dynamic = false;
+    world.add<RigidBodyIntentComponent>(entity_mesh, mesh_static_rigidbody);
+    ColliderIntentComponent mesh_collider{};
+    mesh_collider.shape = ColliderShapeKind::Mesh;
+    mesh_collider.mesh_path = "demo/worlds/phase3-placeholder-static.glb";
+    world.add<ColliderIntentComponent>(entity_mesh, mesh_collider);
+    world.add<PhysicsTransformOwnershipComponent>(entity_mesh, PhysicsTransformOwnershipComponent{});
+
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_mesh)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync failed to create mesh-placeholder runtime body\n";
+        physics.shutdown();
+        return false;
+    }
+
+    auto* mesh_dynamic_flip = world.tryGet<RigidBodyIntentComponent>(entity_mesh);
+    mesh_dynamic_flip->dynamic = true;
+    sync.preSimulate(world);
+    if (sync.hasRuntimeBinding(entity_mesh)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not teardown mesh-placeholder runtime body after unsupported dynamic transition\n";
+        physics.shutdown();
+        return false;
+    }
+
+    mesh_dynamic_flip->dynamic = false;
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_mesh)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not recreate mesh-placeholder runtime body after returning to supported static intent\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const auto entity_enabled_toggle = world.createEntity();
+    world.add<TransformComponent>(entity_enabled_toggle, make_transform_component(glm::vec3(-1.0f, 4.0f, 0.0f)));
+    world.add<RigidBodyIntentComponent>(entity_enabled_toggle, RigidBodyIntentComponent{});
+    world.add<ColliderIntentComponent>(entity_enabled_toggle, ColliderIntentComponent{});
+    world.add<PhysicsTransformOwnershipComponent>(entity_enabled_toggle, PhysicsTransformOwnershipComponent{});
+
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_enabled_toggle)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync failed to create enabled-toggle fixture runtime body\n";
+        physics.shutdown();
+        return false;
+    }
+
+    auto* enabled_toggle_collider = world.tryGet<ColliderIntentComponent>(entity_enabled_toggle);
+    enabled_toggle_collider->enabled = false;
+    sync.preSimulate(world);
+    if (sync.hasRuntimeBinding(entity_enabled_toggle)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not teardown runtime body when collider was disabled\n";
+        physics.shutdown();
+        return false;
+    }
+
+    enabled_toggle_collider->enabled = true;
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_enabled_toggle)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not recreate runtime body when collider was re-enabled\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const auto entity_runtime_properties = world.createEntity();
+    world.add<TransformComponent>(entity_runtime_properties, make_transform_component(glm::vec3(-3.0f, 5.0f, 0.0f)));
+    world.add<RigidBodyIntentComponent>(entity_runtime_properties, RigidBodyIntentComponent{});
+    world.add<ColliderIntentComponent>(entity_runtime_properties, ColliderIntentComponent{});
+    world.add<PhysicsTransformOwnershipComponent>(entity_runtime_properties, PhysicsTransformOwnershipComponent{});
+
+    sync.preSimulate(world);
+    BodyId runtime_properties_body = karma::physics_backend::kInvalidBodyId;
+    if (!sync.tryGetRuntimeBody(entity_runtime_properties, runtime_properties_body)
+        || runtime_properties_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync failed to create runtime-properties fixture body\n";
+        physics.shutdown();
+        return false;
+    }
+
+    auto* runtime_properties_collider = world.tryGet<ColliderIntentComponent>(entity_runtime_properties);
+    runtime_properties_collider->is_trigger = true;
+    sync.preSimulate(world);
+
+    BodyId trigger_updated_body = karma::physics_backend::kInvalidBodyId;
+    if (!sync.tryGetRuntimeBody(entity_runtime_properties, trigger_updated_body)
+        || trigger_updated_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync lost runtime-properties fixture after trigger transition\n";
+        physics.shutdown();
+        return false;
+    }
+
+    bool runtime_trigger_enabled = false;
+    if (!physics.getBodyTrigger(trigger_updated_body, runtime_trigger_enabled) || !runtime_trigger_enabled) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync trigger transition did not update runtime trigger state\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const BodyId pre_filter_update_body = trigger_updated_body;
+    const CollisionMask updated_runtime_mask{0x2u, 0x3u};
+    runtime_properties_collider->mask.layer = updated_runtime_mask.layer;
+    runtime_properties_collider->mask.collides_with = updated_runtime_mask.collides_with;
+    sync.preSimulate(world);
+
+    BodyId post_filter_update_body = karma::physics_backend::kInvalidBodyId;
+    if (!sync.tryGetRuntimeBody(entity_runtime_properties, post_filter_update_body)
+        || post_filter_update_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync lost runtime-properties fixture after filter transition\n";
+        physics.shutdown();
+        return false;
+    }
+
+    if (backend == BackendKind::Jolt && post_filter_update_body == pre_filter_update_body) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync expected deterministic rebuild fallback for unsupported runtime filter mutation\n";
+        physics.shutdown();
+        return false;
+    }
+    if (backend == BackendKind::PhysX && post_filter_update_body != pre_filter_update_body) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync unexpectedly rebuilt body for supported runtime filter mutation\n";
+        physics.shutdown();
+        return false;
+    }
+
+    CollisionMask observed_runtime_mask{};
+    if (!physics.getBodyCollisionMask(post_filter_update_body, observed_runtime_mask)
+        || !EqualCollisionMask(observed_runtime_mask, updated_runtime_mask)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync filter transition did not converge to expected runtime mask\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const auto entity_controller = world.createEntity();
+    world.add<TransformComponent>(entity_controller, make_transform_component(glm::vec3(3.0f, 6.0f, 0.0f)));
+    world.add<RigidBodyIntentComponent>(entity_controller, RigidBodyIntentComponent{});
+    world.add<ColliderIntentComponent>(entity_controller, ColliderIntentComponent{});
+    world.add<PhysicsTransformOwnershipComponent>(entity_controller, PhysicsTransformOwnershipComponent{});
+    world.add<PlayerControllerIntentComponent>(entity_controller, PlayerControllerIntentComponent{});
+
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_controller) || !sync.hasControllerRuntimeBinding(entity_controller)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not create controller runtime metadata for compatible controller intent\n";
+        physics.shutdown();
+        return false;
+    }
+    ControllerColliderCompatibility controller_compatibility = ControllerColliderCompatibility::ColliderMissing;
+    if (!sync.tryGetControllerCompatibility(entity_controller, controller_compatibility)
+        || controller_compatibility != ControllerColliderCompatibility::Compatible) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync controller compatibility metadata mismatch for compatible fixture\n";
+        physics.shutdown();
+        return false;
+    }
+
+    auto* controller_collider = world.tryGet<ColliderIntentComponent>(entity_controller);
+    controller_collider->is_trigger = true;
+    sync.preSimulate(world);
+    if (sync.hasRuntimeBinding(entity_controller) || sync.hasControllerRuntimeBinding(entity_controller)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not teardown runtime/controller metadata on incompatible controller transition\n";
+        physics.shutdown();
+        return false;
+    }
+
+    controller_collider->is_trigger = false;
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_controller) || !sync.hasControllerRuntimeBinding(entity_controller)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not recreate runtime/controller metadata after returning to compatible controller intent\n";
+        physics.shutdown();
+        return false;
+    }
+
+    auto* controller_intent = world.tryGet<PlayerControllerIntentComponent>(entity_controller);
+    controller_intent->enabled = false;
+    sync.preSimulate(world);
+    if (!sync.hasControllerRuntimeBinding(entity_controller)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync unexpectedly removed controller metadata for controller-disabled compatible state\n";
+        physics.shutdown();
+        return false;
+    }
+    if (!sync.tryGetControllerCompatibility(entity_controller, controller_compatibility)
+        || controller_compatibility != ControllerColliderCompatibility::CompatibleControllerDisabled) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync controller-disabled compatibility metadata mismatch\n";
+        physics.shutdown();
+        return false;
+    }
+
+    world.remove<PlayerControllerIntentComponent>(entity_controller);
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_controller) || sync.hasControllerRuntimeBinding(entity_controller)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync controller metadata lifecycle did not update after controller component removal\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const auto entity_push = world.createEntity();
+    world.add<TransformComponent>(entity_push, make_transform_component(glm::vec3(2.0f, 5.0f, 0.0f)));
+    world.add<RigidBodyIntentComponent>(entity_push, RigidBodyIntentComponent{});
+    world.add<ColliderIntentComponent>(entity_push, ColliderIntentComponent{});
+    PhysicsTransformOwnershipComponent scene_authoritative{};
+    scene_authoritative.authority = PhysicsTransformAuthority::SceneAuthoritative;
+    scene_authoritative.scene_transform_dirty = true;
+    scene_authoritative.push_scene_transform_to_physics = true;
+    scene_authoritative.pull_physics_transform_to_scene = false;
+    world.add<PhysicsTransformOwnershipComponent>(entity_push, scene_authoritative);
+
+    sync.preSimulate(world);
+    BodyId push_body = karma::physics_backend::kInvalidBodyId;
+    if (!sync.tryGetRuntimeBody(entity_push, push_body)
+        || push_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync failed to create scene-authoritative runtime body\n";
+        physics.shutdown();
+        return false;
+    }
+
+    auto* push_transform = world.tryGet<TransformComponent>(entity_push);
+    push_transform->local[3] = glm::vec4(2.0f, 7.0f, 0.0f, 1.0f);
+    push_transform->world[3] = glm::vec4(2.0f, 7.0f, 0.0f, 1.0f);
+    auto* push_ownership = world.tryGet<PhysicsTransformOwnershipComponent>(entity_push);
+    push_ownership->scene_transform_dirty = true;
+    sync.preSimulate(world);
+
+    BodyTransform pushed_runtime{};
+    if (!physics.getBodyTransform(push_body, pushed_runtime)
+        || !NearlyEqualVec3(pushed_runtime.position, glm::vec3(2.0f, 7.0f, 0.0f), 5e-2f)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync scene-authoritative push did not update runtime transform\n";
+        physics.shutdown();
+        return false;
+    }
+    if (push_ownership->scene_transform_dirty) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync scene-authoritative push did not clear dirty flag\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const auto entity_pull = world.createEntity();
+    world.add<TransformComponent>(entity_pull, make_transform_component(glm::vec3(4.0f, 10.0f, 0.0f)));
+    RigidBodyIntentComponent pull_rigidbody{};
+    pull_rigidbody.gravity_enabled = false;
+    world.add<RigidBodyIntentComponent>(entity_pull, pull_rigidbody);
+    world.add<ColliderIntentComponent>(entity_pull, ColliderIntentComponent{});
+    world.add<PhysicsTransformOwnershipComponent>(entity_pull, PhysicsTransformOwnershipComponent{});
+
+    sync.preSimulate(world);
+    BodyId pull_body = karma::physics_backend::kInvalidBodyId;
+    if (!sync.tryGetRuntimeBody(entity_pull, pull_body)
+        || pull_body == karma::physics_backend::kInvalidBodyId) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync failed to create physics-authoritative runtime body\n";
+        physics.shutdown();
+        return false;
+    }
+
+    BodyTransform forced_runtime{};
+    forced_runtime.position = glm::vec3(4.0f, 3.0f, 0.0f);
+    forced_runtime.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    if (!physics.setBodyTransform(pull_body, forced_runtime)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync could not set runtime transform for pull check\n";
+        physics.shutdown();
+        return false;
+    }
+    sync.postSimulate(world);
+
+    const auto* pulled_transform = world.tryGet<TransformComponent>(entity_pull);
+    if (!pulled_transform
+        || !NearlyEqualVec3(world_position(*pulled_transform), forced_runtime.position, 5e-2f)
+        || !NearlyEqualVec3(glm::vec3(pulled_transform->local[3]), forced_runtime.position, 5e-2f)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync physics-authoritative pull did not write scene transform\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const auto entity_cleanup_mutate = world.createEntity();
+    world.add<TransformComponent>(entity_cleanup_mutate, make_transform_component(glm::vec3(6.0f, 2.0f, 0.0f)));
+    world.add<RigidBodyIntentComponent>(entity_cleanup_mutate, RigidBodyIntentComponent{});
+    world.add<ColliderIntentComponent>(entity_cleanup_mutate, ColliderIntentComponent{});
+    world.add<PhysicsTransformOwnershipComponent>(entity_cleanup_mutate, PhysicsTransformOwnershipComponent{});
+    world.add<PlayerControllerIntentComponent>(entity_cleanup_mutate, PlayerControllerIntentComponent{});
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_cleanup_mutate)
+        || !sync.hasControllerRuntimeBinding(entity_cleanup_mutate)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync cleanup-mutation fixture did not create runtime/controller metadata\n";
+        physics.shutdown();
+        return false;
+    }
+
+    world.remove<ColliderIntentComponent>(entity_cleanup_mutate);
+    sync.preSimulate(world);
+    if (sync.hasRuntimeBinding(entity_cleanup_mutate)
+        || sync.hasControllerRuntimeBinding(entity_cleanup_mutate)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not cleanup stale runtime/controller metadata after required component mutation\n";
+        physics.shutdown();
+        return false;
+    }
+
+    const auto entity_cleanup_destroy = world.createEntity();
+    world.add<TransformComponent>(entity_cleanup_destroy, make_transform_component(glm::vec3(7.0f, 2.0f, 0.0f)));
+    world.add<RigidBodyIntentComponent>(entity_cleanup_destroy, RigidBodyIntentComponent{});
+    world.add<ColliderIntentComponent>(entity_cleanup_destroy, ColliderIntentComponent{});
+    world.add<PhysicsTransformOwnershipComponent>(entity_cleanup_destroy, PhysicsTransformOwnershipComponent{});
+    sync.preSimulate(world);
+    if (!sync.hasRuntimeBinding(entity_cleanup_destroy)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync cleanup-destroy fixture did not create runtime body\n";
+        physics.shutdown();
+        return false;
+    }
+
+    world.destroyEntity(entity_cleanup_destroy);
+    sync.preSimulate(world);
+    if (sync.hasRuntimeBinding(entity_cleanup_destroy)
+        || sync.hasControllerRuntimeBinding(entity_cleanup_destroy)) {
+        std::cerr << "backend=" << BackendKindName(backend)
+                  << " ecs-sync did not cleanup runtime/controller metadata after entity destroy\n";
+        physics.shutdown();
+        return false;
+    }
+
+    sync.clear();
+    physics.shutdown();
+    return true;
+}
+
 bool RunFacadeScaffoldChecks(BackendKind backend) {
     karma::physics::World world;
     world.setBackend(backend);
@@ -1997,6 +2699,9 @@ int main(int argc, char** argv) {
         if (!RunLifecycleChecks(backend)) {
             return EXIT_FAILURE;
         }
+        if (!RunColliderShapeAndRuntimePropertyChecks(backend)) {
+            return EXIT_FAILURE;
+        }
         if (!RunUninitializedApiChecks(backend)) {
             return EXIT_FAILURE;
         }
@@ -2028,6 +2733,9 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         if (!RunFacadeScaffoldChecks(backend)) {
+            return EXIT_FAILURE;
+        }
+        if (!RunEcsSyncSystemPolicyChecks(backend)) {
             return EXIT_FAILURE;
         }
         if (!RunRepeatabilityChecks(backend)) {

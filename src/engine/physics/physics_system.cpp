@@ -138,6 +138,34 @@ bool PhysicsSystem::getBodyGravityEnabled(physics_backend::BodyId body, bool& ou
     return backend_->getBodyGravityEnabled(body, out_enabled);
 }
 
+bool PhysicsSystem::setBodyTrigger(physics_backend::BodyId body, bool enabled) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->setBodyTrigger(body, enabled);
+}
+
+bool PhysicsSystem::getBodyTrigger(physics_backend::BodyId body, bool& out_enabled) const {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->getBodyTrigger(body, out_enabled);
+}
+
+bool PhysicsSystem::setBodyCollisionMask(physics_backend::BodyId body, const physics_backend::CollisionMask& mask) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->setBodyCollisionMask(body, mask);
+}
+
+bool PhysicsSystem::getBodyCollisionMask(physics_backend::BodyId body, physics_backend::CollisionMask& out_mask) const {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->getBodyCollisionMask(body, out_mask);
+}
+
 bool PhysicsSystem::raycastClosest(const glm::vec3& origin,
                                    const glm::vec3& direction,
                                    float max_distance,

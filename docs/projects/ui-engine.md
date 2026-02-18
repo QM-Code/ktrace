@@ -1,4 +1,4 @@
-# UI Integration
+# UI Engine
 
 ## Project Snapshot
 - Current owner: `codex`

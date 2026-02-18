@@ -27,6 +27,10 @@ class PhysicsSystem {
     bool getBodyTransform(physics_backend::BodyId body, physics_backend::BodyTransform& out_transform) const;
     bool setBodyGravityEnabled(physics_backend::BodyId body, bool enabled);
     bool getBodyGravityEnabled(physics_backend::BodyId body, bool& out_enabled) const;
+    bool setBodyTrigger(physics_backend::BodyId body, bool enabled);
+    bool getBodyTrigger(physics_backend::BodyId body, bool& out_enabled) const;
+    bool setBodyCollisionMask(physics_backend::BodyId body, const physics_backend::CollisionMask& mask);
+    bool getBodyCollisionMask(physics_backend::BodyId body, physics_backend::CollisionMask& out_mask) const;
     bool raycastClosest(const glm::vec3& origin,
                         const glm::vec3& direction,
                         float max_distance,

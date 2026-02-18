@@ -4,6 +4,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #if defined(KARMA_HAS_PHYSICS_PHYSX)
 #include <PxPhysicsAPI.h>
@@ -32,6 +33,17 @@ glm::vec3 ToGlmVec3(const physx::PxVec3& value) {
 
 glm::quat ToGlmQuat(const physx::PxQuat& value) {
     return glm::quat(value.w, value.x, value.y, value.z);
+}
+
+bool IsValidCollisionMask(const CollisionMask& mask) {
+    return mask.layer != 0u && mask.collides_with != 0u;
+}
+
+physx::PxFilterData ToPxFilterData(const CollisionMask& mask) {
+    physx::PxFilterData data{};
+    data.word0 = mask.layer;
+    data.word1 = mask.collides_with;
+    return data;
 }
 
 class PhysXBackend final : public Backend {
@@ -102,6 +114,8 @@ class PhysXBackend final : public Backend {
         bodies_.clear();
         dynamic_bodies_.clear();
         gravity_enabled_.clear();
+        trigger_enabled_.clear();
+        collision_masks_.clear();
 
         if (default_material_) {
             default_material_->release();
@@ -153,13 +167,50 @@ class PhysXBackend final : public Backend {
         if (!physics_ || !scene_ || !default_material_) {
             return kInvalidBodyId;
         }
+        if (!IsValidCollisionMask(desc.collision_mask)) {
+            return kInvalidBodyId;
+        }
 
         const physx::PxTransform transform(ToPxVec3(desc.transform.position), ToPxQuat(desc.transform.rotation));
-        physx::PxShape* shape = physics_->createShape(physx::PxBoxGeometry(0.5f, 0.5f, 0.5f), *default_material_);
+        physx::PxGeometryHolder geometry{};
+        switch (desc.collider_shape.kind) {
+            case ColliderShapeKind::Box:
+                if (desc.collider_shape.box_half_extents.x <= 0.0f
+                    || desc.collider_shape.box_half_extents.y <= 0.0f
+                    || desc.collider_shape.box_half_extents.z <= 0.0f) {
+                    return kInvalidBodyId;
+                }
+                geometry.storeAny(physx::PxBoxGeometry(desc.collider_shape.box_half_extents.x,
+                                                       desc.collider_shape.box_half_extents.y,
+                                                       desc.collider_shape.box_half_extents.z));
+                break;
+            case ColliderShapeKind::Sphere:
+                if (desc.collider_shape.sphere_radius <= 0.0f) {
+                    return kInvalidBodyId;
+                }
+                geometry.storeAny(physx::PxSphereGeometry(desc.collider_shape.sphere_radius));
+                break;
+            case ColliderShapeKind::Capsule:
+                if (desc.collider_shape.capsule_radius <= 0.0f
+                    || desc.collider_shape.capsule_half_height <= 0.0f) {
+                    return kInvalidBodyId;
+                }
+                geometry.storeAny(physx::PxCapsuleGeometry(desc.collider_shape.capsule_radius,
+                                                           desc.collider_shape.capsule_half_height));
+                break;
+            default:
+                return kInvalidBodyId;
+        }
+
+        physx::PxShape* shape = physics_->createShape(geometry.any(), *default_material_);
         if (!shape) {
             KARMA_TRACE("physics.physx", "PhysicsBackend[physx]: failed to create shape");
             return kInvalidBodyId;
         }
+
+        shape->setSimulationFilterData(ToPxFilterData(desc.collision_mask));
+        shape->setFlag(physx::PxShapeFlag::eTRIGGER_SHAPE, desc.is_trigger);
+        shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, !desc.is_trigger);
 
         physx::PxRigidActor* actor = nullptr;
         if (desc.is_static) {
@@ -211,6 +262,8 @@ class PhysXBackend final : public Backend {
         const bool is_dynamic = actor->is<physx::PxRigidDynamic>() != nullptr;
         dynamic_bodies_.emplace(id, is_dynamic);
         gravity_enabled_.emplace(id, is_dynamic ? desc.gravity_enabled : false);
+        trigger_enabled_.emplace(id, desc.is_trigger);
+        collision_masks_.emplace(id, desc.collision_mask);
         return id;
     }
 
@@ -229,6 +282,8 @@ class PhysXBackend final : public Backend {
         }
         dynamic_bodies_.erase(body);
         gravity_enabled_.erase(body);
+        trigger_enabled_.erase(body);
+        collision_masks_.erase(body);
         bodies_.erase(it);
     }
 
@@ -281,6 +336,92 @@ class PhysXBackend final : public Backend {
         }
 
         out_enabled = it->second;
+        return true;
+    }
+
+    bool setBodyTrigger(BodyId body, bool enabled) override {
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end() || !body_it->second) {
+            return false;
+        }
+
+        const auto trigger_it = trigger_enabled_.find(body);
+        if (trigger_it == trigger_enabled_.end()) {
+            return false;
+        }
+
+        const physx::PxU32 shape_count = body_it->second->getNbShapes();
+        if (shape_count == 0) {
+            return false;
+        }
+        std::vector<physx::PxShape*> shapes(shape_count, nullptr);
+        body_it->second->getShapes(shapes.data(), shape_count);
+        for (physx::PxShape* shape : shapes) {
+            if (!shape) {
+                continue;
+            }
+            shape->setFlag(physx::PxShapeFlag::eTRIGGER_SHAPE, enabled);
+            shape->setFlag(physx::PxShapeFlag::eSIMULATION_SHAPE, !enabled);
+        }
+        if (scene_) {
+            (void)scene_->resetFiltering(*body_it->second);
+        }
+
+        trigger_enabled_[body] = enabled;
+        return true;
+    }
+
+    bool getBodyTrigger(BodyId body, bool& out_enabled) const override {
+        const auto it = trigger_enabled_.find(body);
+        if (it == trigger_enabled_.end()) {
+            return false;
+        }
+        out_enabled = it->second;
+        return true;
+    }
+
+    bool setBodyCollisionMask(BodyId body, const CollisionMask& mask) override {
+        if (!IsValidCollisionMask(mask)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end() || !body_it->second) {
+            return false;
+        }
+
+        const auto mask_it = collision_masks_.find(body);
+        if (mask_it == collision_masks_.end()) {
+            return false;
+        }
+
+        const physx::PxU32 shape_count = body_it->second->getNbShapes();
+        if (shape_count == 0) {
+            return false;
+        }
+        std::vector<physx::PxShape*> shapes(shape_count, nullptr);
+        body_it->second->getShapes(shapes.data(), shape_count);
+        const physx::PxFilterData filter_data = ToPxFilterData(mask);
+        for (physx::PxShape* shape : shapes) {
+            if (!shape) {
+                continue;
+            }
+            shape->setSimulationFilterData(filter_data);
+        }
+        if (scene_) {
+            (void)scene_->resetFiltering(*body_it->second);
+        }
+
+        collision_masks_[body] = mask;
+        return true;
+    }
+
+    bool getBodyCollisionMask(BodyId body, CollisionMask& out_mask) const override {
+        const auto it = collision_masks_.find(body);
+        if (it == collision_masks_.end()) {
+            return false;
+        }
+        out_mask = it->second;
         return true;
     }
 
@@ -346,6 +487,8 @@ class PhysXBackend final : public Backend {
     std::unordered_map<BodyId, physx::PxRigidActor*> bodies_{};
     std::unordered_map<BodyId, bool> dynamic_bodies_{};
     std::unordered_map<BodyId, bool> gravity_enabled_{};
+    std::unordered_map<BodyId, bool> trigger_enabled_{};
+    std::unordered_map<BodyId, CollisionMask> collision_masks_{};
     float frame_dt_ = 0.0f;
     bool initialized_ = false;
 };
@@ -371,6 +514,10 @@ class PhysXBackendStub final : public Backend {
     bool getBodyTransform(BodyId, BodyTransform&) const override { return false; }
     bool setBodyGravityEnabled(BodyId, bool) override { return false; }
     bool getBodyGravityEnabled(BodyId, bool&) const override { return false; }
+    bool setBodyTrigger(BodyId, bool) override { return false; }
+    bool getBodyTrigger(BodyId, bool&) const override { return false; }
+    bool setBodyCollisionMask(BodyId, const CollisionMask&) override { return false; }
+    bool getBodyCollisionMask(BodyId, CollisionMask&) const override { return false; }
     bool raycastClosest(const glm::vec3&, const glm::vec3&, float, RaycastHit&) const override { return false; }
 };
 

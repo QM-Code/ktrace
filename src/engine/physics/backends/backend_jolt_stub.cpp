@@ -23,6 +23,8 @@
 #include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/EPhysicsUpdateError.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
@@ -119,6 +121,10 @@ glm::vec3 ToGlmVec3(const JPH::RVec3& value) {
 
 glm::quat ToGlmQuat(const JPH::Quat& value) {
     return glm::quat(value.GetW(), value.GetX(), value.GetY(), value.GetZ());
+}
+
+bool IsValidCollisionMask(const CollisionMask& mask) {
+    return mask.layer != 0u && mask.collides_with != 0u;
 }
 
 void JoltTrace(const char* fmt, ...) {
@@ -224,6 +230,8 @@ class JoltBackend final : public Backend {
             bodies_.clear();
             dynamic_bodies_.clear();
             gravity_enabled_.clear();
+            trigger_enabled_.clear();
+            collision_masks_.clear();
         }
 
         physics_system_.reset();
@@ -269,9 +277,43 @@ class JoltBackend final : public Backend {
         if (!physics_system_) {
             return kInvalidBodyId;
         }
+        if (!IsValidCollisionMask(desc.collision_mask)) {
+            return kInvalidBodyId;
+        }
 
         const bool is_dynamic = !desc.is_static;
-        JPH::RefConst<JPH::Shape> shape = new JPH::BoxShape(JPH::Vec3(0.5f, 0.5f, 0.5f));
+        JPH::RefConst<JPH::Shape> shape{};
+        switch (desc.collider_shape.kind) {
+            case ColliderShapeKind::Box:
+                if (desc.collider_shape.box_half_extents.x <= 0.0f
+                    || desc.collider_shape.box_half_extents.y <= 0.0f
+                    || desc.collider_shape.box_half_extents.z <= 0.0f) {
+                    return kInvalidBodyId;
+                }
+                shape = new JPH::BoxShape(ToJoltVec3(desc.collider_shape.box_half_extents));
+                break;
+            case ColliderShapeKind::Sphere:
+                if (desc.collider_shape.sphere_radius <= 0.0f) {
+                    return kInvalidBodyId;
+                }
+                shape = new JPH::SphereShape(desc.collider_shape.sphere_radius);
+                break;
+            case ColliderShapeKind::Capsule:
+                if (desc.collider_shape.capsule_radius <= 0.0f
+                    || desc.collider_shape.capsule_half_height <= 0.0f) {
+                    return kInvalidBodyId;
+                }
+                shape = new JPH::CapsuleShape(desc.collider_shape.capsule_half_height,
+                                              desc.collider_shape.capsule_radius);
+                break;
+            default:
+                return kInvalidBodyId;
+        }
+
+        if (!shape) {
+            return kInvalidBodyId;
+        }
+
         JPH::BodyCreationSettings settings(
             shape,
             ToJoltRVec3(desc.transform.position),
@@ -314,6 +356,9 @@ class JoltBackend final : public Backend {
         bodies_.emplace(id, body->GetID());
         dynamic_bodies_.emplace(id, is_dynamic);
         gravity_enabled_.emplace(id, is_dynamic && desc.gravity_enabled);
+        trigger_enabled_.emplace(id, desc.is_trigger);
+        collision_masks_.emplace(id, desc.collision_mask);
+        body_interface.SetIsSensor(body->GetID(), desc.is_trigger);
         return id;
     }
 
@@ -334,6 +379,8 @@ class JoltBackend final : public Backend {
         body_interface.DestroyBody(it->second);
         dynamic_bodies_.erase(body);
         gravity_enabled_.erase(body);
+        trigger_enabled_.erase(body);
+        collision_masks_.erase(body);
         bodies_.erase(it);
     }
 
@@ -407,6 +454,72 @@ class JoltBackend final : public Backend {
         return true;
     }
 
+    bool setBodyTrigger(BodyId body, bool enabled) override {
+        if (!physics_system_) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+
+        const auto trigger_it = trigger_enabled_.find(body);
+        if (trigger_it == trigger_enabled_.end()) {
+            return false;
+        }
+
+        physics_system_->GetBodyInterface().SetIsSensor(body_it->second, enabled);
+        trigger_enabled_[body] = enabled;
+        return true;
+    }
+
+    bool getBodyTrigger(BodyId body, bool& out_enabled) const override {
+        const auto it = trigger_enabled_.find(body);
+        if (it == trigger_enabled_.end()) {
+            return false;
+        }
+        out_enabled = it->second;
+        return true;
+    }
+
+    bool setBodyCollisionMask(BodyId body, const CollisionMask& mask) override {
+        if (!physics_system_) {
+            return false;
+        }
+        if (!IsValidCollisionMask(mask)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+
+        const auto existing_it = collision_masks_.find(body);
+        if (existing_it == collision_masks_.end()) {
+            return false;
+        }
+
+        // Jolt layer-pair filtering in this bounded slice does not expose per-body collides_with mutation.
+        // We report unsupported runtime mask transitions so callers can apply deterministic fallback (for example rebuild).
+        if (mask.layer != existing_it->second.layer || mask.collides_with != existing_it->second.collides_with) {
+            return false;
+        }
+
+        collision_masks_[body] = mask;
+        return true;
+    }
+
+    bool getBodyCollisionMask(BodyId body, CollisionMask& out_mask) const override {
+        const auto it = collision_masks_.find(body);
+        if (it == collision_masks_.end()) {
+            return false;
+        }
+        out_mask = it->second;
+        return true;
+    }
+
     bool raycastClosest(const glm::vec3& origin,
                         const glm::vec3& direction,
                         float max_distance,
@@ -460,6 +573,8 @@ class JoltBackend final : public Backend {
     std::unordered_map<BodyId, JPH::BodyID> bodies_{};
     std::unordered_map<BodyId, bool> dynamic_bodies_{};
     std::unordered_map<BodyId, bool> gravity_enabled_{};
+    std::unordered_map<BodyId, bool> trigger_enabled_{};
+    std::unordered_map<BodyId, CollisionMask> collision_masks_{};
     BodyId next_body_id_ = 1;
     float frame_dt_ = 0.0f;
     bool initialized_ = false;
@@ -485,6 +600,10 @@ class JoltBackendStub final : public Backend {
     bool getBodyTransform(BodyId, BodyTransform&) const override { return false; }
     bool setBodyGravityEnabled(BodyId, bool) override { return false; }
     bool getBodyGravityEnabled(BodyId, bool&) const override { return false; }
+    bool setBodyTrigger(BodyId, bool) override { return false; }
+    bool getBodyTrigger(BodyId, bool&) const override { return false; }
+    bool setBodyCollisionMask(BodyId, const CollisionMask&) override { return false; }
+    bool getBodyCollisionMask(BodyId, CollisionMask&) const override { return false; }
     bool raycastClosest(const glm::vec3&, const glm::vec3&, float, RaycastHit&) const override { return false; }
 };
 

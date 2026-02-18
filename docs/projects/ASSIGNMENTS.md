@@ -14,10 +14,11 @@ Strategic tracking:
 | Project | Owner | Status | Next Task | Last Update |
 |---|---|---|---|---|
 | `gameplay-migration.md` | `overseer` | `in progress (D1 hardening landed; netcode lane consolidated)` | Execute D2 movement replication slice: wire client `PlayerLocation` intent path to rewrite server authority for tank drive state. | `2026-02-18` |
-| `physics-refactor.md` | `specialist-physics-refactor` | `in progress (Phase 2b transform-ownership + reconcile/compatibility policy hardening landed)` | `KARMA intake`: execute first Phase 3 ECS sync slice to apply Phase 2 policies for runtime lifecycle + deterministic writeback ordering.` | `2026-02-18` |
+| `physics-refactor.md` | `specialist-physics-refactor` | `in progress (Phase 4a landed: backend-neutral collider-shape + trigger/filter substrate hooks integrated with ECS sync)` | `KARMA intake`: execute Phase 4 follow-up to deepen backend-native trigger/filter semantics and static-mesh/controller ingestion parity.` | `2026-02-18` |
 | `karma-lighting-shadow-parity.md` | `unassigned` | `priority/on hold (close-out snapshot captured; awaiting external revisions)` | `KARMA intake`: after external revisions, rerun canonical BGFX/Diligent baseline, resolve/characterize shared seam artifact, then resume bounded P0-S3 re-intake. | `2026-02-17` |
 | `radar.md` | `overseer` | `in progress (research baseline complete)` | `shared unblocker + KARMA intake`: execute R1 engine substrate slice for generic offscreen render-target + multi-camera pass scaffolding. | `2026-02-18` |
-| `ui-integration.md` | `codex` | `in progress` | Execute one bounded console focus-release parity follow-up slice without backend leakage. | `2026-02-12` |
+| `ui-game.md` | `overseer` | `in progress (staged import landed; no build/runtime wiring yet)` | `m-dev parity + shared unblocker`: execute G0 classification pass for `src/game/ui/*` and record file-level dependency blockers. | `2026-02-18` |
+| `ui-engine.md` | `codex` | `in progress` | Execute one bounded console focus-release parity follow-up slice without backend leakage. | `2026-02-12` |
 
 ## Active Specialist Roster
 

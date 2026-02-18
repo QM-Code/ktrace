@@ -49,6 +49,7 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/physics/backend_factory.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/physics_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/world.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/physics/ecs_sync_system.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/rigid_body.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/static_body.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/physics/player_controller.cpp

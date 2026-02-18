@@ -16,7 +16,7 @@ Deliver a rewrite-owned radar system where:
 - `docs/foundation/policy/rewrite-invariants.md`
 - `docs/foundation/policy/execution-policy.md`
 - `docs/foundation/governance/overseer-playbook.md`
-- `docs/projects/ui-integration.md`
+- `docs/projects/ui-engine.md`
 - `docs/projects/gameplay-migration.md`
 - `docs/projects/karma-lighting-shadow-parity.md`
 
@@ -94,7 +94,7 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
   - `src/game/CMakeLists.txt`
   - renderer backend contract files in `src/engine/renderer/backends/*`
   - UI backend contract files in `src/engine/ui/backends/*`
-  - `docs/projects/ui-integration.md` and `docs/projects/gameplay-migration.md` (when radar hooks overlap their scopes)
+  - `docs/projects/ui-engine.md` and `docs/projects/gameplay-migration.md` (when radar hooks overlap their scopes)
 
 ## Comparative Decision Matrix
 | Concern | `KARMA-REPO` approach | `m-dev` approach | Rewrite decision |

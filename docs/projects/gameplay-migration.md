@@ -16,11 +16,11 @@ Port game-specific behavior from `m-dev` into `m-rewrite` under rewrite-owned ar
 - `docs/foundation/policy/rewrite-invariants.md`
 - `docs/foundation/policy/execution-policy.md`
 - `docs/foundation/architecture/core-engine-contracts.md`
-- `docs/projects/ui-integration.md`
+- `docs/projects/ui-engine.md`
 
 ## Why This Is Separate
 This migration is cross-cutting and risk-heavy:
-- UI/HUD/console migration depends on `ui-integration.md` completion.
+- UI/HUD/console migration depends on `ui-engine.md` completion.
 - Gameplay-rule migration spans multiple legacy `m-dev` locations and requires strict extraction discipline to avoid boundary violations.
 
 ## Owned Paths
@@ -52,7 +52,7 @@ This migration is cross-cutting and risk-heavy:
 - Do not expand unrelated renderer/audio/physics scope while migrating gameplay rules.
 
 ## Migration Tracks
-1. Track A (blocked until UI completion): HUD/console/chat/scoreboard presentation migration from `m-dev/src/game/ui/*` after `docs/projects/ui-integration.md` closeout.
+1. Track A (blocked until UI completion): HUD/console/chat/scoreboard presentation migration from `m-dev/src/game/ui/*` after `docs/projects/ui-engine.md` closeout.
 2. Track B (active now): gameplay-rule extraction and migration (shots, hit attribution, scoring/scoreboard triggers, round state) from `m-dev` into rewrite game-owned modules.
 3. Track C (shared unblocker): drivable-tank baseline and movement replication seam before expanding hit/score semantics.
 4. Track D (merged netcode lane): preserve local responsiveness under latency via predicted shot/reconciliation flow while keeping server authority.
@@ -70,7 +70,7 @@ Strategic alignment:
 6. G3 hit attribution migration: migrate authoritative hit resolution and attacker/victim attribution rules.
 7. G4 scoring and scoreboard trigger migration: migrate kill/score events and scoreboard state transitions.
 8. G5 round lifecycle migration: migrate round start/end/spawn/respawn control flow.
-9. G6 UI migration track: once `ui-integration.md` closes, port HUD/console/chat/scoreboard UI behaviors from `m-dev/src/game/ui/*`.
+9. G6 UI migration track: once `ui-engine.md` closes, port HUD/console/chat/scoreboard UI behaviors from `m-dev/src/game/ui/*`.
 
 ## Netcode Parity Lane (Merged 2026-02-18)
 Goal:
@@ -94,9 +94,9 @@ Current state:
 | Shots | `src/game/client/player.cpp`, `src/game/client/shot.cpp`, `src/game/client/shot.hpp`, `src/game/server/game.cpp`, `src/game/server/shot.cpp`, `src/game/server/shot.hpp`, `src/game/net/messages.hpp`, plus engine leakage in `src/engine/graphics/backends/bgfx/backend.cpp` and `src/engine/graphics/backends/diligent/backend.cpp` (`shot.glb` special-casing) | Existing: `src/game/client/net/connection.hpp`, `src/game/client/net/connection/*`, `src/game/server/runtime_event_rules.cpp`, `src/game/server/runtime/*`, `src/game/net/protocol_codec/*`; Landed in G2: `src/game/server/domain/shot_system.hpp`, `src/game/server/domain/shot_system.cpp`, `src/game/server/domain/shot_types.hpp` | game-owned with explicit engine-leak cleanup seam | `G2 landed` |
 | Tank locomotion baseline | `src/game/client/player.cpp` (movement intent, controller, camera follow), `src/game/client/actor.hpp` | Landed in D1: `src/game/client/domain/tank_drive_controller.hpp`, `src/game/client/domain/tank_drive_controller.cpp`, `src/game/client/game/*`; proof in `src/game/tests/tank_drive_controller_test.cpp` | game-owned over existing engine render/input contracts | `D1 landed` |
 | Hit attribution | `src/game/server/shot.cpp` (`hits`), `src/game/server/game.cpp` (victim/killer resolution), `src/game/server/plugin.cpp` (`killPlayer`) | New: `src/game/server/domain/combat_system.hpp`, `src/game/server/domain/combat_system.cpp`; integration in `src/game/server/runtime/*` + `src/game/server/server_game.cpp` | game-owned | `queued (G3)` |
-| Scoreboard/scoring | `src/game/server/client.cpp` (`setScore`), `src/game/server/game.cpp` (authoritative +/-), `src/game/client/actor.hpp`, legacy m-dev client gameplay monolith (scoreboard assembly), UI consumption in `src/game/ui/core/system.cpp` | New: `src/game/server/domain/score_system.hpp`, `src/game/server/domain/score_system.cpp`; component extension in `src/game/server/domain/components.hpp`; client/UI bridge in `src/game/client/game/*` once `ui-integration` closes | game-owned semantics over engine UI contracts | `queued (G4)` |
+| Scoreboard/scoring | `src/game/server/client.cpp` (`setScore`), `src/game/server/game.cpp` (authoritative +/-), `src/game/client/actor.hpp`, legacy m-dev client gameplay monolith (scoreboard assembly), UI consumption in `src/game/ui/core/system.cpp` | New: `src/game/server/domain/score_system.hpp`, `src/game/server/domain/score_system.cpp`; component extension in `src/game/server/domain/components.hpp`; client/UI bridge in `src/game/client/game/*` once `ui-engine` closes | game-owned semantics over engine UI contracts | `queued (G4)` |
 | Round lifecycle | `src/game/server/client.cpp` (`trySpawn`, `die`), `src/game/server/world_session.cpp` (`pickSpawnLocation`), `src/game/server/game.cpp` (spawn request consume), `src/game/client/player.cpp` (spawn request when dead) | Existing scaffold: `src/game/server/runtime_event_rules.cpp`, `src/game/server/runtime/*`, `src/game/server/domain/world_session.*`; New: `src/game/server/domain/spawn_system.hpp`, `src/game/server/domain/spawn_system.cpp` | game-owned | `partially scaffolded; queued (G5)` |
-| HUD/console/chat | `src/game/ui/*` | `src/game/*` + existing UI hooks | game-owned over engine UI contracts | blocked on `ui-integration` |
+| HUD/console/chat | `src/game/ui/*` | `src/game/*` + existing UI hooks | game-owned over engine UI contracts | blocked on `ui-engine` |
 
 ## G1 Findings (Boundary Risks)
 1. Shot gameplay rules are split across client render/input, server authority loop, and protocol message flow, so a direct file-for-file port would reintroduce coupling.
@@ -249,7 +249,7 @@ Handoff must include:
 
 ## Current Status
 - `2026-02-13`: project created for m-dev game-specific migration planning and sequencing.
-- `2026-02-13`: Track A (UI/HUD/console) marked blocked pending `docs/projects/ui-integration.md` completion.
+- `2026-02-13`: Track A (UI/HUD/console) marked blocked pending `docs/projects/ui-engine.md` completion.
 - `2026-02-13`: Track B (gameplay semantics) selected as immediate active lane with shots-first extraction strategy.
 - `2026-02-13`: G1 discovery completed; migration ledger now has concrete `m-dev` source-to-rewrite target mapping for shots/hits/scoring/round lifecycle.
 - `2026-02-13`: identified engine/game leak in `m-dev` renderer backends (`shot.glb` special-casing), marked as explicit anti-pattern for rewrite migration.

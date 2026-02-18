@@ -19,12 +19,12 @@ This track is explicitly a staging/alignment track:
 ## Foundation References
 - `docs/foundation/policy/rewrite-invariants.md`
 - `docs/foundation/policy/execution-policy.md`
-- `docs/projects/ui-integration.md`
+- `docs/projects/ui-engine.md`
 - `docs/projects/gameplay-migration.md`
 - `docs/projects/radar.md`
 
 ## Why This Is Separate
-- `ui-integration.md` is currently focused on active parity slices in existing rewrite UI runtime paths.
+- `ui-engine.md` is currently focused on active parity slices in existing rewrite UI runtime paths.
 - This document tracks a broader staged import/alignment of legacy UI code that is intentionally non-functional at first.
 - Keeping this separate prevents mixed goals (parity bug-fix slices vs large non-wired codebase staging) in one project file.
 
@@ -50,7 +50,7 @@ This track is explicitly a staging/alignment track:
   - `src/game/CMakeLists.txt`
   - `include/karma/ui/*`
   - `src/engine/ui/*`
-  - `docs/projects/ui-integration.md`
+  - `docs/projects/ui-engine.md`
 
 ## Direction Lock
 1. This track does **not** require the imported code to build/run yet.
@@ -59,6 +59,11 @@ This track is explicitly a staging/alignment track:
    - engine-owned lifecycle/backend substrate remains in `src/engine/ui/*`,
    - gameplay semantics remain game-owned.
 4. Keep imports diff-friendly: no broad rewrites before dependency classification.
+5. Future wiring must align to the current engine UI surface in `include/karma/ui/ui_draw_context.hpp`:
+   - `addImGuiDraw(...)` for ImGui callbacks,
+   - `addRmlUiDraw(...)` for RmlUi callbacks,
+   - `addTextPanel(...)` for backend-agnostic panel fallback/presentation.
+   Imported `src/game/ui/*` code should target these contracts (or approved successors) rather than legacy bridge APIs.
 
 ## Directory Classification Baseline
 Initial posture for staged alignment:
@@ -105,7 +110,9 @@ Initial posture for staged alignment:
 
 ### G4: Incremental Wiring Plan (Future Track Entry)
 - Define the first compile activation slice and its required validations.
-- Keep this phase blocked until backend glue stabilization and `ui-integration.md` coordination.
+- Keep this phase blocked until backend glue stabilization and `ui-engine.md` coordination.
+- In the first bounded wiring slice, require an explicit contract map from imported `src/game/ui/*` output paths to
+  `UiDrawContext` (`addImGuiDraw`, `addRmlUiDraw`, `addTextPanel`) and document any adapter shims needed.
 - Acceptance:
   - first bounded compile/wiring slice packet is ready.
 

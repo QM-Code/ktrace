@@ -2,9 +2,9 @@
 
 ## Project Snapshot
 - Current owner: `specialist-physics-refactor`
-- Status: `in progress` (Phase 2b contract hardening landed: transform authority + reconcile/compatibility policy boundaries are explicit and test-backed)
+- Status: `in progress` (Phase 4a substrate slice landed: backend-neutral collider-shape + trigger/filter runtime property hooks are wired through PhysicsSystem and consumed by ECS sync)
 - Supersedes: `docs/projects/physics-backend.md` (retired to `docs/archive/physics-backend-retired-2026-02-17.md`)
-- Immediate next task: execute first Phase 3 ECS sync slice to consume Phase 2b policies for runtime create/update/destroy + deterministic transform writeback ordering.
+- Immediate next task: execute next Phase 4 follow-up to deepen backend-native runtime behavior parity (trigger/filter semantics + shape/material/static-mesh/controller ingestion depth) and reduce fallback-only paths.
 - Validation gate: `./scripts/test-engine-backends.sh <build-dir>`
 
 ## Mission
@@ -271,6 +271,89 @@ Explicit Phase 3 deferrals after Phase 2b closure:
 - No runtime reconcile execution against backend objects yet (policy helpers are contract-level only).
 - No gameplay/controller integration or grounded-runtime behavior changes yet.
 
+## Phase 3 ECS Sync Slice 1 (2026-02-18)
+Landed in this bounded slice:
+- Added `src/engine/physics/ecs_sync_system.hpp/.cpp` with deterministic two-phase flow:
+  - pre-sim: validate intents, reconcile runtime bodies (create/rebuild/update/teardown), apply scene->physics transform push by ownership policy.
+  - post-sim: apply physics->scene transform pull by ownership policy.
+- Consumes Phase 2 policy helpers from `include/karma/scene/physics_components.hpp`:
+  - `ValidateRigidBodyIntent`, `ValidateColliderIntent`, `ValidateTransformOwnership`,
+  - `ClassifyColliderReconcileAction`,
+  - `ShouldPushSceneTransformToPhysics`, `ShouldPullPhysicsTransformToScene`,
+  - `ClassifyControllerColliderCompatibility` / `IsControllerColliderCompatible`.
+- Runtime support in this slice is explicitly Box-only for colliders; unsupported/invalid collider intent is deterministically rejected/teardown.
+- Added deterministic stale cleanup for destroyed entities and entities that no longer satisfy required component sets.
+- Added bounded sync-system parity checks in `physics_backend_parity_test.cpp` per backend for:
+  - create on valid entity,
+  - rebuild on shape-parameter mutation,
+  - teardown on invalid intent,
+  - scene-authoritative push behavior,
+  - physics-authoritative pull behavior,
+  - cleanup after entity destroy.
+- Added minimal sync-system introspection helpers used by parity tests (binding existence/count, runtime body lookup, transform snapshot).
+
+Explicit remaining deferrals after this Phase 3 slice:
+- No static-mesh ingestion/runtime path yet.
+- No controller runtime object lifecycle or grounded behavior implementation yet.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+- No non-Box collider runtime ingestion (unsupported shapes remain deterministic reject/teardown in this slice).
+
+## Phase 3 ECS Sync Slice 2 (2026-02-18)
+Landed in this bounded slice:
+- Extended `EcsSyncSystem` runtime lifecycle behavior to include static mesh placeholder support under policy constraints:
+  - `ColliderShapeKind::Mesh` now participates in runtime lifecycle for static intent (`dynamic=false`),
+  - runtime object creation remains placeholder/substrate-backed (no mesh-geometry ingestion yet),
+  - invalid transitions (for example mesh + dynamic=true) deterministically teardown runtime state.
+- Added bounded controller lifecycle metadata wiring in ECS sync:
+  - compatibility transitions are classified each pre-sim tick using Phase 2 policy helpers,
+  - compatible states create/update controller runtime metadata bound to the entity,
+  - incompatible states deterministically teardown runtime body + controller metadata,
+  - controller component removal clears controller metadata while preserving body lifecycle when otherwise valid.
+- Closed the remaining `ColliderReconcileAction::UpdateRuntimeProperties` behavior gap for enabled-state transitions:
+  - collider `enabled=false` now deterministically maps to teardown/no-runtime,
+  - re-enable (`enabled=true`) deterministically recreates runtime body on the next valid pre-sim pass.
+- Added sync introspection helpers for controller metadata state, used only by parity tests.
+- Added bounded parity coverage per backend for:
+  - mesh-placeholder lifecycle create/teardown/recreate behavior,
+  - controller compatibility transition lifecycle effects,
+  - collider enabled toggle teardown/recreate behavior,
+  - stale cleanup invariants after component mutation and entity destroy.
+
+Explicit remaining deferrals after this Phase 3 follow-up:
+- No real static-mesh collision ingestion pipeline (placeholder mesh runtime path only).
+- No backend-native player-controller runtime object or grounded/movement behavior.
+- No backend mutation path yet for trigger/filter `UpdateRuntimeProperties` transitions beyond deterministic caching/deferral.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4a Substrate Hooks Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended substrate contracts in `include/karma/physics/backend.hpp` and `include/karma/physics/physics_system.hpp`:
+  - `BodyDesc` now carries backend-neutral collider shape descriptor (`Box`/`Sphere`/`Capsule`) and shape parameters.
+  - Added backend-neutral runtime collider property APIs for trigger state and collision layer/filter mask (`set/get`).
+- Implemented `PhysicsSystem` passthroughs in `src/engine/physics/physics_system.cpp` for the new runtime collider property APIs.
+- Implemented backend behavior in `backend_jolt_stub.cpp` and `backend_physx_stub.cpp`:
+  - `createBody` now consumes shape descriptor for `Box`/`Sphere`/`Capsule` creation.
+  - runtime trigger/filter APIs now expose deterministic success/failure and coherent reported state.
+  - bounded deterministic fallback behavior is explicit where runtime mutation is unsupported:
+    - Jolt reports unsupported runtime collision-mask transition mutations (enabling caller-driven deterministic fallback).
+- Updated ECS sync (`src/engine/physics/ecs_sync_system.cpp`) to:
+  - pass collider shape parameters + trigger/filter intent into `BodyDesc` during runtime body creation,
+  - execute `UpdateRuntimeProperties` via new substrate APIs,
+  - preserve deterministic enabled teardown/recreate behavior,
+  - apply deterministic rebuild fallback when runtime trigger/filter mutation reports unsupported.
+- Added parity coverage in `physics_backend_parity_test.cpp` for:
+  - Box/Sphere/Capsule creation path sanity,
+  - runtime trigger/filter mutation roundtrip contracts,
+  - ECS sync trigger/filter transitions with both success and deterministic fallback paths.
+
+Explicit remaining deferrals after Phase 4a:
+- No real static-mesh geometry ingestion pipeline (mesh runtime path remains placeholder-backed).
+- No backend-native player-controller runtime object or grounded/movement behavior.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
 ## Current Status
 - `2026-02-17`: Project created as full replacement for backend-only parity track.
 - `2026-02-17`: `physics-backend.md` retired and subsumed into this plan.
@@ -297,7 +380,33 @@ Explicit Phase 3 deferrals after Phase 2b closure:
   - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
   - `./scripts/test-engine-backends.sh build-a3` (pass)
   - `./docs/scripts/lint-project-docs.sh` (pass)
-- Next implementation slice starts at Phase 3 ECS sync-system implementation using Phase 2a/2b policy contracts.
+- `2026-02-18`: Phase 3 ECS sync slice 1 landed:
+  - new `EcsSyncSystem` runtime added with deterministic pre/post simulation ordering,
+  - policy-driven runtime lifecycle + transform push/pull behavior implemented for Box colliders,
+  - parity coverage added for create/rebuild/teardown/push/pull/cleanup behavior across Jolt/PhysX.
+- `2026-02-18`: Phase 3 slice 1 validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- `2026-02-18`: Phase 3 ECS sync slice 2 landed:
+  - static mesh placeholder lifecycle added for `dynamic=false` mesh collider intent,
+  - controller compatibility-driven runtime metadata lifecycle added,
+  - deterministic `enabled` teardown/recreate behavior landed for `UpdateRuntimeProperties`.
+- `2026-02-18`: Phase 3 slice 2 validation completed in `build-a3`:
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- `2026-02-18`: Phase 4a substrate hooks slice landed:
+  - backend-neutral collider-shape descriptor + runtime trigger/filter APIs added to substrate contract,
+  - Jolt/PhysX substrate implementations updated for shape creation and deterministic runtime property mutation behavior,
+  - ECS sync now applies trigger/filter runtime transitions through substrate APIs with deterministic rebuild fallback path.
+- `2026-02-18`: Phase 4a validation completed in `build-a3`:
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+- Next implementation slice: deepen backend-native parity for runtime trigger/filter semantics and advance static-mesh/controller ingestion depth.
 
 ## Handoff Checklist
 - [x] `physics-refactor.md` remains the single active physics project doc in `docs/projects/`.
