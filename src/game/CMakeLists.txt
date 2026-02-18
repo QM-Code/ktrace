@@ -22,10 +22,44 @@ set(BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS
     ${PROJECT_SOURCE_DIR}/src/game/server/net/transport_event_source/send.cpp
 )
 
+set(BZ3_PROTOCOL_CODEC_SRCS
+    ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec/wire_common.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec/decode_client.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec/decode_server.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec/encode_client.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec/encode_server_core.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec/encode_server_transfer.cpp
+)
+
+set(BZ3_CLIENT_GAME_SRCS
+    ${PROJECT_SOURCE_DIR}/src/game/client/game/lifecycle.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/game/tank_entity.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/game/tank_collision.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/game/tank_motion.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/game/tank_camera.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/game/audio.cpp
+)
+
+set(BZ3_CLIENT_RUNTIME_SRCS
+    ${PROJECT_SOURCE_DIR}/src/game/client/runtime/run.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/runtime/engine_config.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/runtime/startup_options.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/runtime/community_credentials.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/client/runtime/auth_payload.cpp
+)
+
+set(BZ3_SERVER_RUNTIME_SRCS
+    ${PROJECT_SOURCE_DIR}/src/game/server/runtime/run.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/runtime/config.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/runtime/signal.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/runtime/join_result_bridge.cpp
+    ${PROJECT_SOURCE_DIR}/src/game/server/runtime/event_loop.cpp
+)
+
 add_executable(bz3
     ${PROJECT_SOURCE_DIR}/src/game/client/community_server_list.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/domain/tank_drive_controller.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/client/runtime.cpp
+    ${BZ3_CLIENT_RUNTIME_SRCS}
     ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/core.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/dispatch.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/net/connection/inbound/bootstrap.cpp
@@ -39,8 +73,8 @@ add_executable(bz3
     ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/delta.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/apply.cpp
     ${PROJECT_SOURCE_DIR}/src/game/client/main.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/game.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
+    ${BZ3_CLIENT_GAME_SRCS}
+    ${BZ3_PROTOCOL_CODEC_SRCS}
 )
 
 add_executable(bz3-server
@@ -52,10 +86,10 @@ add_executable(bz3-server
     ${PROJECT_SOURCE_DIR}/src/game/server/main.cpp
     ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     ${PROJECT_SOURCE_DIR}/src/game/server/net/event_source.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/server/runtime.cpp
+    ${BZ3_SERVER_RUNTIME_SRCS}
     ${PROJECT_SOURCE_DIR}/src/game/server/runtime_event_rules.cpp
     ${PROJECT_SOURCE_DIR}/src/game/server/server_game.cpp
-    ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
+    ${BZ3_PROTOCOL_CODEC_SRCS}
 )
 
 set_target_properties(bz3 PROPERTIES
@@ -97,7 +131,7 @@ if(BUILD_TESTING)
 
     add_executable(server_net_contract_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/server_net_contract_test.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
+        ${BZ3_PROTOCOL_CODEC_SRCS}
         ${PROJECT_SOURCE_DIR}/src/game/server/net/event_source.cpp
         ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
@@ -168,7 +202,7 @@ if(BUILD_TESTING)
 
     add_executable(transport_loopback_integration_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/transport_loopback_integration_test.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
+        ${BZ3_PROTOCOL_CODEC_SRCS}
         ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(transport_loopback_integration_test PRIVATE
@@ -190,7 +224,7 @@ if(BUILD_TESTING)
 
     add_executable(transport_multiclient_loopback_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/transport_multiclient_loopback_test.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
+        ${BZ3_PROTOCOL_CODEC_SRCS}
         ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(transport_multiclient_loopback_test PRIVATE
@@ -212,7 +246,7 @@ if(BUILD_TESTING)
 
     add_executable(transport_disconnect_lifecycle_integration_test
         ${PROJECT_SOURCE_DIR}/src/game/tests/transport_disconnect_lifecycle_integration_test.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
+        ${BZ3_PROTOCOL_CODEC_SRCS}
         ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(transport_disconnect_lifecycle_integration_test PRIVATE
@@ -246,7 +280,7 @@ if(BUILD_TESTING)
         ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/cache.cpp
         ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/delta.cpp
         ${PROJECT_SOURCE_DIR}/src/game/client/net/world_package/apply.cpp
-        ${PROJECT_SOURCE_DIR}/src/game/net/protocol_codec.cpp
+        ${BZ3_PROTOCOL_CODEC_SRCS}
         ${BZ3_SERVER_TRANSPORT_EVENT_SOURCE_SRCS}
     )
     target_include_directories(client_world_package_safety_integration_test PRIVATE

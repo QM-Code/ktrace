@@ -42,7 +42,7 @@ cd m-rewrite
 - `src/game/CMakeLists.txt`
 - `src/game/protos/messages.proto`
 - `src/game/net/protocol.hpp`
-- `src/game/net/protocol_codec.cpp`
+- `src/game/net/protocol_codec/*`
 - `docs/foundation/architecture/core-engine-contracts.md`
 
 If multiple agents need a hotspot, assign one owner and queue merge order.

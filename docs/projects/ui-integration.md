@@ -38,7 +38,7 @@ Port and stabilize BZ3 UI behavior in `m-rewrite` while preserving engine owners
 - Outputs: backend UI frame output and overlay presentation.
 - Coordinate before changing:
   - `m-rewrite/src/engine/renderer/*` (overlay integration)
-  - `m-rewrite/src/game/game.cpp` and related game UI call sites
+  - `m-rewrite/src/game/client/game/*` and related game UI call sites
 
 ## Current State (Implemented)
 1. Engine-owned UI system lifecycle is integrated in `EngineApp` tick flow.
@@ -83,7 +83,7 @@ From `m-rewrite/`:
 - [x] Docs updated with new policy/behavior if changed.
 
 ## Status/Handoff Notes (2026-02-10)
-- Slices landed: HUD/console + chat-entry/input-focus parity mapping in `m-rewrite/src/game/game.cpp` + `m-rewrite/src/game/game.hpp`.
+- Slices landed: HUD/console + chat-entry/input-focus parity mapping in `m-rewrite/src/game/client/game/*` + `m-rewrite/src/game/game.hpp`.
 - Behavior landed: console toggles with global `console` action (grave by default).
 - Behavior landed: escape (`quickMenu` action) closes console if open.
 - Behavior landed: `chat` action opens console (if needed) and enters chat-entry focus state.

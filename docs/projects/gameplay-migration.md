@@ -41,7 +41,7 @@ This migration is cross-cutting and risk-heavy:
 - Coordinate before changing:
   - `src/game/protos/messages.proto`
   - `src/game/net/protocol.hpp`
-  - `src/game/net/protocol_codec.cpp`
+  - `src/game/net/protocol_codec/*`
   - `src/engine/CMakeLists.txt`
   - `docs/foundation/architecture/core-engine-contracts.md`
 
@@ -91,11 +91,11 @@ Current state:
 ## Migration Ledger (G1 Populated)
 | Domain | Legacy source path(s) in `m-dev` | Rewrite target path(s) | Boundary type | Status |
 |---|---|---|---|---|
-| Shots | `src/game/client/player.cpp`, `src/game/client/shot.cpp`, `src/game/client/shot.hpp`, `src/game/server/game.cpp`, `src/game/server/shot.cpp`, `src/game/server/shot.hpp`, `src/game/net/messages.hpp`, plus engine leakage in `src/engine/graphics/backends/bgfx/backend.cpp` and `src/engine/graphics/backends/diligent/backend.cpp` (`shot.glb` special-casing) | Existing: `src/game/client/net/connection.hpp`, `src/game/client/net/connection/*`, `src/game/server/runtime_event_rules.cpp`, `src/game/server/runtime.cpp`, `src/game/net/protocol_codec.*`; Landed in G2: `src/game/server/domain/shot_system.hpp`, `src/game/server/domain/shot_system.cpp`, `src/game/server/domain/shot_types.hpp` | game-owned with explicit engine-leak cleanup seam | `G2 landed` |
-| Tank locomotion baseline | `src/game/client/player.cpp` (movement intent, controller, camera follow), `src/game/client/actor.hpp` | Landed in D1: `src/game/client/domain/tank_drive_controller.hpp`, `src/game/client/domain/tank_drive_controller.cpp`, `src/game/game.cpp`; proof in `src/game/tests/tank_drive_controller_test.cpp` | game-owned over existing engine render/input contracts | `D1 landed` |
-| Hit attribution | `src/game/server/shot.cpp` (`hits`), `src/game/server/game.cpp` (victim/killer resolution), `src/game/server/plugin.cpp` (`killPlayer`) | New: `src/game/server/domain/combat_system.hpp`, `src/game/server/domain/combat_system.cpp`; integration in `src/game/server/runtime.cpp` + `src/game/server/server_game.cpp` | game-owned | `queued (G3)` |
-| Scoreboard/scoring | `src/game/server/client.cpp` (`setScore`), `src/game/server/game.cpp` (authoritative +/-), `src/game/client/actor.hpp`, `src/game/client/game.cpp` (scoreboard assembly), UI consumption in `src/game/ui/core/system.cpp` | New: `src/game/server/domain/score_system.hpp`, `src/game/server/domain/score_system.cpp`; component extension in `src/game/server/domain/components.hpp`; client/UI bridge in `src/game/game.cpp` once `ui-integration` closes | game-owned semantics over engine UI contracts | `queued (G4)` |
-| Round lifecycle | `src/game/server/client.cpp` (`trySpawn`, `die`), `src/game/server/world_session.cpp` (`pickSpawnLocation`), `src/game/server/game.cpp` (spawn request consume), `src/game/client/player.cpp` (spawn request when dead) | Existing scaffold: `src/game/server/runtime_event_rules.cpp`, `src/game/server/runtime.cpp`, `src/game/server/domain/world_session.*`; New: `src/game/server/domain/spawn_system.hpp`, `src/game/server/domain/spawn_system.cpp` | game-owned | `partially scaffolded; queued (G5)` |
+| Shots | `src/game/client/player.cpp`, `src/game/client/shot.cpp`, `src/game/client/shot.hpp`, `src/game/server/game.cpp`, `src/game/server/shot.cpp`, `src/game/server/shot.hpp`, `src/game/net/messages.hpp`, plus engine leakage in `src/engine/graphics/backends/bgfx/backend.cpp` and `src/engine/graphics/backends/diligent/backend.cpp` (`shot.glb` special-casing) | Existing: `src/game/client/net/connection.hpp`, `src/game/client/net/connection/*`, `src/game/server/runtime_event_rules.cpp`, `src/game/server/runtime/*`, `src/game/net/protocol_codec/*`; Landed in G2: `src/game/server/domain/shot_system.hpp`, `src/game/server/domain/shot_system.cpp`, `src/game/server/domain/shot_types.hpp` | game-owned with explicit engine-leak cleanup seam | `G2 landed` |
+| Tank locomotion baseline | `src/game/client/player.cpp` (movement intent, controller, camera follow), `src/game/client/actor.hpp` | Landed in D1: `src/game/client/domain/tank_drive_controller.hpp`, `src/game/client/domain/tank_drive_controller.cpp`, `src/game/client/game/*`; proof in `src/game/tests/tank_drive_controller_test.cpp` | game-owned over existing engine render/input contracts | `D1 landed` |
+| Hit attribution | `src/game/server/shot.cpp` (`hits`), `src/game/server/game.cpp` (victim/killer resolution), `src/game/server/plugin.cpp` (`killPlayer`) | New: `src/game/server/domain/combat_system.hpp`, `src/game/server/domain/combat_system.cpp`; integration in `src/game/server/runtime/*` + `src/game/server/server_game.cpp` | game-owned | `queued (G3)` |
+| Scoreboard/scoring | `src/game/server/client.cpp` (`setScore`), `src/game/server/game.cpp` (authoritative +/-), `src/game/client/actor.hpp`, legacy m-dev client gameplay monolith (scoreboard assembly), UI consumption in `src/game/ui/core/system.cpp` | New: `src/game/server/domain/score_system.hpp`, `src/game/server/domain/score_system.cpp`; component extension in `src/game/server/domain/components.hpp`; client/UI bridge in `src/game/client/game/*` once `ui-integration` closes | game-owned semantics over engine UI contracts | `queued (G4)` |
+| Round lifecycle | `src/game/server/client.cpp` (`trySpawn`, `die`), `src/game/server/world_session.cpp` (`pickSpawnLocation`), `src/game/server/game.cpp` (spawn request consume), `src/game/client/player.cpp` (spawn request when dead) | Existing scaffold: `src/game/server/runtime_event_rules.cpp`, `src/game/server/runtime/*`, `src/game/server/domain/world_session.*`; New: `src/game/server/domain/spawn_system.hpp`, `src/game/server/domain/spawn_system.cpp` | game-owned | `partially scaffolded; queued (G5)` |
 | HUD/console/chat | `src/game/ui/*` | `src/game/*` + existing UI hooks | game-owned over engine UI contracts | blocked on `ui-integration` |
 
 ## G1 Findings (Boundary Risks)
@@ -114,12 +114,12 @@ Scope:
   - `src/game/server/domain/shot_system.hpp`
   - `src/game/server/domain/shot_system.cpp`
 - Wire in:
-  - `src/game/server/runtime.cpp` (register create-shot events into `ShotSystem`, tick system each frame, emit remove-shot notifications on expiry)
+  - `src/game/server/runtime/*` (register create-shot events into `ShotSystem`, tick system each frame, emit remove-shot notifications on expiry)
   - `src/game/server/server_game.cpp` (host/update hook if needed for domain ownership consistency)
 - Preserve existing transport/protocol contracts in:
   - `src/game/server/net/event_source.hpp`
   - `src/game/server/net/transport_event_source.cpp`
-  - `src/game/net/protocol_codec.*`
+  - `src/game/net/protocol_codec/*`
 - No hit attribution, no score mutation, no UI changes in G2.
 
 Acceptance:
@@ -132,10 +132,10 @@ Implementation landed:
 - Added `src/game/server/domain/shot_types.hpp`.
 - Added `src/game/server/domain/shot_system.hpp`.
 - Added `src/game/server/domain/shot_system.cpp`.
-- Wired shot lifecycle + expiry remove broadcasts in `src/game/server/runtime.cpp`.
+- Wired shot lifecycle + expiry remove broadcasts in `src/game/server/runtime/*`.
 - Extended server event-source contract with remove-shot callback in `src/game/server/net/event_source.hpp`.
 - Implemented remove-shot transport broadcast in `src/game/server/net/transport_event_source.cpp`.
-- Added protobuf encode helper `EncodeServerRemoveShot` in `src/game/net/protocol_codec.*`.
+- Added protobuf encode helper `EncodeServerRemoveShot` in `src/game/net/protocol_codec/*`.
 - Added remove-shot round-trip coverage in `src/game/tests/server_net_contract_test.cpp`.
 
 ## D1 Slice (Landed 2026-02-14)
@@ -145,7 +145,7 @@ Goal:
 Scope landed:
 - Added `src/game/client/domain/tank_drive_controller.hpp`.
 - Added `src/game/client/domain/tank_drive_controller.cpp`.
-- Integrated local tank entity lifecycle + drive controls + follow camera in `src/game/game.cpp`.
+- Integrated local tank entity lifecycle + drive controls + follow camera in `src/game/client/game/*`.
 - Added deterministic movement contract test `src/game/tests/tank_drive_controller_test.cpp`.
 - Wired build/test target in `src/game/CMakeLists.txt`.
 
@@ -207,11 +207,11 @@ Goal:
 
 Scope:
 - Add/extend movement protocol/event handling in:
-  - src/game/net/protocol_codec.*
+  - src/game/net/protocol_codec/*
   - src/game/server/net/event_source.hpp
   - src/game/server/net/transport_event_source.cpp
   - src/game/server/runtime_event_rules.*
-  - src/game/server/runtime.cpp
+  - src/game/server/runtime/*
 - Keep existing shot contracts stable:
   - src/game/server/domain/shot_system.*
 - In this slice: migrate movement intent ingestion + authoritative position update seam only.
