@@ -3,8 +3,8 @@
 #include "karma/network/config/reconnect_policy.hpp"
 #include "karma/network/transport/client.hpp"
 #include "karma/network/config/transport_mapping.hpp"
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -65,7 +65,7 @@ bool ClientConnection::start() {
                 port_);
 
     const uint32_t timeout_ms = static_cast<uint32_t>(
-        karma::config::ReadUInt16Config({"network.ConnectTimeoutMs"}, static_cast<uint16_t>(2000)));
+        karma::common::config::ReadUInt16Config({"network.ConnectTimeoutMs"}, static_cast<uint16_t>(2000)));
     const karma::network::ClientReconnectPolicy reconnect_policy =
         karma::network::ReadClientReconnectPolicyFromConfig();
     karma::network::ClientTransportConnectOptions connect_options{

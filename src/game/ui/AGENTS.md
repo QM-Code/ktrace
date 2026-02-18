@@ -60,8 +60,8 @@ and what to tackle next.
 
 - All UI config reads/writes must go through `ConfigStore` (no direct JSON file I/O).
 - The UI should only use:
-  - `karma::config::ConfigStore::Get/Set/Erase` for config values.
-  - `karma::config::ConfigStore::Revision()` to detect changes.
+  - `karma::common::config::ConfigStore::Get/Set/Erase` for config values.
+  - `karma::common::config::ConfigStore::Revision()` to detect changes.
 - Example usage is in:
   - RmlUi Settings panel (`panel_settings.cpp`)
   - ImGui Settings panel (`panel_settings.cpp`)

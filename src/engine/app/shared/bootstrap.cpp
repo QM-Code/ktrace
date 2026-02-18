@@ -1,10 +1,10 @@
 #include "karma/app/shared/bootstrap.hpp"
 
 #include "karma/cli/shared/parse.hpp"
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/data_dir_override.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/data/directory_override.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -31,9 +31,9 @@ void ApplyCommonCliConfigOverrides(const karma::cli::shared::CommonState& state)
     if (!state.language_explicit) {
         return;
     }
-    karma::json::Value overlay = karma::json::Object();
+    karma::common::serialization::Value overlay = karma::common::serialization::Object();
     overlay["language"] = state.language;
-    if (!config::ConfigStore::AddRuntimeLayer("cli overrides", overlay, {})) {
+    if (!common::config::ConfigStore::AddRuntimeLayer("cli overrides", overlay, {})) {
         throw std::runtime_error("Failed to apply CLI language override.");
     }
     KARMA_TRACE("config", "Applied CLI language override: {}", state.language);
@@ -44,35 +44,36 @@ void ApplyCommonCliConfigOverrides(const karma::cli::shared::CommonState& state)
 void ConfigureLoggingFromOptions(bool timestamp_logging,
                                  bool trace_explicit,
                                  const std::string& trace_channels) {
-    logging::ConfigureLogPatterns(timestamp_logging);
+    common::logging::ConfigureLogPatterns(timestamp_logging);
     // Default to debug-level logs globally; trace remains opt-in by channel.
     spdlog::set_level(spdlog::level::debug);
     if (trace_explicit) {
-        logging::EnableTraceChannels(trace_channels);
+        common::logging::EnableTraceChannels(trace_channels);
     }
 }
 
 void ConfigureDataAndConfigFromSpec(const BootstrapConfigSpec& spec, int argc, char** argv) {
-    data::DataPathSpec data_spec{};
+    common::data::DataPathSpec data_spec{};
     data_spec.appName = spec.app_name;
     data_spec.dataDirEnvVar = spec.data_dir_env_var;
     data_spec.requiredDataMarker = spec.required_data_marker;
-    data::SetDataPathSpec(data_spec);
+    common::data::SetDataPathSpec(data_spec);
 
-    const auto data_dir_result =
-        data::ApplyDataDirOverrideFromArgs(argc,
-                                           argv,
-                                           spec.default_user_config_relative,
-                                           spec.enable_user_config,
-                                           spec.allow_user_config_data_dir_when_user_config_disabled);
+    const auto data_directory_result =
+        common::data::ApplyDataDirectoryOverrideFromArgs(
+            argc,
+            argv,
+            spec.default_user_config_relative,
+            spec.enable_user_config,
+            spec.allow_user_config_data_dir_when_user_config_disabled);
     const auto user_config_path =
-        spec.enable_user_config ? std::optional<std::filesystem::path>(data_dir_result.userConfigPath)
+        spec.enable_user_config ? std::optional<std::filesystem::path>(data_directory_result.userConfigPath)
                                 : std::nullopt;
-    config::ConfigStore::Initialize(spec.config_specs, user_config_path);
+    common::config::ConfigStore::Initialize(spec.config_specs, user_config_path);
     ApplyCommonCliConfigOverrides(ParseCommonCliState(argc, argv));
 }
 
-bool ReportRequiredConfigIssues(const std::vector<config::ValidationIssue>& issues, bool strict_config) {
+bool ReportRequiredConfigIssues(const std::vector<common::config::ValidationIssue>& issues, bool strict_config) {
     if (issues.empty()) {
         return true;
     }
@@ -90,7 +91,7 @@ bool ReportRequiredConfigIssues(const std::vector<config::ValidationIssue>& issu
 
 std::string ResolveConfiguredAppName(const std::string& fallback_name) {
     const std::string fallback = fallback_name.empty() ? std::string("app") : fallback_name;
-    const std::string configured = config::ReadStringConfig("app.name", fallback);
+    const std::string configured = common::config::ReadStringConfig("app.name", fallback);
     return configured.empty() ? fallback : configured;
 }
 

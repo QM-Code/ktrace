@@ -3,8 +3,8 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/renderer/render_system.hpp"
 
 #include <glm/gtc/constants.hpp>
@@ -13,7 +13,7 @@ namespace karma::scene {
 namespace {
 
 glm::vec3 ReadVec3Config(const char* path) {
-    const auto values = config::ReadRequiredFloatArrayConfig(path);
+    const auto values = common::config::ReadRequiredFloatArrayConfig(path);
     if (values.size() != 3) {
         throw std::runtime_error(std::string("Config '") + path + "' must have 3 elements");
     }
@@ -28,21 +28,21 @@ float ClampPitch(float pitch) {
 } // namespace
 
 void RoamingCameraController::loadFromConfig() {
-    config_.move_speed = config::ReadRequiredFloatConfig("roamingMode.camera.roaming.MoveSpeed");
-    config_.fast_multiplier = config::ReadRequiredFloatConfig("roamingMode.camera.roaming.FastMultiplier");
-    config_.look_sensitivity = config::ReadRequiredFloatConfig("roamingMode.camera.roaming.LookSensitivity");
-    config_.look_smoothing = config::ReadRequiredFloatConfig("roamingMode.camera.roaming.LookSmoothing");
-    config_.invert_y = config::ReadRequiredBoolConfig("roamingMode.camera.roaming.InvertY");
+    config_.move_speed = common::config::ReadRequiredFloatConfig("roamingMode.camera.roaming.MoveSpeed");
+    config_.fast_multiplier = common::config::ReadRequiredFloatConfig("roamingMode.camera.roaming.FastMultiplier");
+    config_.look_sensitivity = common::config::ReadRequiredFloatConfig("roamingMode.camera.roaming.LookSensitivity");
+    config_.look_smoothing = common::config::ReadRequiredFloatConfig("roamingMode.camera.roaming.LookSmoothing");
+    config_.invert_y = common::config::ReadRequiredBoolConfig("roamingMode.camera.roaming.InvertY");
     config_.start_yaw_offset_deg =
-        config::ReadRequiredFloatConfig("roamingMode.camera.roaming.StartYawOffsetDeg");
+        common::config::ReadRequiredFloatConfig("roamingMode.camera.roaming.StartYawOffsetDeg");
     config_.start_pitch_offset_deg =
-        config::ReadRequiredFloatConfig("roamingMode.camera.roaming.StartPitchOffsetDeg");
+        common::config::ReadRequiredFloatConfig("roamingMode.camera.roaming.StartPitchOffsetDeg");
     config_.start_position = ReadVec3Config("roamingMode.camera.roaming.StartPosition");
     config_.start_target = ReadVec3Config("roamingMode.camera.roaming.StartTarget");
 
-    camera_.fov_y_degrees = config::ReadRequiredFloatConfig("roamingMode.camera.default.fovYDegrees");
-    camera_.near_clip = config::ReadRequiredFloatConfig("roamingMode.camera.default.nearClip");
-    camera_.far_clip = config::ReadRequiredFloatConfig("roamingMode.camera.default.farClip");
+    camera_.fov_y_degrees = common::config::ReadRequiredFloatConfig("roamingMode.camera.default.fovYDegrees");
+    camera_.near_clip = common::config::ReadRequiredFloatConfig("roamingMode.camera.default.nearClip");
+    camera_.far_clip = common::config::ReadRequiredFloatConfig("roamingMode.camera.default.farClip");
 }
 
 void RoamingCameraController::initialize(renderer::RenderSystem& render) {

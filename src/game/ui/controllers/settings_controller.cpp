@@ -1,7 +1,7 @@
 #include "ui/controllers/settings_controller.hpp"
 
-#include "karma/common/logging.hpp"
-#include "karma/common/config_store.hpp"
+#include "karma/common/logging/logging.hpp"
+#include "karma/common/config/store.hpp"
 #include "ui/config/ui_config.hpp"
 
 namespace ui {

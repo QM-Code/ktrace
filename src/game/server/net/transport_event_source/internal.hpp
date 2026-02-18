@@ -37,7 +37,7 @@ struct ClientConnectionState {
     std::vector<WorldManifestEntry> cached_world_manifest{};
 };
 
-using ManifestDiffPlan = karma::content::ManifestDiffPlan;
+using ManifestDiffPlan = karma::common::content::ManifestDiffPlan;
 
 std::string DefaultPlayerName(uint32_t client_id);
 std::string ResolvePlayerName(const bz3::net::ClientMessage& message, uint32_t client_id);

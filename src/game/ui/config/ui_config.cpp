@@ -1,7 +1,7 @@
 #include "ui/config/ui_config.hpp"
 
-#include "karma/common/config_store.hpp"
-#include "karma/common/json.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/serialization/json.hpp"
 #include "ui/config/config.hpp"
 
 #include <string>
@@ -13,11 +13,11 @@ float UiConfig::GetRenderBrightness() {
 }
 
 bool UiConfig::SetRenderBrightness(float value) {
-    return karma::config::ConfigStore::Set("render.brightness", value);
+    return karma::common::config::ConfigStore::Set("render.brightness", value);
 }
 
 bool UiConfig::EraseRenderBrightness() {
-    return karma::config::ConfigStore::Erase("render.brightness");
+    return karma::common::config::ConfigStore::Erase("render.brightness");
 }
 
 bool UiConfig::GetVsync() {
@@ -25,7 +25,7 @@ bool UiConfig::GetVsync() {
 }
 
 bool UiConfig::SetVsync(bool value) {
-    return karma::config::ConfigStore::Set("graphics.VSync", value);
+    return karma::common::config::ConfigStore::Set("graphics.VSync", value);
 }
 
 float UiConfig::GetRenderScale() {
@@ -33,15 +33,15 @@ float UiConfig::GetRenderScale() {
 }
 
 bool UiConfig::SetRenderScale(float value) {
-    return karma::config::ConfigStore::Set("ui.RenderScale", value);
+    return karma::common::config::ConfigStore::Set("ui.RenderScale", value);
 }
 
 bool UiConfig::EraseRenderScale() {
-    return karma::config::ConfigStore::Erase("ui.RenderScale");
+    return karma::common::config::ConfigStore::Erase("ui.RenderScale");
 }
 
 std::string UiConfig::GetLanguage() {
-    if (const auto *value = karma::config::ConfigStore::Get("language")) {
+    if (const auto *value = karma::common::config::ConfigStore::Get("language")) {
         if (value->is_string()) {
             return value->get<std::string>();
         }
@@ -50,43 +50,43 @@ std::string UiConfig::GetLanguage() {
 }
 
 bool UiConfig::SetLanguage(const std::string &value) {
-    return karma::config::ConfigStore::Set("language", value);
+    return karma::common::config::ConfigStore::Set("language", value);
 }
 
-const karma::json::Value *UiConfig::GetCommunityCredentials() {
-    return karma::config::ConfigStore::Get("gui.communityCredentials");
+const karma::common::serialization::Value *UiConfig::GetCommunityCredentials() {
+    return karma::common::config::ConfigStore::Get("gui.communityCredentials");
 }
 
-bool UiConfig::SetCommunityCredentials(const karma::json::Value &value) {
-    return karma::config::ConfigStore::Set("gui.communityCredentials", value);
+bool UiConfig::SetCommunityCredentials(const karma::common::serialization::Value &value) {
+    return karma::common::config::ConfigStore::Set("gui.communityCredentials", value);
 }
 
 bool UiConfig::EraseCommunityCredentials() {
-    return karma::config::ConfigStore::Erase("gui.communityCredentials");
+    return karma::common::config::ConfigStore::Erase("gui.communityCredentials");
 }
 
-std::optional<karma::json::Value> UiConfig::GetKeybindings() {
-    return karma::config::ConfigStore::GetCopy("keybindings");
+std::optional<karma::common::serialization::Value> UiConfig::GetKeybindings() {
+    return karma::common::config::ConfigStore::GetCopy("keybindings");
 }
 
-bool UiConfig::SetKeybindings(const karma::json::Value &value) {
-    return karma::config::ConfigStore::Set("keybindings", value);
+bool UiConfig::SetKeybindings(const karma::common::serialization::Value &value) {
+    return karma::common::config::ConfigStore::Set("keybindings", value);
 }
 
 bool UiConfig::EraseKeybindings() {
-    return karma::config::ConfigStore::Erase("keybindings");
+    return karma::common::config::ConfigStore::Erase("keybindings");
 }
 
-std::optional<karma::json::Value> UiConfig::GetControllerKeybindings() {
-    return karma::config::ConfigStore::GetCopy("gui.keybindings.controller");
+std::optional<karma::common::serialization::Value> UiConfig::GetControllerKeybindings() {
+    return karma::common::config::ConfigStore::GetCopy("gui.keybindings.controller");
 }
 
-bool UiConfig::SetControllerKeybindings(const karma::json::Value &value) {
-    return karma::config::ConfigStore::Set("gui.keybindings.controller", value);
+bool UiConfig::SetControllerKeybindings(const karma::common::serialization::Value &value) {
+    return karma::common::config::ConfigStore::Set("gui.keybindings.controller", value);
 }
 
 bool UiConfig::EraseControllerKeybindings() {
-    return karma::config::ConfigStore::Erase("gui.keybindings.controller");
+    return karma::common::config::ConfigStore::Erase("gui.keybindings.controller");
 }
 
 bool UiConfig::GetHudScoreboard() {
@@ -126,37 +126,37 @@ bool UiConfig::GetValidateUi() {
 }
 
 bool UiConfig::SetHudScoreboard(bool value) {
-    return karma::config::ConfigStore::Set("ui.hud.scoreboard", value);
+    return karma::common::config::ConfigStore::Set("ui.hud.scoreboard", value);
 }
 
 bool UiConfig::SetHudChat(bool value) {
-    return karma::config::ConfigStore::Set("ui.hud.chat", value);
+    return karma::common::config::ConfigStore::Set("ui.hud.chat", value);
 }
 
 bool UiConfig::SetHudRadar(bool value) {
-    return karma::config::ConfigStore::Set("ui.hud.radar", value);
+    return karma::common::config::ConfigStore::Set("ui.hud.radar", value);
 }
 
 bool UiConfig::SetHudFps(bool value) {
-    return karma::config::ConfigStore::Set("ui.hud.fps", value);
+    return karma::common::config::ConfigStore::Set("ui.hud.fps", value);
 }
 
 bool UiConfig::SetHudCrosshair(bool value) {
-    return karma::config::ConfigStore::Set("ui.hud.crosshair", value);
+    return karma::common::config::ConfigStore::Set("ui.hud.crosshair", value);
 }
 
 bool UiConfig::SetHudBackgroundColor(const std::array<float, 4> &value) {
-    const karma::json::Value array = karma::json::Array({value[0], value[1], value[2], value[3]});
-    return karma::config::ConfigStore::Set("ui.hud.backgroundColor", array);
+    const karma::common::serialization::Value array = karma::common::serialization::Array({value[0], value[1], value[2], value[3]});
+    return karma::common::config::ConfigStore::Set("ui.hud.backgroundColor", array);
 }
 
 bool UiConfig::SetHudTextColor(const std::array<float, 4> &value) {
-    const karma::json::Value array = karma::json::Array({value[0], value[1], value[2], value[3]});
-    return karma::config::ConfigStore::Set("ui.hud.textColor", array);
+    const karma::common::serialization::Value array = karma::common::serialization::Array({value[0], value[1], value[2], value[3]});
+    return karma::common::config::ConfigStore::Set("ui.hud.textColor", array);
 }
 
 bool UiConfig::SetHudTextScale(float value) {
-    return karma::config::ConfigStore::Set("ui.hud.textScale", value);
+    return karma::common::config::ConfigStore::Set("ui.hud.textScale", value);
 }
 
 } // namespace ui

@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace karma::content {
+namespace karma::common::content {
 
 namespace {
 
@@ -204,4 +204,4 @@ ManifestDiffPlan BuildManifestDiffPlan(const std::vector<ManifestEntry>& cached_
     return plan;
 }
 
-} // namespace karma::content
+} // namespace karma::common::content

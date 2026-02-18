@@ -1,8 +1,8 @@
 #include "karma/common/content/catalog.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "spdlog/spdlog.h"
 
 namespace {
@@ -12,16 +12,16 @@ std::string LeafKey(const std::string& key) {
 }
 } // namespace
 
-namespace karma::content {
+namespace karma::common::content {
 
-void AssetCatalog::mergeFromJson(const karma::json::Value& assets_json,
+void AssetCatalog::mergeFromJson(const karma::common::serialization::Value& assets_json,
                                  const std::filesystem::path& base_dir) {
     if (!assets_json.is_object()) {
         return;
     }
 
     std::map<std::string, std::filesystem::path> collected;
-    karma::data::CollectAssetEntries(assets_json, base_dir, collected);
+    karma::common::data::CollectAssetEntries(assets_json, base_dir, collected);
 
     for (const auto& [key, path] : collected) {
         entries[key] = path;
@@ -46,7 +46,7 @@ std::filesystem::path AssetCatalog::resolvePath(const std::string& key, const ch
     return {};
 }
 
-void WorldContent::mergeLayer(const karma::json::Value& layer_json,
+void WorldContent::mergeLayer(const karma::common::serialization::Value& layer_json,
                               const std::filesystem::path& base_dir) {
     if (!layer_json.is_object()) {
         return;
@@ -66,8 +66,8 @@ std::filesystem::path WorldContent::resolveAssetPath(const std::string& key, con
     return assets.resolvePath(key, log_context);
 }
 
-WorldContent LoadWorldContent(const std::vector<karma::data::ConfigLayerSpec>& base_specs,
-                              const std::optional<karma::json::Value>& world_config,
+WorldContent LoadWorldContent(const std::vector<karma::common::data::ConfigLayerSpec>& base_specs,
+                              const std::optional<karma::common::serialization::Value>& world_config,
                               const std::filesystem::path& world_dir,
                               const std::string& fallback_name,
                               const std::string& log_context) {
@@ -75,7 +75,7 @@ WorldContent LoadWorldContent(const std::vector<karma::data::ConfigLayerSpec>& b
     content.rootDir = world_dir;
     content.name = fallback_name;
 
-    std::vector<karma::data::ConfigLayer> layers = karma::data::LoadConfigLayers(base_specs);
+    std::vector<karma::common::data::ConfigLayer> layers = karma::common::data::LoadConfigLayers(base_specs);
     if (world_config.has_value()) {
         if (world_config->is_object()) {
             layers.push_back({*world_config, world_dir});
@@ -84,9 +84,9 @@ WorldContent LoadWorldContent(const std::vector<karma::data::ConfigLayerSpec>& b
         }
     }
 
-    karma::json::Value merged_config = karma::json::Object();
+    karma::common::serialization::Value merged_config = karma::common::serialization::Object();
     for (const auto& layer : layers) {
-        karma::data::MergeJsonObjects(merged_config, layer.json);
+        karma::common::data::MergeJsonObjects(merged_config, layer.json);
         content.mergeLayer(layer.json, layer.baseDir);
     }
 
@@ -98,4 +98,4 @@ WorldContent LoadWorldContent(const std::vector<karma::data::ConfigLayerSpec>& b
     return content;
 }
 
-} // namespace karma::content
+} // namespace karma::common::content

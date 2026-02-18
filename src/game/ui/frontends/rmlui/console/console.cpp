@@ -7,8 +7,8 @@
 
 #include <filesystem>
 
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "spdlog/spdlog.h"
 
 namespace ui {

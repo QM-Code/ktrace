@@ -2,9 +2,9 @@
 
 #include "client/domain/tank_drive_controller.hpp"
 #include "client/game/math.hpp"
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/config_store.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/renderer/layers.hpp"
 #include "karma/renderer/render_system.hpp"
@@ -32,7 +32,7 @@ bool Game::ensureLocalTankEntity() {
 
     destroyLocalTankEntity();
 
-    const auto model_path = karma::config::ConfigStore::ResolveAssetPath("assets.models.playerModel", {});
+    const auto model_path = karma::common::config::ConfigStore::ResolveAssetPath("assets.models.playerModel", {});
     if (model_path.empty()) {
         spdlog::error("Game: failed to resolve assets.models.playerModel");
         return false;
@@ -57,33 +57,33 @@ bool Game::ensureLocalTankEntity() {
     tank_drive_ = std::make_unique<client::domain::TankDriveController>();
     client::domain::TankDriveParams drive_params{};
     drive_params.forward_speed =
-        std::max(0.0f, karma::config::ReadFloatConfig({"gameplay.tank.forwardSpeed"}, 8.0f));
+        std::max(0.0f, karma::common::config::ReadFloatConfig({"gameplay.tank.forwardSpeed"}, 8.0f));
     drive_params.reverse_speed =
-        std::max(0.0f, karma::config::ReadFloatConfig({"gameplay.tank.reverseSpeed"}, 5.0f));
+        std::max(0.0f, karma::common::config::ReadFloatConfig({"gameplay.tank.reverseSpeed"}, 5.0f));
     drive_params.turn_speed =
-        std::max(0.0f, karma::config::ReadFloatConfig({"gameplay.tank.turnSpeed"}, 2.0f));
+        std::max(0.0f, karma::common::config::ReadFloatConfig({"gameplay.tank.turnSpeed"}, 2.0f));
     tank_drive_->setParams(drive_params);
 
     client::domain::TankDriveState initial_state{};
     initial_state.position = glm::vec3(
-        karma::config::ReadFloatConfig({"gameplay.tank.startX"}, 0.0f),
-        karma::config::ReadFloatConfig({"gameplay.tank.startY"}, 0.6f),
-        karma::config::ReadFloatConfig({"gameplay.tank.startZ"}, 0.0f));
+        karma::common::config::ReadFloatConfig({"gameplay.tank.startX"}, 0.0f),
+        karma::common::config::ReadFloatConfig({"gameplay.tank.startY"}, 0.6f),
+        karma::common::config::ReadFloatConfig({"gameplay.tank.startZ"}, 0.0f));
     initial_state.yaw_radians =
-        karma::config::ReadFloatConfig({"gameplay.tank.startYawDegrees"}, 0.0f)
+        karma::common::config::ReadFloatConfig({"gameplay.tank.startYawDegrees"}, 0.0f)
         * glm::pi<float>() / 180.0f;
     tank_drive_->setState(initial_state);
 
-    tank_model_scale_ = std::max(0.01f, karma::config::ReadFloatConfig({"gameplay.tank.modelScale"}, 1.0f));
+    tank_model_scale_ = std::max(0.01f, karma::common::config::ReadFloatConfig({"gameplay.tank.modelScale"}, 1.0f));
     tank_model_yaw_offset_radians_ =
-        karma::config::ReadFloatConfig({"gameplay.tank.modelYawOffsetDegrees"}, 0.0f)
+        karma::common::config::ReadFloatConfig({"gameplay.tank.modelYawOffsetDegrees"}, 0.0f)
         * glm::pi<float>() / 180.0f;
     tank_camera_yaw_offset_radians_ =
-        karma::config::ReadFloatConfig({"gameplay.tank.cameraYawOffsetDegrees"}, 0.0f)
+        karma::common::config::ReadFloatConfig({"gameplay.tank.cameraYawOffsetDegrees"}, 0.0f)
         * glm::pi<float>() / 180.0f;
 
     std::string camera_mode =
-        karma::config::ReadStringConfig("gameplay.tank.cameraMode", std::string("fps"));
+        karma::common::config::ReadStringConfig("gameplay.tank.cameraMode", std::string("fps"));
     for (char& ch : camera_mode) {
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     }
@@ -94,28 +94,28 @@ bool Game::ensureLocalTankEntity() {
 
     tank_camera_height_ = std::max(
         0.1f,
-        karma::config::ReadFloatConfig(
+        karma::common::config::ReadFloatConfig(
             {"gameplay.tank.cameraHeight"},
             (tank_camera_mode_ == TankCameraMode::Fps) ? 1.2f : 4.0f));
     tank_camera_follow_distance_ = std::max(
         0.1f,
-        karma::config::ReadFloatConfig(
+        karma::common::config::ReadFloatConfig(
             {"gameplay.tank.cameraDistance"},
             (tank_camera_mode_ == TankCameraMode::Fps) ? 0.0f : 10.0f));
     tank_camera_forward_offset_ =
-        std::max(0.0f, karma::config::ReadFloatConfig({"gameplay.tank.cameraForwardOffset"}, 0.7f));
+        std::max(0.0f, karma::common::config::ReadFloatConfig({"gameplay.tank.cameraForwardOffset"}, 0.7f));
     tank_camera_look_ahead_ =
-        std::max(1.0f, karma::config::ReadFloatConfig({"gameplay.tank.cameraLookAhead"}, 8.0f));
+        std::max(1.0f, karma::common::config::ReadFloatConfig({"gameplay.tank.cameraLookAhead"}, 8.0f));
     tank_camera_smooth_rate_ =
-        std::max(1.0f, karma::config::ReadFloatConfig({"gameplay.tank.cameraSmoothRate"}, 18.0f));
+        std::max(1.0f, karma::common::config::ReadFloatConfig({"gameplay.tank.cameraSmoothRate"}, 18.0f));
     tank_visual_smooth_rate_ =
-        std::max(1.0f, karma::config::ReadFloatConfig({"gameplay.tank.visualSmoothRate"}, 22.0f));
+        std::max(1.0f, karma::common::config::ReadFloatConfig({"gameplay.tank.visualSmoothRate"}, 22.0f));
     tank_sim_max_step_seconds_ = std::clamp(
-        karma::config::ReadFloatConfig({"gameplay.tank.simMaxStepSeconds"}, 1.0f / 120.0f),
+        karma::common::config::ReadFloatConfig({"gameplay.tank.simMaxStepSeconds"}, 1.0f / 120.0f),
         1.0f / 300.0f,
         1.0f / 30.0f);
     tank_collision_radius_ =
-        std::max(0.1f, karma::config::ReadFloatConfig({"gameplay.tank.collisionRadius"}, 1.0f));
+        std::max(0.1f, karma::common::config::ReadFloatConfig({"gameplay.tank.collisionRadius"}, 1.0f));
     buildTankCollisionCache();
     tank_visual_position_ = initial_state.position;
     tank_visual_yaw_radians_ = client::game::detail::NormalizeAngle(initial_state.yaw_radians);

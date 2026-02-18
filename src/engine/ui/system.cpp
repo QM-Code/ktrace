@@ -1,7 +1,7 @@
 #include "karma/ui/ui_system.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/renderer/device.hpp"
 #include "karma/renderer/layers.hpp"
 #include "karma/renderer/render_system.hpp"
@@ -75,7 +75,7 @@ const char* BackendName(Backend backend) {
 
 Backend ParseBackendFromConfig(Backend current) {
     const std::string current_name = current == Backend::ImGui ? "imgui" : "rmlui";
-    std::string configured = config::ReadStringConfig("ui.backend", current_name);
+    std::string configured = common::config::ReadStringConfig("ui.backend", current_name);
     for (char& c : configured) {
         if (c >= 'A' && c <= 'Z') {
             c = static_cast<char>(c - 'A' + 'a');
@@ -157,11 +157,11 @@ void UiSystem::init(renderer::GraphicsDevice& graphics) {
     if (!backend_forced_) {
         backend_ = ParseBackendFromConfig(backend_);
     }
-    capture_input_enabled_ = config::ReadBoolConfig({"ui.captureInput"}, false);
-    overlay_fallback_enabled_ = config::ReadBoolConfig({"ui.overlayFallback.Enabled"}, true);
-    overlay_distance_ = config::ReadFloatConfig({"ui.overlayFallback.Distance", "ui.overlayTest.Distance"}, 0.75f);
-    overlay_width_ = config::ReadFloatConfig({"ui.overlayFallback.Width", "ui.overlayTest.Width"}, 1.2f);
-    overlay_height_ = config::ReadFloatConfig({"ui.overlayFallback.Height", "ui.overlayTest.Height"}, 0.7f);
+    capture_input_enabled_ = common::config::ReadBoolConfig({"ui.captureInput"}, false);
+    overlay_fallback_enabled_ = common::config::ReadBoolConfig({"ui.overlayFallback.Enabled"}, true);
+    overlay_distance_ = common::config::ReadFloatConfig({"ui.overlayFallback.Distance", "ui.overlayTest.Distance"}, 0.75f);
+    overlay_width_ = common::config::ReadFloatConfig({"ui.overlayFallback.Width", "ui.overlayTest.Width"}, 1.2f);
+    overlay_height_ = common::config::ReadFloatConfig({"ui.overlayFallback.Height", "ui.overlayTest.Height"}, 0.7f);
 
     overlay_mesh_ = graphics.createMesh(BuildOverlayQuadMesh());
     if (overlay_mesh_ == renderer::kInvalidMesh) {

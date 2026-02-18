@@ -1,6 +1,6 @@
 #include "karma/app/shared/backend_resolution.hpp"
 
-#include "karma/common/config_helpers.hpp"
+#include "karma/common/config/helpers.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -11,7 +11,7 @@ physics_backend::BackendKind ResolvePhysicsBackendFromOption(const std::string& 
                                                              bool option_explicit) {
     const std::string configured = option_explicit
         ? option_value
-        : config::ReadStringConfig("physics.backend", "auto");
+        : common::config::ReadStringConfig("physics.backend", "auto");
     const auto parsed = physics_backend::ParseBackendKind(configured);
     if (!parsed) {
         const char* source = option_explicit ? "--backend-physics" : "config 'physics.backend'";
@@ -37,7 +37,7 @@ audio_backend::BackendKind ResolveAudioBackendFromOption(const std::string& opti
                                                          bool option_explicit) {
     const std::string configured = option_explicit
         ? option_value
-        : config::ReadStringConfig("audio.backend", "auto");
+        : common::config::ReadStringConfig("audio.backend", "auto");
     const auto parsed = audio_backend::ParseBackendKind(configured);
     if (!parsed) {
         const char* source = option_explicit ? "--backend-audio" : "config 'audio.backend'";

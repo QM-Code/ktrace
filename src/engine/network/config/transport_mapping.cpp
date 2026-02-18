@@ -1,13 +1,13 @@
 #include "karma/network/config/transport_mapping.hpp"
 
-#include "karma/common/config_helpers.hpp"
+#include "karma/common/config/helpers.hpp"
 
 namespace karma::network {
 
 ClientTransportConfig ResolveClientTransportConfigFromConfig(bool* out_backend_is_custom) {
     ClientTransportConfig transport_config{};
     const std::string backend_name =
-        karma::config::ReadStringConfig({"network.ClientTransportBackend"}, std::string("auto"));
+        karma::common::config::ReadStringConfig({"network.ClientTransportBackend"}, std::string("auto"));
     transport_config.backend_name = backend_name;
 
     const auto parsed_backend = ParseClientTransportBackend(backend_name);
@@ -31,7 +31,7 @@ ServerTransportConfig ResolveServerTransportConfigFromConfig(uint16_t listen_por
     transport_config.channel_count = channel_count;
 
     const std::string backend_name =
-        karma::config::ReadStringConfig({"network.ServerTransportBackend"}, std::string("auto"));
+        karma::common::config::ReadStringConfig({"network.ServerTransportBackend"}, std::string("auto"));
     transport_config.backend_name = backend_name;
 
     const auto parsed_backend = ParseServerTransportBackend(backend_name);

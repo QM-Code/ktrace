@@ -8,7 +8,7 @@
 #include "../internal/environment_lighting.hpp"
 #include "../internal/material_semantics.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/platform/window.hpp"
 #include "karma/renderer/layers.hpp"
 

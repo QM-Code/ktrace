@@ -1,9 +1,9 @@
 #include "server/runtime/internal.hpp"
 
 #include "karma/app/shared/backend_resolution.hpp"
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/config_store.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/cli/server/runtime_options.hpp"
 
 #include <algorithm>
@@ -24,19 +24,19 @@ void BuildRuntimeConfig(const karma::cli::server::AppOptions& options,
     }
 
     engine_config->target_tick_hz =
-        karma::config::ReadFloatConfig({"simulation.fixedHz"}, engine_config->target_tick_hz);
+        karma::common::config::ReadFloatConfig({"simulation.fixedHz"}, engine_config->target_tick_hz);
     engine_config->max_delta_time =
-        karma::config::ReadFloatConfig({"simulation.maxFrameDeltaTime"},
+        karma::common::config::ReadFloatConfig({"simulation.maxFrameDeltaTime"},
                                        engine_config->max_delta_time);
     engine_config->max_substeps =
-        static_cast<int>(karma::config::ReadUInt16Config({"simulation.maxSubsteps"},
+        static_cast<int>(karma::common::config::ReadUInt16Config({"simulation.maxSubsteps"},
                                                           static_cast<uint16_t>(engine_config->max_substeps)));
     engine_config->physics_backend =
         karma::app::shared::ResolvePhysicsBackendFromOption(options.backend_physics, options.backend_physics_explicit);
     engine_config->audio_backend =
         karma::app::shared::ResolveAudioBackendFromOption(options.backend_audio, options.backend_audio_explicit);
     engine_config->enable_audio = options.backend_audio_explicit
-        || karma::config::ReadBoolConfig({"audio.serverEnabled"}, false);
+        || karma::common::config::ReadBoolConfig({"audio.serverEnabled"}, false);
 
     *listen_port = karma::cli::server::ResolveListenPort(options.listen_port,
                                                        options.listen_port_explicit,
@@ -45,7 +45,7 @@ void BuildRuntimeConfig(const karma::cli::server::AppOptions& options,
     *pre_auth_config = karma::network::ReadServerPreAuthConfig();
 
     const std::string community_override = options.community_explicit ? options.community : std::string{};
-    community_heartbeat->configureFromConfig(karma::config::ConfigStore::Merged(),
+    community_heartbeat->configureFromConfig(karma::common::config::ConfigStore::Merged(),
                                              *listen_port,
                                              community_override);
     if (community_heartbeat->enabled()) {

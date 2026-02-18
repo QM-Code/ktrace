@@ -1,7 +1,7 @@
 #include "karma/cli/shared/parse.hpp"
 
 #include "karma/audio/backend.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/physics/backend.hpp"
 
 #include <algorithm>
@@ -221,7 +221,7 @@ void RequireTraceList(int argc, char** argv) {
             if (!has_value) {
                 std::cerr << "Error: --trace requires a comma-separated channel list.\n";
                 std::cerr << "\nAvailable trace channels:\n"
-                          << karma::logging::GetDefaultTraceChannelsHelp();
+                          << karma::common::logging::GetDefaultTraceChannelsHelp();
                 std::exit(1);
             }
         }

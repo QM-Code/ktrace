@@ -2,7 +2,7 @@
 #include "net/protocol_codec.hpp"
 #include "server/net/transport_event_source.hpp"
 
-#include "karma/common/config_store.hpp"
+#include "karma/common/config/store.hpp"
 #include "network/tests/support/loopback_transport_fixture.hpp"
 
 #include <chrono>
@@ -66,9 +66,9 @@ std::filesystem::path MakeTestConfigPath() {
 }
 
 void InitEmptyConfig() {
-    karma::config::ConfigStore::Initialize({}, MakeTestConfigPath());
-    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
-    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+    karma::common::config::ConfigStore::Initialize({}, MakeTestConfigPath());
+    (void)karma::common::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::common::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 }
 
 std::optional<ServerFixture> CreateServerFixture() {

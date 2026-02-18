@@ -2,9 +2,9 @@
 
 #include <curl/curl.h>
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/json.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/serialization/json.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/network/auth/structured_payload.hpp"
 #include "karma/network/http/curl_global.hpp"
 
@@ -102,7 +102,7 @@ bool PerformPost(const std::string& url,
     if (status < 200 || status >= 300) {
         if (!body_out->empty()) {
             try {
-                const auto json_data = karma::json::Parse(*body_out);
+                const auto json_data = karma::common::serialization::Parse(*body_out);
                 if (json_data.contains("message") && json_data["message"].is_string()) {
                     *error_out = json_data["message"].get<std::string>();
                 } else if (json_data.contains("error") && json_data["error"].is_string()) {
@@ -228,7 +228,7 @@ bool EvaluateCommunityAuth(const ServerPreAuthConfig& config,
     bool ok = false;
     std::string remote_error{};
     try {
-        const auto response_json = karma::json::Parse(response_body);
+        const auto response_json = karma::common::serialization::Parse(response_body);
         ok = response_json.value("ok", false);
         remote_error = response_json.value("error", std::string{});
     } catch (...) {
@@ -265,8 +265,8 @@ bool EvaluateCommunityAuth(const ServerPreAuthConfig& config,
 
 ServerPreAuthConfig ReadServerPreAuthConfig() {
     ServerPreAuthConfig config{};
-    config.required_password = karma::config::ReadStringConfig({"network.PreAuthPassword"}, std::string{});
-    config.reject_reason = karma::config::ReadStringConfig({"network.PreAuthRejectReason"},
+    config.required_password = karma::common::config::ReadStringConfig({"network.PreAuthPassword"}, std::string{});
+    config.reject_reason = karma::common::config::ReadStringConfig({"network.PreAuthRejectReason"},
                                                            std::string("Authentication failed."));
     if (config.reject_reason.empty()) {
         config.reject_reason = "Authentication failed.";

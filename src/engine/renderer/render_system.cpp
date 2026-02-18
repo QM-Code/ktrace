@@ -1,6 +1,6 @@
 #include "karma/renderer/render_system.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/scene/components.hpp"
 #include <set>

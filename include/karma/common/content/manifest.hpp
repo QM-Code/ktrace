@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace karma::content {
+namespace karma::common::content {
 
 struct ManifestEntry {
     std::string path{};
@@ -46,4 +46,4 @@ bool ManifestEntriesEqual(const std::vector<ManifestEntry>& lhs,
 ManifestDiffPlan BuildManifestDiffPlan(const std::vector<ManifestEntry>& cached_manifest,
                                        const std::vector<ManifestEntry>& incoming_manifest);
 
-} // namespace karma::content
+} // namespace karma::common::content

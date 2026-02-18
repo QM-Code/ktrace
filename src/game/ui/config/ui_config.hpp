@@ -4,7 +4,7 @@
 #include <array>
 #include <string>
 
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 
 namespace ui {
 
@@ -26,16 +26,16 @@ public:
     static std::string GetLanguage();
     static bool SetLanguage(const std::string &value);
 
-    static const karma::json::Value *GetCommunityCredentials();
-    static bool SetCommunityCredentials(const karma::json::Value &value);
+    static const karma::common::serialization::Value *GetCommunityCredentials();
+    static bool SetCommunityCredentials(const karma::common::serialization::Value &value);
     static bool EraseCommunityCredentials();
 
-    static std::optional<karma::json::Value> GetKeybindings();
-    static bool SetKeybindings(const karma::json::Value &value);
+    static std::optional<karma::common::serialization::Value> GetKeybindings();
+    static bool SetKeybindings(const karma::common::serialization::Value &value);
     static bool EraseKeybindings();
 
-    static std::optional<karma::json::Value> GetControllerKeybindings();
-    static bool SetControllerKeybindings(const karma::json::Value &value);
+    static std::optional<karma::common::serialization::Value> GetControllerKeybindings();
+    static bool SetControllerKeybindings(const karma::common::serialization::Value &value);
     static bool EraseControllerKeybindings();
 
     static bool GetHudScoreboard();

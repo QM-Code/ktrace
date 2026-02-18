@@ -3,9 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "karma/common/config_store.hpp"
-#include "karma/common/i18n.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/i18n/i18n.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "ui/config/config.hpp"
 #include "ui/console/status_banner.hpp"
 
@@ -47,7 +47,7 @@ bool DrawOnOffToggle(const char *label, bool &value) {
 namespace ui {
 
 void ConsoleView::drawSettingsPanel(const MessageColors &colors) {
-    const uint64_t revision = karma::config::ConfigStore::Revision();
+    const uint64_t revision = karma::common::config::ConfigStore::Revision();
     if (settingsModel.lastConfigRevision != 0 && settingsModel.lastConfigRevision != revision) {
         KARMA_TRACE("ui.imgui",
                     "ImGuiSettings: config revision changed while open: {} -> {} (connected={})",
@@ -62,7 +62,7 @@ void ConsoleView::drawSettingsPanel(const MessageColors &colors) {
         settingsModel.statusText.clear();
         settingsModel.statusIsError = false;
 
-        if (!karma::config::ConfigStore::Initialized()) {
+        if (!karma::common::config::ConfigStore::Initialized()) {
             settingsModel.statusText = "Failed to load config; showing defaults.";
             settingsModel.statusIsError = true;
         }
@@ -70,7 +70,7 @@ void ConsoleView::drawSettingsPanel(const MessageColors &colors) {
         settingsModel.hud.loadFromConfig();
         std::string configuredLanguage = settingsController.getConfiguredLanguage();
         if (configuredLanguage.empty()) {
-            configuredLanguage = karma::i18n::Get().language();
+            configuredLanguage = karma::common::i18n::Get().language();
         }
         settingsModel.language = configuredLanguage;
         for (std::size_t i = 0; i < kLanguageCodes.size(); ++i) {
@@ -81,7 +81,7 @@ void ConsoleView::drawSettingsPanel(const MessageColors &colors) {
         }
     }
 
-    auto &i18n = karma::i18n::Get();
+    auto &i18n = karma::common::i18n::Get();
     auto applyHudSetting = [&](const char *name, bool value, auto setter) {
         setter(value, false);
         std::string error;
@@ -148,10 +148,10 @@ void ConsoleView::drawSettingsPanel(const MessageColors &colors) {
         ImGui::TableSetColumnIndex(1);
         ImGui::TextUnformatted("HUD");
         ImGui::Spacing();
-        const std::string &hudBackgroundLabel = karma::i18n::Get().get("ui.settings.hud_background_label");
-        const std::string &hudBackgroundEditLabel = karma::i18n::Get().get("ui.settings.hud_background_edit");
-        const std::string &hudTextColorLabel = karma::i18n::Get().get("ui.settings.hud_text_color_label");
-        const std::string &hudTextSizeLabel = karma::i18n::Get().get("ui.settings.hud_text_size_label");
+        const std::string &hudBackgroundLabel = karma::common::i18n::Get().get("ui.settings.hud_background_label");
+        const std::string &hudBackgroundEditLabel = karma::common::i18n::Get().get("ui.settings.hud_background_edit");
+        const std::string &hudTextColorLabel = karma::common::i18n::Get().get("ui.settings.hud_text_color_label");
+        const std::string &hudTextSizeLabel = karma::common::i18n::Get().get("ui.settings.hud_text_size_label");
         auto bgColor = settingsModel.hud.backgroundColor();
         ImVec4 bgPreview(bgColor[0], bgColor[1], bgColor[2], bgColor[3]);
         ImGui::AlignTextToFramePadding();

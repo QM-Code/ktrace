@@ -39,7 +39,7 @@ Content mount and boundary-hygiene extraction are already archived as completed 
 ## Interface Boundaries
 - Inputs consumed:
   - server init/transfer metadata via `bz3::net::ServerMessage`,
-  - engine content sync/apply/cache primitives via `karma::content::*`,
+  - engine content sync/apply/cache primitives via `karma::common::content::*`,
   - connection-side detail bridge contract from `src/game/client/net/connection/internal.hpp`.
 - Outputs exposed:
   - stable game-side adapter functions consumed by client connection bootstrap/transfer paths,
@@ -74,7 +74,7 @@ Content mount and boundary-hygiene extraction are already archived as completed 
 - keep non-exported helper details local to `.cpp` units.
 
 4. W3 seam promotion (only if needed):
-- if compaction exposes missing engine seams, extract narrowly scoped helpers into `karma::content::*` with no protocol coupling.
+- if compaction exposes missing engine seams, extract narrowly scoped helpers into `karma::common::content::*` with no protocol coupling.
 
 5. W4 regression hardening:
 - strengthen targeted tests and traces for cache-hit/no-payload, full transfer, delta transfer, and rollback safety paths.

@@ -1,6 +1,6 @@
 #include "karma/network/auth/structured_payload.hpp"
 
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 
 #include <openssl/evp.h>
 
@@ -32,7 +32,7 @@ std::string BuildStructuredAuthPayload(std::string username,
         return {};
     }
 
-    karma::json::Value auth = karma::json::Object();
+    karma::common::serialization::Value auth = karma::common::serialization::Object();
     auth["username"] = std::move(username);
     if (passhash.has_value() && !passhash->empty()) {
         auth["passhash"] = std::move(*passhash);
@@ -42,7 +42,7 @@ std::string BuildStructuredAuthPayload(std::string username,
     if (!auth.contains("password") && !auth.contains("passhash")) {
         return {};
     }
-    return karma::json::Dump(auth);
+    return karma::common::serialization::Dump(auth);
 }
 
 StructuredAuthPayload ParseStructuredAuthPayload(std::string_view auth_payload) {
@@ -53,7 +53,7 @@ StructuredAuthPayload ParseStructuredAuthPayload(std::string_view auth_payload) 
     }
 
     try {
-        const auto json_data = karma::json::Parse(trimmed);
+        const auto json_data = karma::common::serialization::Parse(trimmed);
         if (!json_data.is_object()) {
             return out;
         }

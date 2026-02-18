@@ -2,7 +2,7 @@
 
 #include "server/runtime_event_rules.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/network/server/session/hooks.hpp"
 #include "karma/network/server/session/leave_runtime.hpp"
 

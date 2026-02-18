@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 
 namespace karma::network {
 
@@ -18,7 +18,7 @@ class CommunityHeartbeat {
     explicit CommunityHeartbeat(std::unique_ptr<IHeartbeatClient> client);
     ~CommunityHeartbeat();
 
-    void configureFromConfig(const karma::json::Value& merged_config,
+    void configureFromConfig(const karma::common::serialization::Value& merged_config,
                              uint16_t listen_port,
                              const std::string& community_override);
     void update(size_t connected_client_count);

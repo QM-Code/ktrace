@@ -9,9 +9,9 @@
 #include "karma/common/content/sync_facade.hpp"
 #include "karma/network/server/auth/preauth.hpp"
 #include "karma/network/transport/server.hpp"
-#include "karma/common/config_store.hpp"
-#include "karma/common/json.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/serialization/json.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -88,9 +88,9 @@ bool WriteDeterministicBinaryFile(const std::filesystem::path& path, size_t size
     return out.good();
 }
 
-bool InitializeConfigForEvents(const karma::json::Value& startup_events, const char* suffix) {
-    karma::config::ConfigStore::Initialize({}, MakeTestConfigPath(suffix));
-    return karma::config::ConfigStore::Set("server.startupEvents", startup_events);
+bool InitializeConfigForEvents(const karma::common::serialization::Value& startup_events, const char* suffix) {
+    karma::common::config::ConfigStore::Initialize({}, MakeTestConfigPath(suffix));
+    return karma::common::config::ConfigStore::Set("server.startupEvents", startup_events);
 }
 
 std::vector<bz3::server::net::ServerInputEvent> CollectScheduledEvents(
@@ -146,8 +146,8 @@ struct CapturedTransportConfig {
 };
 
 bool InitializeConfigForServerTransportBackend(std::string_view backend_value, const char* suffix) {
-    karma::config::ConfigStore::Initialize({}, MakeTestConfigPath(suffix));
-    return karma::config::ConfigStore::Set("network.ServerTransportBackend",
+    karma::common::config::ConfigStore::Initialize({}, MakeTestConfigPath(suffix));
+    return karma::common::config::ConfigStore::Set("network.ServerTransportBackend",
                                            std::string(backend_value));
 }
 
@@ -339,19 +339,19 @@ bool TestDeltaSelectionFallsBackToFullWhenSavingsBelowMinimum() {
         return fail("failed to write incoming payload.bin");
     }
 
-    const auto base_summary = karma::content::ComputeDirectoryManifestSummary(base_dir);
-    const auto incoming_summary = karma::content::ComputeDirectoryManifestSummary(incoming_dir);
+    const auto base_summary = karma::common::content::ComputeDirectoryManifestSummary(base_dir);
+    const auto incoming_summary = karma::common::content::ComputeDirectoryManifestSummary(incoming_dir);
     if (!base_summary.has_value() || !incoming_summary.has_value()) {
         return fail("failed to compute manifest summaries");
     }
 
-    const auto incoming_world_package = karma::content::BuildWorldArchive(incoming_dir);
+    const auto incoming_world_package = karma::common::content::BuildWorldArchive(incoming_dir);
     if (incoming_world_package.empty()) {
         return fail("failed to build incoming world archive");
     }
 
-    karma::logging::EnableTraceChannels("net.server");
-    const karma::content::ServerContentSyncRequest request{
+    karma::common::logging::EnableTraceChannels("net.server");
+    const karma::common::content::ServerContentSyncRequest request{
         .world_dir = incoming_dir,
         .world_name = "delta-world",
         .world_id = "delta-world-id",
@@ -363,7 +363,7 @@ bool TestDeltaSelectionFallsBackToFullWhenSavingsBelowMinimum() {
         .world_manifest = incoming_summary->entries,
         .world_package = incoming_world_package,
         .cached_state =
-            karma::content::ServerCachedContentState{
+            karma::common::content::ServerCachedContentState{
                 .world_hash = "pkg-rev-1",
                 .world_id = "delta-world-id",
                 .world_revision = "rev-1",
@@ -371,7 +371,7 @@ bool TestDeltaSelectionFallsBackToFullWhenSavingsBelowMinimum() {
                 .world_manifest_hash = base_summary->manifest_hash,
                 .world_manifest_file_count = static_cast<uint32_t>(base_summary->entries.size()),
                 .world_manifest = base_summary->entries}};
-    const auto plan = karma::content::BuildDefaultServerContentSyncPlan(request, "server-net-contract");
+    const auto plan = karma::common::content::BuildDefaultServerContentSyncPlan(request, "server-net-contract");
 
     const bool ok =
         Expect(plan.send_world_package, "expected send_world_package for delta fallback test") &&
@@ -385,7 +385,7 @@ bool TestDeltaSelectionFallsBackToFullWhenSavingsBelowMinimum() {
         Expect(plan.transfer_delta_bytes < plan.transfer_full_bytes,
                "expected available delta candidate to be smaller than full payload") &&
         Expect(plan.transfer_saved_bytes > 0, "expected positive saved_bytes for fallback test") &&
-        Expect(plan.transfer_saved_bytes < karma::content::kMinDeltaSelectionSavingsBytes,
+        Expect(plan.transfer_saved_bytes < karma::common::content::kMinDeltaSelectionSavingsBytes,
                "expected saved_bytes below minimum threshold for fallback test") &&
         Expect(plan.transfer_bytes == plan.transfer_full_bytes,
                "expected transfer_bytes to remain full payload size after fallback");
@@ -431,10 +431,10 @@ bool TestRemoveShotRoundTrip() {
 }
 
 bool TestScriptedSourceParsesSpawnAndShot() {
-    const auto events = karma::json::Array(
-        {karma::json::Value{{"type", "join"}, {"atSeconds", 0.000}, {"clientId", 2}, {"playerName", "mike"}},
-         karma::json::Value{{"type", "request_spawn"}, {"atSeconds", 0.005}, {"clientId", 2}},
-         karma::json::Value{{"type", "create_shot"},
+    const auto events = karma::common::serialization::Array(
+        {karma::common::serialization::Value{{"type", "join"}, {"atSeconds", 0.000}, {"clientId", 2}, {"playerName", "mike"}},
+         karma::common::serialization::Value{{"type", "request_spawn"}, {"atSeconds", 0.005}, {"clientId", 2}},
+         karma::common::serialization::Value{{"type", "create_shot"},
                             {"atSeconds", 0.010},
                             {"clientId", 2},
                             {"localShotId", 77},
@@ -444,7 +444,7 @@ bool TestScriptedSourceParsesSpawnAndShot() {
                             {"velX", 4.0},
                             {"velY", 5.0},
                             {"velZ", 6.0}},
-         karma::json::Value{{"type", "leave"}, {"atSeconds", 0.015}, {"clientId", 2}}});
+         karma::common::serialization::Value{{"type", "leave"}, {"atSeconds", 0.015}, {"clientId", 2}}});
 
     if (!InitializeConfigForEvents(events, "spawn-shot")) {
         return Fail("failed to initialize config for scripted source spawn/shot test");
@@ -478,9 +478,9 @@ bool TestScriptedSourceParsesSpawnAndShot() {
 }
 
 bool TestScriptedSourceSortsOutOfOrderAndClampsNegativeTimes() {
-    const auto events = karma::json::Array(
-        {karma::json::Value{{"type", "leave"}, {"atSeconds", 0.030}, {"clientId", 4}},
-         karma::json::Value{{"type", "create_shot"},
+    const auto events = karma::common::serialization::Array(
+        {karma::common::serialization::Value{{"type", "leave"}, {"atSeconds", 0.030}, {"clientId", 4}},
+         karma::common::serialization::Value{{"type", "create_shot"},
                             {"atSeconds", 0.010},
                             {"clientId", 4},
                             {"localShotId", 99},
@@ -490,8 +490,8 @@ bool TestScriptedSourceSortsOutOfOrderAndClampsNegativeTimes() {
                             {"velX", 4.0},
                             {"velY", 5.0},
                             {"velZ", 6.0}},
-         karma::json::Value{{"type", "join"}, {"atSeconds", 0.020}, {"clientId", 4}, {"playerName", "delta"}},
-         karma::json::Value{{"type", "request_spawn"}, {"atSeconds", -5.0}, {"clientId", 4}}});
+         karma::common::serialization::Value{{"type", "join"}, {"atSeconds", 0.020}, {"clientId", 4}, {"playerName", "delta"}},
+         karma::common::serialization::Value{{"type", "request_spawn"}, {"atSeconds", -5.0}, {"clientId", 4}}});
 
     if (!InitializeConfigForEvents(events, "ordered-clamped")) {
         return Fail("failed to initialize config for scripted source ordering test");
@@ -525,10 +525,10 @@ bool TestScriptedSourceSortsOutOfOrderAndClampsNegativeTimes() {
 }
 
 bool TestScriptedSourceSkipsInvalidShotData() {
-    const auto events = karma::json::Array(
-        {karma::json::Value{{"type", "join"}, {"atSeconds", 0.0}, {"clientId", 9}, {"playerName", "valid"}},
-         karma::json::Value{{"type", "request_spawn"}, {"atSeconds", 0.0}},
-         karma::json::Value{{"type", "create_shot"},
+    const auto events = karma::common::serialization::Array(
+        {karma::common::serialization::Value{{"type", "join"}, {"atSeconds", 0.0}, {"clientId", 9}, {"playerName", "valid"}},
+         karma::common::serialization::Value{{"type", "request_spawn"}, {"atSeconds", 0.0}},
+         karma::common::serialization::Value{{"type", "create_shot"},
                             {"atSeconds", 0.0},
                             {"clientId", 9},
                             {"localShotId", 1},
@@ -538,7 +538,7 @@ bool TestScriptedSourceSkipsInvalidShotData() {
                             {"velX", 1.0},
                             {"velY", 1.0},
                             {"velZ", "bad"}},
-         karma::json::Value{{"type", "unknown"}, {"atSeconds", 0.0}, {"clientId", 9}}});
+         karma::common::serialization::Value{{"type", "unknown"}, {"atSeconds", 0.0}, {"clientId", 9}}});
 
     if (!InitializeConfigForEvents(events, "invalid-shot")) {
         return Fail("failed to initialize config for scripted source invalid-shot test");
@@ -559,8 +559,8 @@ bool TestScriptedSourceSkipsInvalidShotData() {
 }
 
 bool TestScriptedSourceJoinAuthPayload() {
-    const auto events = karma::json::Array(
-        {karma::json::Value{{"type", "join"},
+    const auto events = karma::common::serialization::Array(
+        {karma::common::serialization::Value{{"type", "join"},
                             {"atSeconds", 0.0},
                             {"clientId", 3},
                             {"playerName", "alice"},

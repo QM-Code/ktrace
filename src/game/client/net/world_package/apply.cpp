@@ -1,10 +1,10 @@
 #include "client/net/world_package/internal.hpp"
 
-#include "karma/common/config_store.hpp"
+#include "karma/common/config/store.hpp"
 #include "karma/common/content/archive.hpp"
 #include "karma/common/content/sync_facade.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -17,12 +17,12 @@ namespace bz3::client::net {
 
 namespace {
 
-std::vector<karma::content::ManifestEntry> ToContentManifest(
+std::vector<karma::common::content::ManifestEntry> ToContentManifest(
     const std::vector<bz3::net::WorldManifestEntry>& manifest) {
-    std::vector<karma::content::ManifestEntry> converted{};
+    std::vector<karma::common::content::ManifestEntry> converted{};
     converted.reserve(manifest.size());
     for (const auto& entry : manifest) {
-        converted.push_back(karma::content::ManifestEntry{
+        converted.push_back(karma::common::content::ManifestEntry{
             .path = entry.path,
             .size = entry.size,
             .hash = entry.hash});
@@ -52,7 +52,7 @@ bool ApplyWorldPackageForServer(const std::string& host,
                                 std::string_view delta_base_world_hash,
                                 std::string_view delta_base_world_content_hash) {
     const std::filesystem::path server_cache_dir =
-        karma::data::EnsureUserWorldDirectoryForServer(host, port);
+        karma::common::data::EnsureUserWorldDirectoryForServer(host, port);
     const std::filesystem::path active_identity_path = ActiveWorldIdentityPath(server_cache_dir);
     const std::filesystem::path active_manifest_path = ActiveWorldManifestPath(server_cache_dir);
     const std::filesystem::path world_packages_by_world_root = WorldPackagesByWorldRoot(server_cache_dir);
@@ -65,8 +65,8 @@ bool ApplyWorldPackageForServer(const std::string& host,
     }
 
     if (world_data.empty() && world_hash.empty() && world_content_hash.empty()) {
-        static_cast<void>(karma::config::ConfigStore::RemoveRuntimeLayer(kRuntimeLayerLabel));
-        karma::data::ClearPackageMounts();
+        static_cast<void>(karma::common::config::ConfigStore::RemoveRuntimeLayer(kRuntimeLayerLabel));
+        karma::common::data::ClearPackageMounts();
         ClearCachedWorldIdentity(server_cache_dir);
         KARMA_TRACE("net.client",
                     "ClientConnection: bundled world mode '{}' id='{}' rev='{}' (no world package transfer)",
@@ -76,7 +76,7 @@ bool ApplyWorldPackageForServer(const std::string& host,
         return true;
     }
 
-    karma::content::ClientContentSyncRequest sync_request{};
+    karma::common::content::ClientContentSyncRequest sync_request{};
     sync_request.source_host = host;
     sync_request.source_port = port;
     sync_request.world_packages_by_world_root = world_packages_by_world_root;
@@ -102,8 +102,8 @@ bool ApplyWorldPackageForServer(const std::string& host,
     sync_request.max_packages_per_revision = kDefaultMaxPackagesPerRevision;
     sync_request.max_component_len = kMaxCachePathComponentLen;
 
-    karma::content::ClientContentSyncResult sync_result{};
-    if (!karma::content::ApplyIncomingPackageToCache(sync_request,
+    karma::common::content::ClientContentSyncResult sync_result{};
+    if (!karma::common::content::ApplyIncomingPackageToCache(sync_request,
                                                      &sync_result,
                                                      "ClientConnection")) {
         if (world_data.empty() &&
@@ -115,22 +115,22 @@ bool ApplyWorldPackageForServer(const std::string& host,
         return false;
     }
 
-    auto world_config = karma::content::ReadWorldJsonFile(sync_result.package_root / "config.json");
+    auto world_config = karma::common::content::ReadWorldJsonFile(sync_result.package_root / "config.json");
     if (world_config.has_value() && !world_config->is_object()) {
         spdlog::error("ClientConnection: world package config.json is not a JSON object for world '{}'",
                       world_name);
         return false;
     }
 
-    static_cast<void>(karma::config::ConfigStore::RemoveRuntimeLayer(kRuntimeLayerLabel));
-    karma::data::ClearPackageMounts();
-    karma::data::RegisterPackageMount(kPackageMountId, sync_result.package_root);
+    static_cast<void>(karma::common::config::ConfigStore::RemoveRuntimeLayer(kRuntimeLayerLabel));
+    karma::common::data::ClearPackageMounts();
+    karma::common::data::RegisterPackageMount(kPackageMountId, sync_result.package_root);
 
     if (world_config.has_value() &&
-        !karma::config::ConfigStore::AddRuntimeLayer(kRuntimeLayerLabel,
+        !karma::common::config::ConfigStore::AddRuntimeLayer(kRuntimeLayerLabel,
                                                      *world_config,
                                                      sync_result.package_root)) {
-        karma::data::ClearPackageMounts();
+        karma::common::data::ClearPackageMounts();
         spdlog::error("ClientConnection: failed to add runtime layer for world '{}'", world_name);
         return false;
     }

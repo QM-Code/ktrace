@@ -1,11 +1,11 @@
 #include "server/domain/world_session.hpp"
 
 #include "karma/cli/server/runtime_options.hpp"
-#include "karma/common/config_helpers.hpp"
+#include "karma/common/config/helpers.hpp"
 #include "karma/common/content/archive.hpp"
 #include "karma/common/content/manifest.hpp"
 #include "karma/common/content/primitives.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -22,7 +22,7 @@ namespace bz3::server::domain {
 namespace {
 
 std::string ComputeWorldPackageHash(const std::vector<std::byte>& bytes) {
-    return karma::content::ComputeWorldPackageHash(bytes);
+    return karma::common::content::ComputeWorldPackageHash(bytes);
 }
 
 struct WorldManifestSummary {
@@ -32,7 +32,7 @@ struct WorldManifestSummary {
 };
 
 WorldManifestSummary ComputeWorldManifestSummary(const std::filesystem::path& world_dir) {
-    const auto summary = karma::content::ComputeDirectoryManifestSummary(world_dir);
+    const auto summary = karma::common::content::ComputeDirectoryManifestSummary(world_dir);
     if (!summary.has_value()) {
         throw std::runtime_error("Failed to compute world manifest summary for directory: " + world_dir.string());
     }
@@ -70,7 +70,7 @@ std::optional<WorldSessionContext> LoadWorldSessionContext(
         ? context.world_dir.filename().string()
         : std::string("Default");
     context.world_name =
-        karma::config::ReadStringConfig("worldName", default_world_name);
+        karma::common::config::ReadStringConfig("worldName", default_world_name);
 
     if (context.world_package_enabled) {
         if (!std::filesystem::is_directory(context.world_dir)) {
@@ -80,7 +80,7 @@ std::optional<WorldSessionContext> LoadWorldSessionContext(
             return std::nullopt;
         }
         try {
-            context.world_package = karma::content::BuildWorldArchive(context.world_dir);
+            context.world_package = karma::common::content::BuildWorldArchive(context.world_dir);
         } catch (const std::exception& ex) {
             spdlog::error("{}: failed to package server config base directory '{}': {}",
                           app_name,
@@ -114,15 +114,15 @@ std::optional<WorldSessionContext> LoadWorldSessionContext(
                     context.world_name);
     }
 
-    context.world_id = karma::config::ReadStringConfig("worldId", context.world_name);
+    context.world_id = karma::common::config::ReadStringConfig("worldId", context.world_name);
     if (context.world_package_enabled) {
         const std::string default_revision = !context.world_content_hash.empty()
             ? context.world_content_hash
             : (context.world_package_hash.empty() ? std::string("custom") : context.world_package_hash);
-        context.world_revision = karma::config::ReadStringConfig("worldRevision",
+        context.world_revision = karma::common::config::ReadStringConfig("worldRevision",
                                                                  default_revision);
     } else {
-        context.world_revision = karma::config::ReadStringConfig("worldRevision", "bundled");
+        context.world_revision = karma::common::config::ReadStringConfig("worldRevision", "bundled");
     }
 
     KARMA_TRACE("engine.server",

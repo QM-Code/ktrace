@@ -1,8 +1,8 @@
 #include "ui/frontends/imgui/backend.hpp"
 
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/i18n.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/i18n/i18n.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/platform/window.hpp"
 #include "spdlog/spdlog.h"
 #include "karma_extras/ui/bridges/ui_render_bridge.hpp"
@@ -54,8 +54,8 @@ ImGuiBackend::ImGuiBackend(platform::Window &windowRef) : window(&windowRef) {
     KARMA_TRACE("ui.imgui", "UiSystem: ImGui add default font");
     io.Fonts->AddFontDefault();
 
-    const auto assets = ui::fonts::GetConsoleFontAssets(karma::i18n::Get().language(), true);
-    const auto bigFontPath = karma::data::ResolveConfiguredAsset(assets.selection.regularFontKey);
+    const auto assets = ui::fonts::GetConsoleFontAssets(karma::common::i18n::Get().language(), true);
+    const auto bigFontPath = karma::common::data::ResolveConfiguredAsset(assets.selection.regularFontKey);
     const std::string bigFontPathStr = bigFontPath.string();
     KARMA_TRACE("ui.imgui", "UiSystem: ImGui add big font from {}", bigFontPathStr);
     bigFont = io.Fonts->AddFontFromFileTTF(
@@ -140,7 +140,7 @@ void ImGuiBackend::handleEvents(const std::vector<platform::Event> &events) {
 void ImGuiBackend::update() {
     if (languageReloadArmed && pendingLanguage) {
         languageReloadArmed = false;
-        karma::i18n::Get().loadLanguage(*pendingLanguage);
+        karma::common::i18n::Get().loadLanguage(*pendingLanguage);
         pendingLanguage.reset();
         reloadFonts();
     }
@@ -210,7 +210,7 @@ void ImGuiBackend::update() {
         consoleView.draw(io);
     }
     if (quickMenuVisible) {
-        const auto &i18n = karma::i18n::Get();
+        const auto &i18n = karma::common::i18n::Get();
         const std::string title = i18n.get("ui.hud.quick_menu.title");
         const std::string consoleLabel = i18n.get("ui.hud.quick_menu.console");
         const std::string resumeLabel = i18n.get("ui.hud.quick_menu.resume");
@@ -272,8 +272,8 @@ void ImGuiBackend::reloadFonts() {
     io.Fonts->Clear();
     io.Fonts->AddFontDefault();
 
-    const auto assets = ui::fonts::GetConsoleFontAssets(karma::i18n::Get().language(), true);
-    const auto bigFontPath = karma::data::ResolveConfiguredAsset(assets.selection.regularFontKey);
+    const auto assets = ui::fonts::GetConsoleFontAssets(karma::common::i18n::Get().language(), true);
+    const auto bigFontPath = karma::common::data::ResolveConfiguredAsset(assets.selection.regularFontKey);
     const std::string bigFontPathStr = bigFontPath.string();
     bigFont = io.Fonts->AddFontFromFileTTF(
         bigFontPathStr.c_str(),

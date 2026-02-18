@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <vector>
 
-#include "karma/common/config_store.hpp"
+#include "karma/common/config/store.hpp"
 #include "game/input/bindings.hpp"
 #include "ui/console/keybindings.hpp"
 #include "ui/config/ui_config.hpp"
@@ -49,18 +49,18 @@ BindingsController::Result BindingsController::loadFromConfig() {
         buffer[0] = '\0';
     }
 
-    if (!karma::config::ConfigStore::Initialized()) {
+    if (!karma::common::config::ConfigStore::Initialized()) {
         result.ok = false;
         result.status = "Failed to load config; showing defaults.";
         result.statusIsError = true;
     }
 
-    const karma::json::Value *bindingsNode = nullptr;
+    const karma::common::serialization::Value *bindingsNode = nullptr;
     auto keybindingsNode = ui::UiConfig::GetKeybindings();
     if (keybindingsNode && keybindingsNode->is_object()) {
         bindingsNode = &(*keybindingsNode);
     }
-    const karma::json::Value *controllerNode = nullptr;
+    const karma::common::serialization::Value *controllerNode = nullptr;
     auto controllerBindingsNode = ui::UiConfig::GetControllerKeybindings();
     if (controllerBindingsNode && controllerBindingsNode->is_object()) {
         controllerNode = &(*controllerBindingsNode);
@@ -132,8 +132,8 @@ BindingsController::Result BindingsController::loadFromConfig() {
 
 BindingsController::Result BindingsController::saveToConfig() {
     Result result;
-    karma::json::Value keybindings = karma::json::Object();
-    karma::json::Value controllerBindings = karma::json::Object();
+    karma::common::serialization::Value keybindings = karma::common::serialization::Object();
+    karma::common::serialization::Value controllerBindings = karma::common::serialization::Object();
     bool hasBindings = false;
     bool hasControllerBindings = false;
 
@@ -171,7 +171,7 @@ BindingsController::Result BindingsController::saveToConfig() {
         }
     }
 
-    if (!karma::config::ConfigStore::Initialized()) {
+    if (!karma::common::config::ConfigStore::Initialized()) {
         result.ok = false;
         result.status = "Failed to save bindings.";
         result.statusIsError = true;

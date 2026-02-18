@@ -1,9 +1,9 @@
 #include "audio/backends/backend_factory_internal.hpp"
 #include "audio/backends/spatialization_internal.hpp"
 
-#include "karma/common/config_store.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -112,8 +112,8 @@ std::optional<std::filesystem::path> ResolveAudioAssetPath(std::string_view asse
         return TryCanonical(requested);
     }
 
-    if (karma::config::ConfigStore::Initialized()) {
-        const auto resolved = karma::config::ConfigStore::ResolveAssetPath(std::string(asset_path), {});
+    if (karma::common::config::ConfigStore::Initialized()) {
+        const auto resolved = karma::common::config::ConfigStore::ResolveAssetPath(std::string(asset_path), {});
         if (!resolved.empty() && IsRegularFile(resolved)) {
             return TryCanonical(resolved);
         }
@@ -121,7 +121,7 @@ std::optional<std::filesystem::path> ResolveAudioAssetPath(std::string_view asse
         if (!asset_path.starts_with("assets.")) {
             std::string prefixed_key = "assets.";
             prefixed_key += asset_path;
-            const auto prefixed = karma::config::ConfigStore::ResolveAssetPath(prefixed_key, {});
+            const auto prefixed = karma::common::config::ConfigStore::ResolveAssetPath(prefixed_key, {});
             if (!prefixed.empty() && IsRegularFile(prefixed)) {
                 return TryCanonical(prefixed);
             }
@@ -129,7 +129,7 @@ std::optional<std::filesystem::path> ResolveAudioAssetPath(std::string_view asse
     }
 
     try {
-        const auto resolved = karma::data::Resolve(requested);
+        const auto resolved = karma::common::data::Resolve(requested);
         if (IsRegularFile(resolved)) {
             return TryCanonical(resolved);
         }

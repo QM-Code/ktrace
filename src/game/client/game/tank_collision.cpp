@@ -1,7 +1,7 @@
 #include "game.hpp"
 
-#include "karma/common/config_store.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/geometry/mesh_loader.hpp"
 
 #include <glm/glm.hpp>
@@ -24,7 +24,7 @@ void Game::buildTankCollisionCache() {
     tank_collision_ready_ = false;
     tank_world_bounds_ready_ = false;
 
-    const auto world_path = karma::config::ConfigStore::ResolveAssetPath("assets.models.world", {});
+    const auto world_path = karma::common::config::ConfigStore::ResolveAssetPath("assets.models.world", {});
     if (world_path.empty()) {
         KARMA_TRACE("game.client", "Game: collision cache skipped (world asset unresolved)");
         return;

@@ -16,15 +16,15 @@
 
 #include <md4c.h>
 
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 #if defined(_WIN32)
 #include <shellapi.h>
 #include <windows.h>
 #endif
 
-#include "karma/common/data_path_resolver.hpp"
+#include "karma/common/data/path_resolver.hpp"
 #include "ui/frontends/rmlui/console/emoji_utils.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "spdlog/spdlog.h"
 
 namespace ui {

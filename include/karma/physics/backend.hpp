@@ -54,10 +54,14 @@ struct BodyDesc {
     ColliderShapeDesc collider_shape{};
     glm::vec3 linear_velocity{0.0f, 0.0f, 0.0f};
     glm::vec3 angular_velocity{0.0f, 0.0f, 0.0f};
+    float friction = 0.5f;
+    float restitution = 0.0f;
     float linear_damping = 0.0f;
     float angular_damping = 0.0f;
     float mass = 0.0f;
     bool is_static = true;
+    bool is_kinematic = false;
+    bool awake = true;
     bool is_trigger = false;
     bool gravity_enabled = true;
     bool rotation_locked = false;
@@ -89,6 +93,8 @@ class Backend {
     virtual bool getBodyTransform(BodyId body, BodyTransform& out_transform) const = 0;
     // Body flag/constraint contract:
     // - Gravity enablement currently applies only to dynamic bodies.
+    // - Kinematic enablement applies only to dynamic-capable bodies.
+    // - Static bodies cannot be configured as kinematic.
     // - For invalid, unknown, or non-dynamic bodies, calls return false.
     // - Dynamic bodies with both rotation_locked and translation_locked enabled are invalid for this contract.
     //   Backends reject these create/mutation requests deterministically.
@@ -96,6 +102,27 @@ class Backend {
     //   unsupported transitions return false so callers can apply deterministic fallback behavior.
     virtual bool setBodyGravityEnabled(BodyId body, bool enabled) = 0;
     virtual bool getBodyGravityEnabled(BodyId body, bool& out_enabled) const = 0;
+    virtual bool setBodyKinematic(BodyId body, bool enabled) = 0;
+    virtual bool getBodyKinematic(BodyId body, bool& out_enabled) const = 0;
+    // Runtime awake/sleep contract:
+    // - set/get awake state applies only to dynamic bodies in this slice.
+    // - For invalid, unknown, or non-dynamic bodies, calls return false.
+    // - set* may return false when runtime awake/sleep mutation is unsupported by the backend;
+    //   callers use this to drive deterministic fallback behavior (for example rebuild).
+    virtual bool setBodyAwake(BodyId body, bool enabled) = 0;
+    virtual bool getBodyAwake(BodyId body, bool& out_enabled) const = 0;
+    // Runtime force/impulse command contract:
+    // - Applies only to dynamic and runtime-eligible bodies.
+    // - Force is interpreted as a per-step command; callers re-issue each pre-sim pass while desired.
+    // - Impulse is interpreted as one-shot; callers re-issue only when desired.
+    // - Torque is interpreted as a per-step command; callers re-issue each pre-sim pass while desired.
+    // - Angular impulse is interpreted as one-shot; callers re-issue only when desired.
+    // - Input vectors must be finite.
+    // - For invalid, unknown, static, or otherwise ineligible bodies, calls return false.
+    virtual bool addBodyForce(BodyId body, const glm::vec3& force) = 0;
+    virtual bool addBodyLinearImpulse(BodyId body, const glm::vec3& impulse) = 0;
+    virtual bool addBodyTorque(BodyId body, const glm::vec3& torque) = 0;
+    virtual bool addBodyAngularImpulse(BodyId body, const glm::vec3& impulse) = 0;
     // Runtime velocity contract:
     // - get/set velocity applies only to dynamic bodies in this slice.
     // - For invalid, unknown, or non-dynamic bodies, calls return false.
@@ -129,6 +156,15 @@ class Backend {
     virtual bool getBodyTrigger(BodyId body, bool& out_enabled) const = 0;
     virtual bool setBodyCollisionMask(BodyId body, const CollisionMask& mask) = 0;
     virtual bool getBodyCollisionMask(BodyId body, CollisionMask& out_mask) const = 0;
+    // Runtime collider material contract:
+    // - set/get applies to valid known body ids (static + dynamic).
+    // - Friction must be finite and >= 0.
+    // - Restitution must be finite and in [0, 1].
+    // - Unsupported runtime mutations return false so callers can apply deterministic fallback behavior.
+    virtual bool setBodyFriction(BodyId body, float friction) = 0;
+    virtual bool getBodyFriction(BodyId body, float& out_friction) const = 0;
+    virtual bool setBodyRestitution(BodyId body, float restitution) = 0;
+    virtual bool getBodyRestitution(BodyId body, float& out_restitution) const = 0;
     // Closest-hit ray query contract:
     // - Direction is interpreted as a ray direction (it is normalized internally by current backends).
     // - Returns false when no hit is found or when arguments are invalid (e.g. zero direction or max_distance <= 0).

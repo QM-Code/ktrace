@@ -15,10 +15,10 @@
 #include <fstream>
 #include <sstream>
 
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 #include <spdlog/spdlog.h>
 
-#include "karma/common/data_path_resolver.hpp"
+#include "karma/common/data/path_resolver.hpp"
 #include "ui/config/config.hpp"
 
 #if !defined(_WIN32)
@@ -310,7 +310,7 @@ void RmlUiPanelStartServer::onLoaded(Rml::ElementDocument *doc) {
     auto *dataDirInput = document->GetElementById("server-data-dir");
     if (dataDirInput) {
         if (auto *input = rmlui_dynamic_cast<Rml::ElementFormControlInput *>(dataDirInput)) {
-            input->SetValue(karma::data::DataRoot().string());
+            input->SetValue(karma::common::data::DataRoot().string());
         }
     }
     worldInput = document->GetElementById("server-world-input");
@@ -659,8 +659,8 @@ void RmlUiPanelStartServer::updateWorldSelect() {
         }
     };
 
-    addDirectoryEntries(karma::data::EnsureUserWorldsDirectory());
-    addDirectoryEntries(karma::data::Resolve("server/worlds"));
+    addDirectoryEntries(karma::common::data::EnsureUserWorldsDirectory());
+    addDirectoryEntries(karma::common::data::Resolve("server/worlds"));
 
     if (!worldSelect) {
         return;
@@ -918,7 +918,7 @@ std::string RmlUiPanelStartServer::findServerBinary() {
     serverBinaryChecked = true;
 
     std::error_code ec;
-    const auto root = karma::data::ExecutableDirectory();
+    const auto root = karma::common::data::ExecutableDirectory();
 
     auto isExecutable = [](const std::filesystem::path &path) {
         std::error_code localEc;
@@ -990,7 +990,7 @@ bool RmlUiPanelStartServer::startLocalServer(uint16_t port,
         server->communityUrl = communityUrl;
         server->communityLabel = communityLabel;
     }
-    server->dataDir = karma::data::DataRoot().string();
+    server->dataDir = karma::common::data::DataRoot().string();
 
     if (!launchLocalServer(*server, error)) {
         return false;
@@ -1056,7 +1056,7 @@ bool RmlUiPanelStartServer::launchLocalServer(LocalServerProcess &server, std::s
 
     server.configPath.clear();
     if (!server.advertiseHost.empty()) {
-        const auto configDir = karma::data::UserConfigDirectory() / "server" / "instances";
+        const auto configDir = karma::common::data::UserConfigDirectory() / "server" / "instances";
         std::error_code dirEc;
         std::filesystem::create_directories(configDir, dirEc);
         if (dirEc) {
@@ -1068,7 +1068,7 @@ bool RmlUiPanelStartServer::launchLocalServer(LocalServerProcess &server, std::s
         name << "local_server_" << server.port << "_" << server.id << ".json";
         const auto configFile = configDir / name.str();
 
-        karma::json::Value configJson;
+        karma::common::serialization::Value configJson;
         configJson["network"]["ServerAdvertiseHost"] = server.advertiseHost;
         std::ofstream out(configFile);
         if (!out) {

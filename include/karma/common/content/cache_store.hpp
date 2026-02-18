@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace karma::content {
+namespace karma::common::content {
 
 inline constexpr size_t kMaxCachePathComponentLen = 96;
 inline constexpr uint16_t kDefaultMaxRevisionsPerWorld = 4;
@@ -89,4 +89,4 @@ CachePruneResult PruneWorldPackageCache(
     uint16_t max_packages_per_revision = kDefaultMaxPackagesPerRevision,
     size_t max_component_len = kMaxCachePathComponentLen);
 
-} // namespace karma::content
+} // namespace karma::common::content

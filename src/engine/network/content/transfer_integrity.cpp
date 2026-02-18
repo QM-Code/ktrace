@@ -12,20 +12,20 @@ namespace {
 void HashBytesFNV1a(uint64_t& hash, std::string_view value) {
     for (const char ch : value) {
         hash ^= static_cast<uint64_t>(static_cast<unsigned char>(ch));
-        hash *= karma::content::kFNV1aPrime64;
+        hash *= karma::common::content::kFNV1aPrime64;
     }
 }
 
 void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
     for (size_t i = 0; i < count; ++i) {
         hash ^= static_cast<uint64_t>(std::to_integer<unsigned char>(bytes[i]));
-        hash *= karma::content::kFNV1aPrime64;
+        hash *= karma::common::content::kFNV1aPrime64;
     }
 }
 
 void HashSeparatorFNV1a(uint64_t& hash) {
     hash ^= static_cast<uint64_t>(0);
-    hash *= karma::content::kFNV1aPrime64;
+    hash *= karma::common::content::kFNV1aPrime64;
 }
 
 } // namespace

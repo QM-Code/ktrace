@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace karma::content {
+namespace karma::common::content {
 
 inline constexpr uint64_t kMinDeltaSelectionSavingsBytes = 32 * 1024;
 
@@ -127,4 +127,4 @@ bool ApplyIncomingPackageToCache(const ClientContentSyncRequest& request,
                                  ClientContentSyncResult* result,
                                  std::string_view log_prefix);
 
-} // namespace karma::content
+} // namespace karma::common::content

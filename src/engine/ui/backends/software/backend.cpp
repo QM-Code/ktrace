@@ -1,7 +1,7 @@
 #include "ui/backend.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -45,10 +45,10 @@ class SoftwareOverlayBackend final : public BackendDriver {
     }
 
     bool init() override {
-        enabled_ = config::ReadBoolConfig({"ui.overlayTest.Enabled"}, true);
-        distance_ = config::ReadFloatConfig({"ui.overlayTest.Distance"}, 0.75f);
-        width_ = config::ReadFloatConfig({"ui.overlayTest.Width"}, 1.2f);
-        height_ = config::ReadFloatConfig({"ui.overlayTest.Height"}, 0.7f);
+        enabled_ = common::config::ReadBoolConfig({"ui.overlayTest.Enabled"}, true);
+        distance_ = common::config::ReadFloatConfig({"ui.overlayTest.Distance"}, 0.75f);
+        width_ = common::config::ReadFloatConfig({"ui.overlayTest.Width"}, 1.2f);
+        height_ = common::config::ReadFloatConfig({"ui.overlayTest.Height"}, 0.7f);
 
         if (!enabled_) {
             KARMA_TRACE("ui.system", "Backend[{}]: disabled via ui.overlayTest.Enabled", name());

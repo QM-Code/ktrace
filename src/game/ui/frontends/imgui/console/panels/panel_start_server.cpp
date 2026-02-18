@@ -10,12 +10,12 @@
 #include <vector>
 
 #include <imgui.h>
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 #include <spdlog/spdlog.h>
 #include <optional>
 
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/i18n.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/i18n/i18n.hpp"
 #include "ui/config/config.hpp"
 
 #if !defined(_WIN32)
@@ -149,7 +149,7 @@ std::string ConsoleView::findServerBinary() {
     serverBinaryChecked = true;
 
     std::error_code ec;
-    const auto dataRoot = karma::data::DataRoot();
+    const auto dataRoot = karma::common::data::DataRoot();
     const auto root = dataRoot.parent_path();
 
     auto isExecutable = [](const std::filesystem::path &path) {
@@ -243,7 +243,7 @@ bool ConsoleView::startLocalServer(uint16_t port,
         server->communityUrl = communityUrl;
         server->communityLabel = communityLabel;
     }
-    server->dataDir = karma::data::DataRoot().string();
+    server->dataDir = karma::common::data::DataRoot().string();
 
     if (!launchLocalServer(*server, error)) {
         return false;
@@ -309,7 +309,7 @@ bool ConsoleView::launchLocalServer(LocalServerProcess &server, std::string &err
 
     server.configPath.clear();
     if (!server.advertiseHost.empty()) {
-        const auto configDir = karma::data::UserConfigDirectory() / "server" / "instances";
+        const auto configDir = karma::common::data::UserConfigDirectory() / "server" / "instances";
         std::error_code dirEc;
         std::filesystem::create_directories(configDir, dirEc);
         if (dirEc) {
@@ -321,7 +321,7 @@ bool ConsoleView::launchLocalServer(LocalServerProcess &server, std::string &err
         name << "local_server_" << server.port << "_" << server.id << ".json";
         const auto configFile = configDir / name.str();
 
-        karma::json::Value configJson;
+        karma::common::serialization::Value configJson;
         configJson["network"]["ServerAdvertiseHost"] = server.advertiseHost;
         std::ofstream out(configFile);
         if (!out) {
@@ -440,7 +440,7 @@ bool ConsoleView::launchLocalServer(LocalServerProcess &server, std::string &err
 }
 
 void ConsoleView::drawStartServerPanel(const MessageColors &colors) {
-    auto &i18n = karma::i18n::Get();
+    auto &i18n = karma::common::i18n::Get();
 
     const std::string serverBinary = findServerBinary();
     if (serverBinary.empty()) {
@@ -576,8 +576,8 @@ void ConsoleView::drawStartServerPanel(const MessageColors &colors) {
                 }
             };
 
-            addDirectoryEntries(karma::data::EnsureUserWorldsDirectory());
-            addDirectoryEntries(karma::data::Resolve("server/worlds"));
+            addDirectoryEntries(karma::common::data::EnsureUserWorldsDirectory());
+            addDirectoryEntries(karma::common::data::Resolve("server/worlds"));
 
             ImGui::EndPopup();
         }

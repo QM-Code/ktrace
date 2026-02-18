@@ -1,7 +1,7 @@
 #include "client/net/connection.hpp"
 #include "client/net/connection/internal.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "net/protocol.hpp"
 
 #include <spdlog/spdlog.h>

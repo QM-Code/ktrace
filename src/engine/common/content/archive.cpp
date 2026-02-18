@@ -1,6 +1,6 @@
 #include "karma/common/content/archive.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
@@ -180,13 +180,13 @@ void ZipDirectory(const fs::path& input_dir, const fs::path& output_zip) {
     }
 }
 
-karma::content::ArchiveBytes ReadArchiveFile(const fs::path& zip_path) {
+karma::common::content::ArchiveBytes ReadArchiveFile(const fs::path& zip_path) {
     if (!fs::exists(zip_path)) {
         throw std::runtime_error("World zip file not found: " + zip_path.string());
     }
 
     auto file_size = fs::file_size(zip_path);
-    karma::content::ArchiveBytes data(file_size);
+    karma::common::content::ArchiveBytes data(file_size);
     std::ifstream file(zip_path, std::ios::binary);
     if (!file) {
         throw std::runtime_error("Failed to open zip file: " + zip_path.string());
@@ -201,7 +201,7 @@ karma::content::ArchiveBytes ReadArchiveFile(const fs::path& zip_path) {
 }
 } // namespace
 
-namespace karma::content {
+namespace karma::common::content {
 
 ArchiveBytes BuildWorldArchive(const fs::path& world_dir) {
     const fs::path input_dir(world_dir);
@@ -270,7 +270,7 @@ bool ExtractWorldArchive(const ArchiveBytes& data, const fs::path& dest_dir) {
     return true;
 }
 
-std::optional<karma::json::Value> ReadWorldJsonFile(const fs::path& path) {
+std::optional<karma::common::serialization::Value> ReadWorldJsonFile(const fs::path& path) {
     if (!fs::exists(path)) {
         return std::nullopt;
     }
@@ -281,7 +281,7 @@ std::optional<karma::json::Value> ReadWorldJsonFile(const fs::path& path) {
     }
 
     try {
-        karma::json::Value data;
+        karma::common::serialization::Value data;
         file >> data;
         return data;
     } catch (const std::exception& e) {
@@ -290,4 +290,4 @@ std::optional<karma::json::Value> ReadWorldJsonFile(const fs::path& path) {
     }
 }
 
-} // namespace karma::content
+} // namespace karma::common::content

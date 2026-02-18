@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace karma::content {
+namespace karma::common::content {
 
 std::filesystem::path BuildPackageStagingRoot(const std::filesystem::path& package_root);
 std::filesystem::path BuildPackageBackupRoot(const std::filesystem::path& package_root);
@@ -38,4 +38,4 @@ bool ApplyDeltaArchiveOverBasePackage(const std::filesystem::path& target_root,
                                       std::string_view log_prefix,
                                       size_t* removed_paths_out = nullptr);
 
-} // namespace karma::content
+} // namespace karma::common::content

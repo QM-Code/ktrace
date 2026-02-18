@@ -6,7 +6,7 @@
 #include "karma/app/client/game_interface.hpp"
 #include "karma/audio/audio_system.hpp"
 #include "karma/audio/backend.hpp"
-#include "karma/common/simulation_clock.hpp"
+#include "karma/app/shared/simulation_clock.hpp"
 #include "karma/platform/window.hpp"
 #include "karma/renderer/device.hpp"
 #include "karma/renderer/render_system.hpp"
@@ -70,7 +70,7 @@ class Engine {
     physics::PhysicsSystem physics_system_{};
     scene::RoamingCameraController roaming_camera_{};
     ui::UiSystem ui_system_{};
-    common::SimulationClock simulation_clock_{};
+    shared::SimulationClock simulation_clock_{};
 
     bool running_ = false;
     glm::vec3 last_listener_position_{0.0f, 0.0f, 0.0f};

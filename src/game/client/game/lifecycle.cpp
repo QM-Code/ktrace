@@ -2,8 +2,8 @@
 
 #include "client/domain/tank_drive_controller.hpp"
 #include "client/net/connection.hpp"
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/input/input_system.hpp"
 #include "karma/ui/ui_draw_context.hpp"
@@ -22,7 +22,7 @@ Game::Game(GameStartupOptions options) : startup_(std::move(options)) {}
 Game::~Game() = default;
 
 void Game::onStart() {
-    tank_enabled_ = karma::config::ReadBoolConfig({"gameplay.tank.enabled"}, false);
+    tank_enabled_ = karma::common::config::ReadBoolConfig({"gameplay.tank.enabled"}, false);
     if (tank_enabled_) {
         static_cast<void>(ensureLocalTankEntity());
     } else {

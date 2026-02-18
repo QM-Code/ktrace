@@ -7,8 +7,8 @@
 
 #include "karma/app/shared/bootstrap.hpp"
 #include "karma/app/server/engine.hpp"
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/config_validation.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/config/validation.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -20,7 +20,7 @@
 namespace bz3::server {
 
 int RunRuntime(const karma::cli::server::AppOptions& options) {
-    const auto issues = karma::config::ValidateRequiredKeys(karma::config::ServerRequiredKeys());
+    const auto issues = karma::common::config::ValidateRequiredKeys(karma::common::config::ServerRequiredKeys());
     if (!karma::app::shared::ReportRequiredConfigIssues(issues, options.strict_config)) {
         return 1;
     }
@@ -48,7 +48,7 @@ int RunRuntime(const karma::cli::server::AppOptions& options) {
 
     domain::ShotSystem shot_system{};
     const float shot_lifetime_seconds =
-        std::max(0.1f, karma::config::ReadFloatConfig({"gameplay.shotLifetimeSeconds"}, 5.0f));
+        std::max(0.1f, karma::common::config::ReadFloatConfig({"gameplay.shotLifetimeSeconds"}, 5.0f));
     shot_system.setLifetime(std::chrono::milliseconds(static_cast<int64_t>(shot_lifetime_seconds * 1000.0f)));
     const float shot_step_dt =
         (engine_config.target_tick_hz > 1e-6f)

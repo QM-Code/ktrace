@@ -1,7 +1,7 @@
 #include "karma/network/content/transfer_sender.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -13,10 +13,10 @@ TransferSenderRuntimeConfig ReadTransferSenderRuntimeConfig(uint16_t default_chu
     TransferSenderRuntimeConfig runtime_config{};
     runtime_config.chunk_size = std::max<uint32_t>(
         1,
-        static_cast<uint32_t>(karma::config::ReadUInt16Config({"network.WorldTransferChunkBytes"},
+        static_cast<uint32_t>(karma::common::config::ReadUInt16Config({"network.WorldTransferChunkBytes"},
                                                                default_chunk_size)));
     runtime_config.max_retry_attempts = static_cast<uint32_t>(
-        karma::config::ReadUInt16Config({"network.WorldTransferRetryAttempts"},
+        karma::common::config::ReadUInt16Config({"network.WorldTransferRetryAttempts"},
                                         default_retry_attempts));
     return runtime_config;
 }

@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 
-#include "karma/common/i18n.hpp"
+#include "karma/common/i18n/i18n.hpp"
 #include "ui/frontends/rmlui/translate.hpp"
 
 namespace ui {
@@ -30,8 +30,8 @@ void RmlUiHud::load(Rml::Context *contextIn, const std::string &pathIn, EmojiMar
     if (!document) {
         return;
     }
-    rmlui::ApplyTranslations(document, karma::i18n::Get());
-    lastLanguage = karma::i18n::Get().language();
+    rmlui::ApplyTranslations(document, karma::common::i18n::Get());
+    lastLanguage = karma::common::i18n::Get().language();
     bindElements();
     document->Show();
 }
@@ -67,9 +67,9 @@ bool RmlUiHud::isVisible() const {
 
 void RmlUiHud::update() {
     if (document) {
-        const std::string currentLanguage = karma::i18n::Get().language();
+        const std::string currentLanguage = karma::common::i18n::Get().language();
         if (currentLanguage != lastLanguage) {
-            rmlui::ApplyTranslations(document, karma::i18n::Get());
+            rmlui::ApplyTranslations(document, karma::common::i18n::Get());
             lastLanguage = currentLanguage;
             lastFpsInt = -1;
             setFpsValue(lastFps);
@@ -218,7 +218,7 @@ void RmlUiHud::setFpsValue(float fps) {
         }
         lastFpsInt = fpsInt;
         const std::string value = std::to_string(fpsInt);
-        const std::string fpsText = karma::i18n::Get().format("ui.hud.fps_label", {{"value", value}});
+        const std::string fpsText = karma::common::i18n::Get().format("ui.hud.fps_label", {{"value", value}});
         fpsElement->SetInnerRML(fpsText);
     }
 }

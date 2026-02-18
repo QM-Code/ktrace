@@ -1,7 +1,7 @@
 #include "ui/backends/rmlui/adapter.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #if !defined(KARMA_HAS_RMLUI)
 
@@ -36,11 +36,11 @@ renderer::MeshData::TextureData BuildRmlDebugTexture(int width, int height) {
 class AdapterStub final : public Adapter {
  public:
     bool init() override {
-        debug_overlay_ = config::ReadBoolConfig({"ui.rmlui.stub.DebugOverlay"}, false);
-        allow_fallback_ = config::ReadBoolConfig({"ui.rmlui.stub.AllowFallback"}, false);
-        distance_ = config::ReadFloatConfig({"ui.rmlui.stub.Distance"}, 0.75f);
-        width_ = config::ReadFloatConfig({"ui.rmlui.stub.Width"}, 1.1f);
-        height_ = config::ReadFloatConfig({"ui.rmlui.stub.Height"}, 0.62f);
+        debug_overlay_ = common::config::ReadBoolConfig({"ui.rmlui.stub.DebugOverlay"}, false);
+        allow_fallback_ = common::config::ReadBoolConfig({"ui.rmlui.stub.AllowFallback"}, false);
+        distance_ = common::config::ReadFloatConfig({"ui.rmlui.stub.Distance"}, 0.75f);
+        width_ = common::config::ReadFloatConfig({"ui.rmlui.stub.Width"}, 1.1f);
+        height_ = common::config::ReadFloatConfig({"ui.rmlui.stub.Height"}, 0.62f);
 
         texture_ = BuildRmlDebugTexture(256, 144);
         texture_revision_ = 1;
@@ -81,7 +81,7 @@ class AdapterStub final : public Adapter {
         out.allow_fallback = allow_fallback_;
 
         const bool show_overlay =
-            debug_overlay_ || logging::ShouldTraceChannel("ui.system.rmlui.frames");
+            debug_overlay_ || common::logging::ShouldTraceChannel("ui.system.rmlui.frames");
         if (!show_overlay) {
             out.allow_fallback = false;
             return;

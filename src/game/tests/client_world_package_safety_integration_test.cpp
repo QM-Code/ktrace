@@ -3,12 +3,12 @@
 #include "net/protocol.hpp"
 #include "server/net/transport_event_source.hpp"
 
-#include "karma/common/config_store.hpp"
+#include "karma/common/config/store.hpp"
 #include "karma/common/content/archive.hpp"
 #include "karma/common/content/delta_builder.hpp"
 #include "karma/common/content/manifest.hpp"
 #include "karma/common/content/primitives.hpp"
-#include "karma/common/data_path_resolver.hpp"
+#include "karma/common/data/path_resolver.hpp"
 #include "network/tests/support/loopback_transport_fixture.hpp"
 
 #include <algorithm>
@@ -198,11 +198,11 @@ bool WaitUntil(std::chrono::milliseconds timeout, StepFn&& step, DoneFn&& done) 
 }
 
 std::string ComputeWorldPackageHash(const std::vector<std::byte>& bytes) {
-    return karma::content::ComputeWorldPackageHash(bytes);
+    return karma::common::content::ComputeWorldPackageHash(bytes);
 }
 
 std::vector<bz3::server::net::WorldManifestEntry> ToServerManifestEntries(
-    const std::vector<karma::content::ManifestEntry>& entries) {
+    const std::vector<karma::common::content::ManifestEntry>& entries) {
     std::vector<bz3::server::net::WorldManifestEntry> converted{};
     converted.reserve(entries.size());
     for (const auto& entry : entries) {
@@ -308,14 +308,14 @@ std::optional<WorldFixture> BuildWorldFixture(const std::filesystem::path& world
     fixture.world_id = world_id;
 
     try {
-        fixture.world_package = karma::content::BuildWorldArchive(world_dir);
+        fixture.world_package = karma::common::content::BuildWorldArchive(world_dir);
     } catch (const std::exception&) {
         return std::nullopt;
     }
 
     fixture.world_package_size = static_cast<uint64_t>(fixture.world_package.size());
     fixture.world_package_hash = ComputeWorldPackageHash(fixture.world_package);
-    const auto summary = karma::content::ComputeDirectoryManifestSummary(world_dir);
+    const auto summary = karma::common::content::ComputeDirectoryManifestSummary(world_dir);
     if (!summary.has_value()) {
         return std::nullopt;
     }
@@ -535,14 +535,14 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
     const WorldFixture world = *world_opt;
 
     ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
-    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+    karma::common::data::SetDataPathSpec(karma::common::data::DataPathSpec{
         .appName = "bz3",
         .dataDirEnvVar = "BZ3_DATA_DIR",
         .requiredDataMarker = {},
         .fallbackAssetLayers = {}});
-    karma::config::ConfigStore::Initialize({}, config_path);
-    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
-    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+    karma::common::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::common::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::common::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 
     ScopedRawTransport raw_transport{};
     if (!raw_transport.initialized()) {
@@ -679,7 +679,7 @@ TestResult TestInterruptedChunkTransferResumeRecovery() {
     }
 
     const std::filesystem::path server_cache_dir =
-        karma::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
+        karma::common::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
     const std::filesystem::path identity_path = server_cache_dir / "active_world_identity.txt";
     const bool applied = WaitUntil(std::chrono::milliseconds(3000), [&]() {
         PumpRawServerEvents(&raw_server, &join_request, &disconnected);
@@ -725,14 +725,14 @@ TestResult TestInitProtocolMismatchIsRejected() {
     }
 
     ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
-    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+    karma::common::data::SetDataPathSpec(karma::common::data::DataPathSpec{
         .appName = "bz3",
         .dataDirEnvVar = "BZ3_DATA_DIR",
         .requiredDataMarker = {},
         .fallbackAssetLayers = {}});
-    karma::config::ConfigStore::Initialize({}, config_path);
-    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
-    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+    karma::common::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::common::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::common::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 
     ScopedRawTransport raw_transport{};
     if (!raw_transport.initialized()) {
@@ -826,14 +826,14 @@ TestResult TestInitWorldMetadataMissingIdentityIsRejected() {
     }
 
     ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
-    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+    karma::common::data::SetDataPathSpec(karma::common::data::DataPathSpec{
         .appName = "bz3",
         .dataDirEnvVar = "BZ3_DATA_DIR",
         .requiredDataMarker = {},
         .fallbackAssetLayers = {}});
-    karma::config::ConfigStore::Initialize({}, config_path);
-    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
-    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+    karma::common::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::common::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::common::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 
     ScopedRawTransport raw_transport{};
     if (!raw_transport.initialized()) {
@@ -947,14 +947,14 @@ TestResult TestChunkTransferEndHashMismatchIsRejected() {
     const WorldFixture world = *world_opt;
 
     ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
-    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+    karma::common::data::SetDataPathSpec(karma::common::data::DataPathSpec{
         .appName = "bz3",
         .dataDirEnvVar = "BZ3_DATA_DIR",
         .requiredDataMarker = {},
         .fallbackAssetLayers = {}});
-    karma::config::ConfigStore::Initialize({}, config_path);
-    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
-    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+    karma::common::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::common::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::common::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 
     ScopedRawTransport raw_transport{};
     if (!raw_transport.initialized()) {
@@ -1085,7 +1085,7 @@ TestResult TestChunkTransferEndHashMismatchIsRejected() {
     }
 
     const std::filesystem::path server_cache_dir =
-        karma::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
+        karma::common::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
     const std::filesystem::path identity_path = server_cache_dir / "active_world_identity.txt";
     const auto identity_after_reject = ReadCachedIdentity(identity_path);
     if (identity_after_reject.has_value() &&
@@ -1139,14 +1139,14 @@ TestResult TestCacheHitInitWithoutTransferUsesCachedPackage() {
     const WorldFixture world = *world_opt;
 
     ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
-    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+    karma::common::data::SetDataPathSpec(karma::common::data::DataPathSpec{
         .appName = "bz3",
         .dataDirEnvVar = "BZ3_DATA_DIR",
         .requiredDataMarker = {},
         .fallbackAssetLayers = {}});
-    karma::config::ConfigStore::Initialize({}, config_path);
-    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
-    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+    karma::common::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::common::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::common::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 
     ScopedRawTransport raw_transport{};
     if (!raw_transport.initialized()) {
@@ -1161,7 +1161,7 @@ TestResult TestCacheHitInitWithoutTransferUsesCachedPackage() {
     }
     RawServerFixture raw_server = std::move(*raw_server_opt);
     const std::filesystem::path server_cache_dir =
-        karma::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
+        karma::common::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
     const std::filesystem::path identity_path = server_cache_dir / "active_world_identity.txt";
     constexpr uint32_t kChunkSize = 16 * 1024;
 
@@ -1373,14 +1373,14 @@ TestResult TestDeltaTransferAppliesOverCachedBase() {
     const WorldFixture world_a = *world_a_opt;
     const WorldFixture world_b = *world_b_opt;
 
-    const auto world_a_summary = karma::content::ComputeDirectoryManifestSummary(world_a_dir);
-    const auto world_b_summary = karma::content::ComputeDirectoryManifestSummary(world_b_dir);
+    const auto world_a_summary = karma::common::content::ComputeDirectoryManifestSummary(world_a_dir);
+    const auto world_b_summary = karma::common::content::ComputeDirectoryManifestSummary(world_b_dir);
     if (!world_a_summary.has_value() || !world_b_summary.has_value()) {
         return FailTest("failed to compute manifest summary for delta-success test");
     }
-    const auto diff_plan = karma::content::BuildManifestDiffPlan(world_a_summary->entries,
+    const auto diff_plan = karma::common::content::BuildManifestDiffPlan(world_a_summary->entries,
                                                                   world_b_summary->entries);
-    const auto delta_archive_opt = karma::content::BuildDeltaArchiveFromManifestDiff(world_b_dir,
+    const auto delta_archive_opt = karma::common::content::BuildDeltaArchiveFromManifestDiff(world_b_dir,
                                                                                       diff_plan,
                                                                                       world_b.world_id,
                                                                                       world_b.world_revision,
@@ -1392,14 +1392,14 @@ TestResult TestDeltaTransferAppliesOverCachedBase() {
     const std::vector<std::byte> delta_archive = *delta_archive_opt;
 
     ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
-    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+    karma::common::data::SetDataPathSpec(karma::common::data::DataPathSpec{
         .appName = "bz3",
         .dataDirEnvVar = "BZ3_DATA_DIR",
         .requiredDataMarker = {},
         .fallbackAssetLayers = {}});
-    karma::config::ConfigStore::Initialize({}, config_path);
-    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
-    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+    karma::common::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::common::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::common::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 
     ScopedRawTransport raw_transport{};
     if (!raw_transport.initialized()) {
@@ -1414,7 +1414,7 @@ TestResult TestDeltaTransferAppliesOverCachedBase() {
     }
     RawServerFixture raw_server = std::move(*raw_server_opt);
     const std::filesystem::path server_cache_dir =
-        karma::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
+        karma::common::data::EnsureUserWorldDirectoryForServer("127.0.0.1", raw_server.port);
     const std::filesystem::path identity_path = server_cache_dir / "active_world_identity.txt";
     constexpr uint32_t kChunkSize = 16 * 1024;
 
@@ -1639,14 +1639,14 @@ TestResult TestFailedWorldUpdatePreservesPreviousCache() {
     const WorldFixture world_b = *world_b_opt;
 
     ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", xdg_root.string());
-    karma::data::SetDataPathSpec(karma::data::DataPathSpec{
+    karma::common::data::SetDataPathSpec(karma::common::data::DataPathSpec{
         .appName = "bz3",
         .dataDirEnvVar = "BZ3_DATA_DIR",
         .requiredDataMarker = {},
         .fallbackAssetLayers = {}});
-    karma::config::ConfigStore::Initialize({}, config_path);
-    (void)karma::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
-    (void)karma::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
+    karma::common::config::ConfigStore::Initialize({}, config_path);
+    (void)karma::common::config::ConfigStore::Set("config.SaveIntervalSeconds", 5.0);
+    (void)karma::common::config::ConfigStore::Set("config.MergeIntervalSeconds", 5.0);
 
     auto server_opt = CreateServerFixture();
     if (!server_opt.has_value()) {
@@ -1657,7 +1657,7 @@ TestResult TestFailedWorldUpdatePreservesPreviousCache() {
     std::vector<bz3::server::net::ServerInputEvent> pending_events{};
 
     const std::filesystem::path server_cache_dir =
-        karma::data::EnsureUserWorldDirectoryForServer("127.0.0.1", server.port);
+        karma::common::data::EnsureUserWorldDirectoryForServer("127.0.0.1", server.port);
     const std::filesystem::path identity_path = server_cache_dir / "active_world_identity.txt";
 
     bool seeded_join_handled = false;

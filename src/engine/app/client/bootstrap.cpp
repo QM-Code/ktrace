@@ -2,8 +2,8 @@
 
 #include "karma/app/client/backend_resolution.hpp"
 #include "karma/app/shared/bootstrap.hpp"
-#include "karma/common/config_validation.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/validation.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -48,7 +48,7 @@ void RunBootstrap(const karma::cli::client::AppOptions& options,
         KARMA_TRACE("engine.app", "CLI option --backend-audio set: '{}'", options.backend_audio);
     }
 
-    const auto issues = config::ValidateRequiredKeys(config::ClientRequiredKeys());
+    const auto issues = common::config::ValidateRequiredKeys(common::config::ClientRequiredKeys());
     if (!shared::ReportRequiredConfigIssues(issues, options.strict_config)) {
         throw std::runtime_error("Client required config validation failed.");
     }

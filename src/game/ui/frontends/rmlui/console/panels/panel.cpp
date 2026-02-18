@@ -8,8 +8,8 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <spdlog/spdlog.h>
 
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/i18n.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/i18n/i18n.hpp"
 #include "ui/frontends/rmlui/translate.hpp"
 
 namespace ui {
@@ -31,7 +31,7 @@ void RmlUiPanel::load(Rml::ElementDocument *document) {
         return;
     }
 
-    const auto resolvedPath = karma::data::Resolve(panelRmlPath);
+    const auto resolvedPath = karma::common::data::Resolve(panelRmlPath);
     if (resolvedPath.empty() || !std::filesystem::exists(resolvedPath)) {
         return;
     }
@@ -44,7 +44,7 @@ void RmlUiPanel::load(Rml::ElementDocument *document) {
     std::stringstream buffer;
     buffer << file.rdbuf();
     panel->SetInnerRML(buffer.str());
-    rmlui::ApplyTranslations(panel, karma::i18n::Get());
+    rmlui::ApplyTranslations(panel, karma::common::i18n::Get());
     onLoaded(document);
 }
 

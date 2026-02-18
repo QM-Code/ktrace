@@ -2,7 +2,7 @@
 
 #if defined(KARMA_HAS_RMLUI)
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <chrono>
 

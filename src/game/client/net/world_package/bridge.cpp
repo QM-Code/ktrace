@@ -4,8 +4,8 @@
 #include "karma/common/content/manifest.hpp"
 #include "karma/common/content/package_apply.hpp"
 #include "karma/common/content/primitives.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -20,12 +20,12 @@ namespace bz3::client::net {
 
 namespace {
 
-std::vector<karma::content::ManifestEntry> ToContentManifest(
+std::vector<karma::common::content::ManifestEntry> ToContentManifest(
     const std::vector<bz3::net::WorldManifestEntry>& manifest) {
-    std::vector<karma::content::ManifestEntry> converted{};
+    std::vector<karma::common::content::ManifestEntry> converted{};
     converted.reserve(manifest.size());
     for (const auto& entry : manifest) {
-        converted.push_back(karma::content::ManifestEntry{
+        converted.push_back(karma::common::content::ManifestEntry{
             .path = entry.path,
             .size = entry.size,
             .hash = entry.hash});
@@ -34,7 +34,7 @@ std::vector<karma::content::ManifestEntry> ToContentManifest(
 }
 
 std::vector<bz3::net::WorldManifestEntry> FromContentManifest(
-    const std::vector<karma::content::ManifestEntry>& manifest) {
+    const std::vector<karma::common::content::ManifestEntry>& manifest) {
     std::vector<bz3::net::WorldManifestEntry> converted{};
     converted.reserve(manifest.size());
     for (const auto& entry : manifest) {
@@ -46,15 +46,15 @@ std::vector<bz3::net::WorldManifestEntry> FromContentManifest(
     return converted;
 }
 
-karma::content::CachedContentIdentity ToContentIdentity(const CachedWorldIdentity& identity) {
-    return karma::content::CachedContentIdentity{
+karma::common::content::CachedContentIdentity ToContentIdentity(const CachedWorldIdentity& identity) {
+    return karma::common::content::CachedContentIdentity{
         .world_hash = identity.world_hash,
         .world_content_hash = identity.world_content_hash,
         .world_id = identity.world_id,
         .world_revision = identity.world_revision};
 }
 
-CachedWorldIdentity FromContentIdentity(const karma::content::CachedContentIdentity& identity) {
+CachedWorldIdentity FromContentIdentity(const karma::common::content::CachedContentIdentity& identity) {
     return CachedWorldIdentity{
         .world_hash = identity.world_hash,
         .world_content_hash = identity.world_content_hash,
@@ -77,31 +77,31 @@ std::filesystem::path WorldPackagesByWorldRoot(const std::filesystem::path& serv
 }
 
 uint64_t HashStringFNV1a(std::string_view value) {
-    return karma::content::HashStringFNV1a(value);
+    return karma::common::content::HashStringFNV1a(value);
 }
 
 void HashStringFNV1a(uint64_t& hash, std::string_view value) {
-    karma::content::HashStringFNV1a(hash, value);
+    karma::common::content::HashStringFNV1a(hash, value);
 }
 
 void HashBytesFNV1a(uint64_t& hash, const std::byte* bytes, size_t count) {
-    karma::content::HashBytesFNV1a(hash, bytes, count);
+    karma::common::content::HashBytesFNV1a(hash, bytes, count);
 }
 
 void HashBytesFNV1a(uint64_t& hash, std::string_view value) {
-    karma::content::HashBytesFNV1a(hash, value);
+    karma::common::content::HashBytesFNV1a(hash, value);
 }
 
 void HashSeparatorFNV1a(uint64_t& hash) {
-    karma::content::HashSeparatorFNV1a(hash);
+    karma::common::content::HashSeparatorFNV1a(hash);
 }
 
 std::string Hash64Hex(uint64_t hash) {
-    return karma::content::Hash64Hex(hash);
+    return karma::common::content::Hash64Hex(hash);
 }
 
 void HashChunkChainFNV1a(uint64_t& hash, uint32_t chunk_index, const std::vector<std::byte>& chunk_data) {
-    karma::content::HashChunkChainFNV1a(hash, chunk_index, chunk_data);
+    karma::common::content::HashChunkChainFNV1a(hash, chunk_index, chunk_data);
 }
 
 bool InitIncludesWorldMetadata(const bz3::net::ServerMessage& message) {
@@ -118,17 +118,17 @@ bool IsChunkInTransferBounds(uint64_t total_bytes,
                              uint32_t chunk_size,
                              uint32_t chunk_index,
                              size_t chunk_bytes) {
-    return karma::content::IsChunkInTransferBounds(total_bytes, chunk_size, chunk_index, chunk_bytes);
+    return karma::common::content::IsChunkInTransferBounds(total_bytes, chunk_size, chunk_index, chunk_bytes);
 }
 
 bool ChunkMatchesBufferedPayload(const std::vector<std::byte>& payload,
                                  size_t chunk_offset,
                                  const std::vector<std::byte>& chunk_data) {
-    return karma::content::ChunkMatchesBufferedPayload(payload, chunk_offset, chunk_data);
+    return karma::common::content::ChunkMatchesBufferedPayload(payload, chunk_offset, chunk_data);
 }
 
 std::string SanitizeCachePathComponent(std::string_view input, std::string_view fallback_prefix) {
-    return karma::content::SanitizeCachePathComponent(input,
+    return karma::common::content::SanitizeCachePathComponent(input,
                                                       fallback_prefix,
                                                       kMaxCachePathComponentLen);
 }
@@ -137,7 +137,7 @@ std::filesystem::path PackageRootForIdentity(const std::filesystem::path& server
                                              std::string_view world_id,
                                              std::string_view world_revision,
                                              std::string_view world_package_cache_key) {
-    return karma::content::PackageRootForIdentity(WorldPackagesByWorldRoot(server_cache_dir),
+    return karma::common::content::PackageRootForIdentity(WorldPackagesByWorldRoot(server_cache_dir),
                                                   world_id,
                                                   world_revision,
                                                   world_package_cache_key,
@@ -145,11 +145,11 @@ std::filesystem::path PackageRootForIdentity(const std::filesystem::path& server
 }
 
 std::string ResolveWorldPackageCacheKey(std::string_view world_content_hash, std::string_view world_hash) {
-    return karma::content::ResolveWorldPackageCacheKey(world_content_hash, world_hash);
+    return karma::common::content::ResolveWorldPackageCacheKey(world_content_hash, world_hash);
 }
 
 std::string ComputeManifestHash(const std::vector<bz3::net::WorldManifestEntry>& manifest) {
-    return karma::content::ComputeManifestHash(ToContentManifest(manifest));
+    return karma::common::content::ComputeManifestHash(ToContentManifest(manifest));
 }
 
 bool VerifyExtractedWorldPackage(const std::filesystem::path& package_root,
@@ -159,7 +159,7 @@ bool VerifyExtractedWorldPackage(const std::filesystem::path& package_root,
                                  uint32_t expected_world_manifest_file_count,
                                  const std::vector<bz3::net::WorldManifestEntry>& expected_world_manifest,
                                  std::string_view stage_name) {
-    const auto summary = karma::content::ComputeDirectoryManifestSummary(package_root);
+    const auto summary = karma::common::content::ComputeDirectoryManifestSummary(package_root);
     if (!summary.has_value()) {
         spdlog::error("ClientConnection: failed to verify {} world package '{}' at '{}'",
                       stage_name,
@@ -199,9 +199,9 @@ bool VerifyExtractedWorldPackage(const std::filesystem::path& package_root,
     }
 
     if (!expected_world_manifest.empty()) {
-        const auto expected = karma::content::SortManifestEntries(ToContentManifest(expected_world_manifest));
-        const auto actual = karma::content::SortManifestEntries(summary->entries);
-        if (!karma::content::ManifestEntriesEqual(expected, actual)) {
+        const auto expected = karma::common::content::SortManifestEntries(ToContentManifest(expected_world_manifest));
+        const auto actual = karma::common::content::SortManifestEntries(summary->entries);
+        if (!karma::common::content::ManifestEntriesEqual(expected, actual)) {
             spdlog::error("ClientConnection: {} manifest entries mismatch for world '{}' (expected_entries={} got_entries={})",
                           stage_name,
                           world_name,
@@ -224,7 +224,7 @@ bool VerifyExtractedWorldPackage(const std::filesystem::path& package_root,
 std::vector<bz3::net::WorldManifestEntry> ReadCachedWorldManifest(
     const std::filesystem::path& server_cache_dir) {
     bool malformed = false;
-    const auto manifest = karma::content::ReadCachedManifestFile(ActiveWorldManifestPath(server_cache_dir),
+    const auto manifest = karma::common::content::ReadCachedManifestFile(ActiveWorldManifestPath(server_cache_dir),
                                                                  &malformed);
     if (malformed) {
         spdlog::warn("ClientConnection: cached world manifest '{}' is malformed; ignoring",
@@ -235,7 +235,7 @@ std::vector<bz3::net::WorldManifestEntry> ReadCachedWorldManifest(
 
 bool PersistCachedWorldManifest(const std::filesystem::path& server_cache_dir,
                                 const std::vector<bz3::net::WorldManifestEntry>& manifest) {
-    return karma::content::PersistCachedManifestFile(ActiveWorldManifestPath(server_cache_dir),
+    return karma::common::content::PersistCachedManifestFile(ActiveWorldManifestPath(server_cache_dir),
                                                      ToContentManifest(manifest));
 }
 
@@ -250,7 +250,7 @@ void LogManifestDiffPlan(std::string_view world_name,
         return;
     }
 
-    const auto plan = karma::content::BuildManifestDiffPlan(ToContentManifest(cached_manifest),
+    const auto plan = karma::common::content::BuildManifestDiffPlan(ToContentManifest(cached_manifest),
                                                              ToContentManifest(incoming_manifest));
     if (cached_manifest.empty()) {
         KARMA_TRACE("net.client",
@@ -287,7 +287,7 @@ bool HasCachedWorldPackageForServer(const std::string& host,
 
     try {
         const std::filesystem::path server_cache_dir =
-            karma::data::EnsureUserWorldDirectoryForServer(host, port);
+            karma::common::data::EnsureUserWorldDirectoryForServer(host, port);
         const std::string world_package_cache_key =
             ResolveWorldPackageCacheKey(world_content_hash, world_hash);
         const std::filesystem::path package_root = PackageRootForIdentity(server_cache_dir,
@@ -307,38 +307,38 @@ bool HasCachedWorldPackageForServer(const std::string& host,
 }
 
 std::string WorldCacheDirName(std::string_view world_id) {
-    return karma::content::WorldCacheDirName(world_id, kMaxCachePathComponentLen);
+    return karma::common::content::WorldCacheDirName(world_id, kMaxCachePathComponentLen);
 }
 
 std::string RevisionCacheDirName(std::string_view world_revision) {
-    return karma::content::RevisionCacheDirName(world_revision, kMaxCachePathComponentLen);
+    return karma::common::content::RevisionCacheDirName(world_revision, kMaxCachePathComponentLen);
 }
 
 std::filesystem::path BuildPackageStagingRoot(const std::filesystem::path& package_root) {
-    return karma::content::BuildPackageStagingRoot(package_root);
+    return karma::common::content::BuildPackageStagingRoot(package_root);
 }
 
 std::filesystem::path BuildPackageBackupRoot(const std::filesystem::path& package_root) {
-    return karma::content::BuildPackageBackupRoot(package_root);
+    return karma::common::content::BuildPackageBackupRoot(package_root);
 }
 
 void CleanupStaleTemporaryDirectories(const std::filesystem::path& package_root) {
-    karma::content::CleanupStaleTemporaryDirectories(package_root, "ClientConnection");
+    karma::common::content::CleanupStaleTemporaryDirectories(package_root, "ClientConnection");
 }
 
 bool ActivateStagedPackageRootAtomically(const std::filesystem::path& package_root,
                                          const std::filesystem::path& staging_root) {
-    return karma::content::ActivateStagedPackageRootAtomically(package_root,
+    return karma::common::content::ActivateStagedPackageRootAtomically(package_root,
                                                                staging_root,
                                                                "ClientConnection");
 }
 
 void TouchPathIfPresent(const std::filesystem::path& path) {
-    karma::content::TouchPathIfPresent(path);
+    karma::common::content::TouchPathIfPresent(path);
 }
 
 std::filesystem::file_time_type LastWriteTimeOrMin(const std::filesystem::path& path) {
-    return karma::content::LastWriteTimeOrMin(path);
+    return karma::common::content::LastWriteTimeOrMin(path);
 }
 
 void PruneWorldPackageCache(const std::filesystem::path& server_cache_dir,
@@ -347,7 +347,7 @@ void PruneWorldPackageCache(const std::filesystem::path& server_cache_dir,
                             std::string_view active_world_package_key) {
     // Keep retention policy engine-owned here so server-delivered world config cannot influence
     // cache pruning behavior via runtime layers.
-    const auto result = karma::content::PruneWorldPackageCache(WorldPackagesByWorldRoot(server_cache_dir),
+    const auto result = karma::common::content::PruneWorldPackageCache(WorldPackagesByWorldRoot(server_cache_dir),
                                                                active_world_id,
                                                                active_world_revision,
                                                                active_world_package_key,
@@ -357,22 +357,22 @@ void PruneWorldPackageCache(const std::filesystem::path& server_cache_dir,
 
     for (const auto& warning : result.warnings) {
         switch (warning.kind) {
-        case karma::content::CachePruneWarningKind::PrunePackage:
+        case karma::common::content::CachePruneWarningKind::PrunePackage:
             spdlog::warn("ClientConnection: failed to prune cached world package '{}': {}",
                          warning.path.string(),
                          warning.message);
             break;
-        case karma::content::CachePruneWarningKind::RemoveEmptyRevision:
+        case karma::common::content::CachePruneWarningKind::RemoveEmptyRevision:
             spdlog::warn("ClientConnection: failed to remove empty cached revision '{}': {}",
                          warning.path.string(),
                          warning.message);
             break;
-        case karma::content::CachePruneWarningKind::PruneRevision:
+        case karma::common::content::CachePruneWarningKind::PruneRevision:
             spdlog::warn("ClientConnection: failed to prune cached world revision '{}': {}",
                          warning.path.string(),
                          warning.message);
             break;
-        case karma::content::CachePruneWarningKind::RemoveEmptyWorldDir:
+        case karma::common::content::CachePruneWarningKind::RemoveEmptyWorldDir:
             spdlog::warn("ClientConnection: failed to remove empty cached world dir '{}': {}",
                          warning.path.string(),
                          warning.message);
@@ -401,19 +401,19 @@ void PruneWorldPackageCache(const std::filesystem::path& server_cache_dir,
 }
 
 std::string ComputeWorldPackageHash(const std::vector<std::byte>& bytes) {
-    return karma::content::ComputeWorldPackageHash(bytes);
+    return karma::common::content::ComputeWorldPackageHash(bytes);
 }
 
 bool HasPackageIdentity(const CachedWorldIdentity& identity) {
-    return karma::content::HasPackageIdentity(ToContentIdentity(identity));
+    return karma::common::content::HasPackageIdentity(ToContentIdentity(identity));
 }
 
 bool HasRequiredIdentityFields(const CachedWorldIdentity& identity) {
-    return karma::content::HasRequiredIdentityFields(ToContentIdentity(identity));
+    return karma::common::content::HasRequiredIdentityFields(ToContentIdentity(identity));
 }
 
 std::optional<CachedWorldIdentity> ReadCachedWorldIdentityFile(const std::filesystem::path& identity_file) {
-    const auto identity = karma::content::ReadCachedIdentityFile(identity_file);
+    const auto identity = karma::common::content::ReadCachedIdentityFile(identity_file);
     if (!identity.has_value()) {
         return std::nullopt;
     }
@@ -422,7 +422,7 @@ std::optional<CachedWorldIdentity> ReadCachedWorldIdentityFile(const std::filesy
 
 std::optional<CachedWorldIdentity> ReadCachedWorldIdentityForServer(const std::string& host, uint16_t port) {
     try {
-        const auto server_cache_dir = karma::data::EnsureUserWorldDirectoryForServer(host, port);
+        const auto server_cache_dir = karma::common::data::EnsureUserWorldDirectoryForServer(host, port);
         const auto identity_file = ActiveWorldIdentityPath(server_cache_dir);
         const auto identity = ReadCachedWorldIdentityFile(identity_file);
         if (!identity.has_value()) {
@@ -449,7 +449,7 @@ bool PersistCachedWorldIdentity(const std::filesystem::path& server_cache_dir,
                                 std::string_view world_content_hash,
                                 std::string_view world_id,
                                 std::string_view world_revision) {
-    return karma::content::PersistCachedIdentityFile(ActiveWorldIdentityPath(server_cache_dir),
+    return karma::common::content::PersistCachedIdentityFile(ActiveWorldIdentityPath(server_cache_dir),
                                                      world_hash,
                                                      world_content_hash,
                                                      world_id,
@@ -461,7 +461,7 @@ std::optional<CachedWorldIdentity> ReadCachedWorldIdentity(const std::filesystem
 }
 
 bool NormalizeRelativePath(std::string_view raw_path, std::filesystem::path* out) {
-    return karma::content::NormalizeRelativePath(raw_path, out);
+    return karma::common::content::NormalizeRelativePath(raw_path, out);
 }
 
 bool ApplyDeltaArchiveOverCachedBase(const std::filesystem::path& server_cache_dir,
@@ -507,7 +507,7 @@ bool ApplyDeltaArchiveOverCachedBase(const std::filesystem::path& server_cache_d
     }
 
     size_t removed_paths = 0;
-    if (!karma::content::ApplyDeltaArchiveOverBasePackage(target_root,
+    if (!karma::common::content::ApplyDeltaArchiveOverBasePackage(target_root,
                                                           base_root,
                                                           world_name,
                                                           world_content_hash,

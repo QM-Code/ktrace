@@ -1,6 +1,6 @@
 #include "internal.hpp"
 
-#include "karma/common/data_path_resolver.hpp"
+#include "karma/common/data/path_resolver.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -29,8 +29,8 @@ bgfx::ShaderHandle loadShader(const std::string& path) {
 
 BgfxProgramHandles CreateBgfxProgramHandles() {
     BgfxProgramHandles handles{};
-    const auto vs_path = karma::data::Resolve("bgfx/shaders/bin/vk/mesh/vs_mesh.bin").string();
-    const auto fs_path = karma::data::Resolve("bgfx/shaders/bin/vk/mesh/fs_mesh.bin").string();
+    const auto vs_path = karma::common::data::Resolve("bgfx/shaders/bin/vk/mesh/vs_mesh.bin").string();
+    const auto fs_path = karma::common::data::Resolve("bgfx/shaders/bin/vk/mesh/fs_mesh.bin").string();
     auto vsh = loadShader(vs_path);
     auto fsh = loadShader(fs_path);
     if (!bgfx::isValid(vsh) || !bgfx::isValid(fsh)) {
@@ -40,9 +40,9 @@ BgfxProgramHandles CreateBgfxProgramHandles() {
     }
 
     const auto shadow_vs_path =
-        karma::data::Resolve("bgfx/shaders/bin/vk/shadow/vs_shadow_depth.bin").string();
+        karma::common::data::Resolve("bgfx/shaders/bin/vk/shadow/vs_shadow_depth.bin").string();
     const auto shadow_fs_path =
-        karma::data::Resolve("bgfx/shaders/bin/vk/shadow/fs_shadow_depth.bin").string();
+        karma::common::data::Resolve("bgfx/shaders/bin/vk/shadow/fs_shadow_depth.bin").string();
     auto shadow_vsh = loadShader(shadow_vs_path);
     auto shadow_fsh = loadShader(shadow_fs_path);
     if (bgfx::isValid(shadow_vsh) && bgfx::isValid(shadow_fsh)) {

@@ -1,5 +1,5 @@
 #include "karma/cli/server/app_options.hpp"
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 #include "karma/network/community/heartbeat.hpp"
 #include "karma/network/community/heartbeat_client.hpp"
 
@@ -65,9 +65,9 @@ bool TestCommunityOverrideDispatchesHeartbeat() {
         return false;
     }
 
-    const karma::json::Value merged_config{
+    const karma::common::serialization::Value merged_config{
         {"community",
-         karma::json::Value{
+         karma::common::serialization::Value{
              {"enabled", false},
              {"server", "http://ignored.example:9999"},
              {"heartbeatIntervalSeconds", 5}}},

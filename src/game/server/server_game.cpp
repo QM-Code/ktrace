@@ -3,7 +3,7 @@
 #include <optional>
 #include <utility>
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/ecs/world.hpp"
 #include "server/domain/components.hpp"
 

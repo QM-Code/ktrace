@@ -1,9 +1,9 @@
 #include "karma/scene/scene_bootstrap.hpp"
 
 #include "karma/geometry/mesh_loader.hpp"
-#include "karma/common/config_store.hpp"
-#include "karma/common/logging.hpp"
-#include "karma/common/data_path_resolver.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/logging/logging.hpp"
+#include "karma/common/data/path_resolver.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/renderer/device.hpp"
 #include "karma/renderer/layers.hpp"
@@ -20,7 +20,7 @@
 namespace karma::scene {
 namespace {
 
-std::string DescribeJsonValue(const karma::json::Value* value) {
+std::string DescribeJsonValue(const karma::common::serialization::Value* value) {
     if (!value) {
         return "<missing>";
     }
@@ -311,16 +311,16 @@ bool PopulateStartupWorld(renderer::GraphicsDevice& graphics,
     out_resources.materials.clear();
 
     const std::filesystem::path world_path =
-        config::ConfigStore::ResolveAssetPath("assets.models.world", {});
+        common::config::ConfigStore::ResolveAssetPath("assets.models.world", {});
     if (world_path.empty()) {
-        const auto alt_models_world = config::ConfigStore::ResolveAssetPath("models.world", {});
-        const auto alt_world = config::ConfigStore::ResolveAssetPath("world", {});
-        const auto* config_value = config::ConfigStore::Get("assets.models.world");
+        const auto alt_models_world = common::config::ConfigStore::ResolveAssetPath("models.world", {});
+        const auto alt_world = common::config::ConfigStore::ResolveAssetPath("world", {});
+        const auto* config_value = common::config::ConfigStore::Get("assets.models.world");
         spdlog::error(
             "EngineApp: failed to resolve startup world asset key 'assets.models.world' "
             "(config value: {}, data_root: '{}', diag models.world: '{}', diag world: '{}')",
             DescribeJsonValue(config_value),
-            data::DataRoot().string(),
+            common::data::DataRoot().string(),
             alt_models_world.empty() ? "<missing>" : alt_models_world.string(),
             alt_world.empty() ? "<missing>" : alt_world.string());
         return false;

@@ -1,6 +1,6 @@
 #include "karma/audio/audio_system.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <sstream>
 

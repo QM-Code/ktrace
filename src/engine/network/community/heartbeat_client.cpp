@@ -2,8 +2,8 @@
 
 #include <curl/curl.h>
 
-#include "karma/common/json.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/serialization/json.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/network/http/curl_global.hpp"
 
 #include <spdlog/spdlog.h>
@@ -89,7 +89,7 @@ bool PerformPost(const std::string& url,
     if (status < 200 || status >= 300) {
         if (!body_out->empty()) {
             try {
-                const auto json_data = karma::json::Parse(*body_out);
+                const auto json_data = karma::common::serialization::Parse(*body_out);
                 if (json_data.contains("message") && json_data["message"].is_string()) {
                     *error_out = json_data["message"].get<std::string>();
                 }

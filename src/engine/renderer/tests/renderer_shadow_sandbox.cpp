@@ -1,5 +1,5 @@
-#include "karma/common/logging.hpp"
-#include "karma/common/data_path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
+#include "karma/common/data/path_resolver.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/platform/window.hpp"
 #include "karma/renderer/backend.hpp"
@@ -712,20 +712,20 @@ void SubmitLightDebugLine(karma::renderer::RenderSystem& render,
 int main(int argc, char** argv) {
     try {
         const SandboxOptions options = ParseOptions(argc, argv);
-        karma::logging::ConfigureLogPatterns(false);
+        karma::common::logging::ConfigureLogPatterns(false);
         spdlog::set_level(options.verbose ? spdlog::level::debug : spdlog::level::info);
         if (!options.trace_channels.empty()) {
-            karma::logging::EnableTraceChannels(options.trace_channels);
+            karma::common::logging::EnableTraceChannels(options.trace_channels);
         }
 
-        karma::data::DataPathSpec data_spec{};
+        karma::common::data::DataPathSpec data_spec{};
         data_spec.appName = "bz3";
         data_spec.dataDirEnvVar = "BZ3_DATA_DIR";
         data_spec.requiredDataMarker = "client/config.json";
-        karma::data::SetDataPathSpec(data_spec);
+        karma::common::data::SetDataPathSpec(data_spec);
         const std::filesystem::path repo_data_root = std::filesystem::current_path() / "data";
         if (std::filesystem::exists(repo_data_root / "client/config.json")) {
-            karma::data::SetDataRootOverride(repo_data_root);
+            karma::common::data::SetDataRootOverride(repo_data_root);
         }
 
         karma::platform::WindowConfig window_config{};

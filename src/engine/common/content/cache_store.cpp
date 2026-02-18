@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace karma::content {
+namespace karma::common::content {
 
 namespace {
 
@@ -370,4 +370,4 @@ CachePruneResult PruneWorldPackageCache(const std::filesystem::path& world_packa
     return result;
 }
 
-} // namespace karma::content
+} // namespace karma::common::content

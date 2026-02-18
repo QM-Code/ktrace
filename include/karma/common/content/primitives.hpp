@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace karma::content {
+namespace karma::common::content {
 
 uint64_t HashStringFNV1a(std::string_view value);
 void HashStringFNV1a(uint64_t& hash, std::string_view value);
@@ -30,4 +30,4 @@ bool NormalizeRelativePath(std::string_view raw_path, std::filesystem::path* out
 
 std::string ComputeWorldPackageHash(const std::vector<std::byte>& bytes);
 
-} // namespace karma::content
+} // namespace karma::common::content

@@ -1042,7 +1042,7 @@ Validation gate for this slice:
   - `src/engine/cli/client/*` + `include/karma/cli/client/*` (`karma::cli::client`)
   - `src/engine/cli/server/*` + `include/karma/cli/server/*` (`karma::cli::server`)
   - `src/engine/cli/shared/*` + `include/karma/cli/shared/*` (`karma::cli::shared`)
-- One boundary leak remains: engine/common data-dir override logic currently parses `argc/argv` directly.
+- One boundary leak remains: engine/common data-directory override logic currently parses `argc/argv` directly.
 
 ## Why this matters
 - Engine libraries should not need to know about command-line shape.
@@ -1053,6 +1053,22 @@ Validation gate for this slice:
 - Move direct CLI parsing (`-d`, `-c`) out of engine/common and into host-layer bootstrap code.
 - Replace argv-based engine helper usage with a host-provided data/config override struct or service call.
 - Preserve existing resolution precedence and behavior while moving ownership to host code.
+
+## 3E) Common Subsystem Layout (Landed)
+
+## Current state
+- `common` headers/sources now follow explicit ownership directories with namespace symmetry:
+  - `common/config/*` -> `karma::common::config`
+  - `common/data/*` -> `karma::common::data`
+  - `common/content/*` -> `karma::common::content`
+  - `common/logging/*` -> `karma::common::logging`
+  - `common/i18n/*` -> `karma::common::i18n`
+  - `common/serialization/*` -> `karma::common::serialization`
+- Fixed-step simulation clock ownership is now app-shared:
+  - `app/shared/simulation_clock.*` -> `karma::app::shared::SimulationClock`
+- Legacy flat headers (`config_helpers.hpp`, `data_path_resolver.hpp`, etc.) are retired in favor of directory-scoped paths (for example `karma/common/config/helpers.hpp`).
+- Redundant `src/engine/common/curl_global.hpp` has been removed; curl global init remains owned by `network/http`.
+- Stale/unused `include/karma/common/data_path.hpp` and `file_utils` surfaces have been removed.
 
 ## 4) Renderer Feature Capability Envelope (Rewrite-Owned)
 

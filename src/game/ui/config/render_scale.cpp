@@ -1,6 +1,6 @@
 #include "ui/config/render_scale.hpp"
 
-#include "karma/common/config_store.hpp"
+#include "karma/common/config/store.hpp"
 #include "spdlog/spdlog.h"
 #include "ui/config/ui_config.hpp"
 
@@ -11,7 +11,7 @@ namespace ui {
 float GetUiRenderScale() {
     static uint64_t lastRevision = 0;
     static float cachedScale = UiConfig::GetRenderScale();
-    const uint64_t revision = karma::config::ConfigStore::Revision();
+    const uint64_t revision = karma::common::config::ConfigStore::Revision();
     if (revision != lastRevision) {
         lastRevision = revision;
         const float value = UiConfig::GetRenderScale();

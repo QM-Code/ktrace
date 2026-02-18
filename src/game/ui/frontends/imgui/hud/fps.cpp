@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cstdio>
-#include "karma/common/i18n.hpp"
+#include "karma/common/i18n/i18n.hpp"
 
 namespace ui {
 
@@ -52,7 +52,7 @@ void ImGuiHudFps::draw(ImGuiIO &io,
     ImGui::SetWindowFontScale(scale);
     char fpsBuffer[32];
     std::snprintf(fpsBuffer, sizeof(fpsBuffer), "%.0f", fpsValue);
-    const std::string fpsText = karma::i18n::Get().format("ui.hud.fps_label", {{"value", fpsBuffer}});
+    const std::string fpsText = karma::common::i18n::Get().format("ui.hud.fps_label", {{"value", fpsBuffer}});
     const ImVec2 textSize = ImGui::CalcTextSize(fpsText.c_str());
     const float windowWidth = ImGui::GetWindowSize().x;
     const float centeredX = std::max(0.0f, (windowWidth - textSize.x) * 0.5f);

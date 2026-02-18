@@ -24,6 +24,8 @@ struct CollisionMaskIntentComponent {
 
 struct RigidBodyIntentComponent {
     bool dynamic = true;
+    bool kinematic = false;
+    bool awake = true;
     float mass = 1.0f;
     float linear_damping = 0.0f;
     float angular_damping = 0.0f;
@@ -32,12 +34,27 @@ struct RigidBodyIntentComponent {
     bool translation_locked = false;
     glm::vec3 linear_velocity{0.0f, 0.0f, 0.0f};
     glm::vec3 angular_velocity{0.0f, 0.0f, 0.0f};
+    // Runtime command intents:
+    // - linear_force is applied each pre-sim pass while non-zero and linear_force_enabled=true.
+    // - linear_impulse is one-shot and consumed only after successful runtime application.
+    // - angular_torque is applied each pre-sim pass while non-zero and angular_torque_enabled=true.
+    // - angular_impulse is one-shot and consumed only after successful runtime application.
+    // - clear_runtime_commands_requested clears force/torque/impulse command intents when reconciliation succeeds.
+    glm::vec3 linear_force{0.0f, 0.0f, 0.0f};
+    glm::vec3 linear_impulse{0.0f, 0.0f, 0.0f};
+    glm::vec3 angular_torque{0.0f, 0.0f, 0.0f};
+    glm::vec3 angular_impulse{0.0f, 0.0f, 0.0f};
+    bool linear_force_enabled = true;
+    bool angular_torque_enabled = true;
+    bool clear_runtime_commands_requested = false;
 };
 
 struct ColliderIntentComponent {
     ColliderShapeKind shape = ColliderShapeKind::Box;
     bool enabled = true;
     bool is_trigger = false;
+    float friction = 0.5f;
+    float restitution = 0.0f;
     glm::vec3 half_extents{0.5f, 0.5f, 0.5f};
     float radius = 0.5f;
     float half_height = 0.5f;
@@ -71,7 +88,8 @@ enum class PhysicsComponentValidationError {
     EmptyMeshPath,
     InvalidMass,
     EmptyCollisionMask,
-    ConflictingMotionLocks
+    ConflictingMotionLocks,
+    InvalidKinematicState
 };
 
 enum class TransformOwnershipValidationError {
@@ -87,6 +105,18 @@ enum class ColliderReconcileAction {
     NoOp,
     UpdateRuntimeProperties,
     RebuildRuntimeShape,
+    RejectInvalidIntent
+};
+
+enum class RigidBodyKinematicReconcileAction {
+    NoOp,
+    UpdateRuntimeKinematic,
+    RejectInvalidIntent
+};
+
+enum class RigidBodyAwakeReconcileAction {
+    NoOp,
+    UpdateRuntimeAwakeState,
     RejectInvalidIntent
 };
 
@@ -147,7 +177,11 @@ inline bool ValidateRigidBodyIntent(const RigidBodyIntentComponent& intent,
         || !IsFiniteScalar(intent.linear_damping)
         || !IsFiniteScalar(intent.angular_damping)
         || !IsFiniteVec3(intent.linear_velocity)
-        || !IsFiniteVec3(intent.angular_velocity)) {
+        || !IsFiniteVec3(intent.angular_velocity)
+        || !IsFiniteVec3(intent.linear_force)
+        || !IsFiniteVec3(intent.linear_impulse)
+        || !IsFiniteVec3(intent.angular_torque)
+        || !IsFiniteVec3(intent.angular_impulse)) {
         if (out_error) {
             *out_error = PhysicsComponentValidationError::NonFiniteValue;
         }
@@ -171,6 +205,12 @@ inline bool ValidateRigidBodyIntent(const RigidBodyIntentComponent& intent,
         }
         return false;
     }
+    if (!intent.dynamic && intent.kinematic) {
+        if (out_error) {
+            *out_error = PhysicsComponentValidationError::InvalidKinematicState;
+        }
+        return false;
+    }
     if (out_error) {
         *out_error = PhysicsComponentValidationError::None;
     }
@@ -183,6 +223,19 @@ inline bool ValidateColliderIntent(const ColliderIntentComponent& intent,
     if (!ValidateCollisionMaskIntent(intent.mask, &mask_error)) {
         if (out_error) {
             *out_error = mask_error;
+        }
+        return false;
+    }
+    if (!IsFiniteScalar(intent.friction) || !IsFiniteScalar(intent.restitution)) {
+        if (out_error) {
+            *out_error = PhysicsComponentValidationError::NonFiniteValue;
+        }
+        return false;
+    }
+    // Material intent contract: friction >= 0, restitution in [0, 1].
+    if (intent.friction < 0.0f || intent.restitution < 0.0f || intent.restitution > 1.0f) {
+        if (out_error) {
+            *out_error = PhysicsComponentValidationError::NonPositiveDimension;
         }
         return false;
     }
@@ -280,6 +333,36 @@ inline bool NearlyEqualVec3(const glm::vec3& lhs, const glm::vec3& rhs, float ep
            && NearlyEqualFloat(lhs.z, rhs.z, epsilon);
 }
 
+inline bool HasRuntimeLinearForceCommand(const RigidBodyIntentComponent& intent, float epsilon = 1e-5f) {
+    return intent.linear_force_enabled
+           && !NearlyEqualVec3(intent.linear_force, glm::vec3(0.0f, 0.0f, 0.0f), epsilon);
+}
+
+inline bool HasRuntimeLinearImpulseCommand(const RigidBodyIntentComponent& intent, float epsilon = 1e-5f) {
+    return !NearlyEqualVec3(intent.linear_impulse, glm::vec3(0.0f, 0.0f, 0.0f), epsilon);
+}
+
+inline bool HasRuntimeAngularTorqueCommand(const RigidBodyIntentComponent& intent, float epsilon = 1e-5f) {
+    return intent.angular_torque_enabled
+           && !NearlyEqualVec3(intent.angular_torque, glm::vec3(0.0f, 0.0f, 0.0f), epsilon);
+}
+
+inline bool HasRuntimeAngularImpulseCommand(const RigidBodyIntentComponent& intent, float epsilon = 1e-5f) {
+    return !NearlyEqualVec3(intent.angular_impulse, glm::vec3(0.0f, 0.0f, 0.0f), epsilon);
+}
+
+inline bool HasRuntimeCommandClearRequest(const RigidBodyIntentComponent& intent) {
+    return intent.clear_runtime_commands_requested;
+}
+
+inline void ClearRuntimeCommandIntents(RigidBodyIntentComponent& intent) {
+    intent.linear_force = glm::vec3(0.0f, 0.0f, 0.0f);
+    intent.linear_impulse = glm::vec3(0.0f, 0.0f, 0.0f);
+    intent.angular_torque = glm::vec3(0.0f, 0.0f, 0.0f);
+    intent.angular_impulse = glm::vec3(0.0f, 0.0f, 0.0f);
+    intent.clear_runtime_commands_requested = false;
+}
+
 inline bool ValidateTransformOwnership(const PhysicsTransformOwnershipComponent& ownership,
                                        TransformOwnershipValidationError* out_error = nullptr) {
     switch (ownership.authority) {
@@ -369,11 +452,43 @@ inline ColliderReconcileAction ClassifyColliderReconcileAction(const ColliderInt
     }
     if (previous.enabled != desired.enabled
         || previous.is_trigger != desired.is_trigger
+        || !NearlyEqualFloat(previous.friction, desired.friction)
+        || !NearlyEqualFloat(previous.restitution, desired.restitution)
         || previous.mask.layer != desired.mask.layer
         || previous.mask.collides_with != desired.mask.collides_with) {
         return ColliderReconcileAction::UpdateRuntimeProperties;
     }
     return ColliderReconcileAction::NoOp;
+}
+
+inline RigidBodyKinematicReconcileAction ClassifyRigidBodyKinematicReconcileAction(
+    const RigidBodyIntentComponent& previous,
+    const RigidBodyIntentComponent& desired) {
+    if (!ValidateRigidBodyIntent(previous) || !ValidateRigidBodyIntent(desired)) {
+        return RigidBodyKinematicReconcileAction::RejectInvalidIntent;
+    }
+    if (previous.dynamic != desired.dynamic || !desired.dynamic) {
+        return RigidBodyKinematicReconcileAction::NoOp;
+    }
+    if (previous.kinematic != desired.kinematic) {
+        return RigidBodyKinematicReconcileAction::UpdateRuntimeKinematic;
+    }
+    return RigidBodyKinematicReconcileAction::NoOp;
+}
+
+inline RigidBodyAwakeReconcileAction ClassifyRigidBodyAwakeReconcileAction(
+    const RigidBodyIntentComponent& previous,
+    const RigidBodyIntentComponent& desired) {
+    if (!ValidateRigidBodyIntent(previous) || !ValidateRigidBodyIntent(desired)) {
+        return RigidBodyAwakeReconcileAction::RejectInvalidIntent;
+    }
+    if (previous.dynamic != desired.dynamic || !desired.dynamic) {
+        return RigidBodyAwakeReconcileAction::NoOp;
+    }
+    if (previous.awake != desired.awake) {
+        return RigidBodyAwakeReconcileAction::UpdateRuntimeAwakeState;
+    }
+    return RigidBodyAwakeReconcileAction::NoOp;
 }
 
 inline ControllerColliderCompatibility ClassifyControllerColliderCompatibility(

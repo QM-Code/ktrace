@@ -2,8 +2,8 @@
 #include "client/net/connection/internal.hpp"
 
 #include "karma/network/transport/client.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "net/protocol_codec.hpp"
 #include "net/protocol.hpp"
 
@@ -77,7 +77,7 @@ bool ClientConnection::sendJoinRequest() {
     std::vector<bz3::net::WorldManifestEntry> cached_world_manifest{};
     if (cached_world_identity.has_value()) {
         const std::filesystem::path server_cache_dir =
-            karma::data::EnsureUserWorldDirectoryForServer(host_, port_);
+            karma::common::data::EnsureUserWorldDirectoryForServer(host_, port_);
         cached_world_manifest = detail::ReadCachedWorldManifest(server_cache_dir);
         cached_world_manifest_hash_storage = detail::ComputeManifestHash(cached_world_manifest);
         cached_world_manifest_file_count = static_cast<uint32_t>(cached_world_manifest.size());

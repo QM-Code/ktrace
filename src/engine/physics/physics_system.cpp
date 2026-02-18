@@ -1,6 +1,6 @@
 #include "karma/physics/physics_system.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/physics/backend.hpp"
 
 #include <sstream>
@@ -139,6 +139,62 @@ bool PhysicsSystem::getBodyGravityEnabled(physics_backend::BodyId body, bool& ou
     return backend_->getBodyGravityEnabled(body, out_enabled);
 }
 
+bool PhysicsSystem::setBodyKinematic(physics_backend::BodyId body, bool enabled) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->setBodyKinematic(body, enabled);
+}
+
+bool PhysicsSystem::getBodyKinematic(physics_backend::BodyId body, bool& out_enabled) const {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->getBodyKinematic(body, out_enabled);
+}
+
+bool PhysicsSystem::setBodyAwake(physics_backend::BodyId body, bool enabled) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->setBodyAwake(body, enabled);
+}
+
+bool PhysicsSystem::getBodyAwake(physics_backend::BodyId body, bool& out_enabled) const {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->getBodyAwake(body, out_enabled);
+}
+
+bool PhysicsSystem::addBodyForce(physics_backend::BodyId body, const glm::vec3& force) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->addBodyForce(body, force);
+}
+
+bool PhysicsSystem::addBodyLinearImpulse(physics_backend::BodyId body, const glm::vec3& impulse) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->addBodyLinearImpulse(body, impulse);
+}
+
+bool PhysicsSystem::addBodyTorque(physics_backend::BodyId body, const glm::vec3& torque) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->addBodyTorque(body, torque);
+}
+
+bool PhysicsSystem::addBodyAngularImpulse(physics_backend::BodyId body, const glm::vec3& impulse) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->addBodyAngularImpulse(body, impulse);
+}
+
 bool PhysicsSystem::setBodyLinearVelocity(physics_backend::BodyId body, const glm::vec3& velocity) {
     if (!backend_) {
         return false;
@@ -249,6 +305,34 @@ bool PhysicsSystem::getBodyCollisionMask(physics_backend::BodyId body, physics_b
         return false;
     }
     return backend_->getBodyCollisionMask(body, out_mask);
+}
+
+bool PhysicsSystem::setBodyFriction(physics_backend::BodyId body, float friction) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->setBodyFriction(body, friction);
+}
+
+bool PhysicsSystem::getBodyFriction(physics_backend::BodyId body, float& out_friction) const {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->getBodyFriction(body, out_friction);
+}
+
+bool PhysicsSystem::setBodyRestitution(physics_backend::BodyId body, float restitution) {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->setBodyRestitution(body, restitution);
+}
+
+bool PhysicsSystem::getBodyRestitution(physics_backend::BodyId body, float& out_restitution) const {
+    if (!backend_) {
+        return false;
+    }
+    return backend_->getBodyRestitution(body, out_restitution);
 }
 
 bool PhysicsSystem::raycastClosest(const glm::vec3& origin,

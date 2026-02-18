@@ -1,9 +1,9 @@
 #include "ui/core/system.hpp"
 
 #include "ui/core/backend.hpp"
-#include "karma/common/i18n.hpp"
+#include "karma/common/i18n/i18n.hpp"
 #include "ui/config/ui_config.hpp"
-#include "karma/common/config_store.hpp"
+#include "karma/common/config/store.hpp"
 #include "spdlog/spdlog.h"
 
 UiSystem::UiSystem(platform::Window &window)
@@ -18,7 +18,7 @@ void UiSystem::handleEvents(const std::vector<platform::Event> &events) {
 }
 
 void UiSystem::update() {
-    const uint64_t revision = karma::config::ConfigStore::Revision();
+    const uint64_t revision = karma::common::config::ConfigStore::Revision();
     if (revision != lastConfigRevision) {
         lastConfigRevision = revision;
         hudModel.visibility.scoreboard = ui::UiConfig::GetHudScoreboard();
@@ -52,7 +52,7 @@ void UiSystem::reloadFonts() {
 }
 
 void UiSystem::setLanguage(const std::string &language) {
-    karma::i18n::Get().loadLanguage(language);
+    karma::common::i18n::Get().loadLanguage(language);
     backend->reloadFonts();
 }
 

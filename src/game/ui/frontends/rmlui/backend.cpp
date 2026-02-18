@@ -26,7 +26,7 @@
 #include "ui/frontends/rmlui/console/emoji_utils.hpp"
 #include "ui/frontends/rmlui/translate.hpp"
 #include "karma/platform/window.hpp"
-#include "karma/common/i18n.hpp"
+#include "karma/common/i18n/i18n.hpp"
 #include "ui/frontends/rmlui/hud/hud.hpp"
 #include "ui/frontends/rmlui/console/console.hpp"
 #include "ui/frontends/rmlui/console/panels/panel_community.hpp"
@@ -35,9 +35,9 @@
 #include "ui/frontends/rmlui/console/panels/panel_settings.hpp"
 #include "ui/frontends/rmlui/console/panels/panel_start_server.hpp"
 #include "ui/console/tab_spec.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/config_store.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "spdlog/spdlog.h"
 #include "karma_extras/ui/bridges/ui_render_bridge.hpp"
 #include "ui/fonts/console_fonts.hpp"
@@ -49,7 +49,7 @@ namespace {
 
 std::string tabLabelForSpec(const ui::ConsoleTabSpec &spec) {
     if (spec.labelKey) {
-        return karma::i18n::Get().get(spec.labelKey);
+        return karma::common::i18n::Get().get(spec.labelKey);
     }
     if (spec.fallbackLabel) {
         return spec.fallbackLabel;
@@ -254,10 +254,10 @@ RmlUiBackend::RmlUiBackend(platform::Window &windowRefIn) : windowRef(&windowRef
     state->lastDpRatio = scaledDpRatio;
     state->context->SetDensityIndependentPixelRatio(scaledDpRatio);
 
-    loadConfiguredFonts(karma::i18n::Get().language());
+    loadConfiguredFonts(karma::common::i18n::Get().language());
 
-    state->consolePath = karma::data::Resolve("client/ui/console.rml").string();
-    state->hudPath = karma::data::Resolve("client/ui/hud.rml").string();
+    state->consolePath = karma::common::data::Resolve("client/ui/console.rml").string();
+    state->hudPath = karma::common::data::Resolve("client/ui/hud.rml").string();
     state->hud = std::make_unique<ui::RmlUiHud>();
     auto communityPanel = std::make_unique<ui::RmlUiPanelCommunity>();
     auto *communityPanelPtr = communityPanel.get();
@@ -475,7 +475,7 @@ void RmlUiBackend::update() {
         return;
     }
 
-    const uint64_t revision = karma::config::ConfigStore::Revision();
+    const uint64_t revision = karma::common::config::ConfigStore::Revision();
     if (revision != state->lastConfigRevision) {
         state->lastConfigRevision = revision;
         for (const auto &panel : state->panels) {
@@ -605,7 +605,7 @@ void RmlUiBackend::update() {
     if (state->reloadRequested) {
         state->reloadRequested = false;
         if (state->pendingLanguage) {
-            karma::i18n::Get().loadLanguage(*state->pendingLanguage);
+            karma::common::i18n::Get().loadLanguage(*state->pendingLanguage);
             state->pendingLanguage.reset();
         }
         loadHudDocument();
@@ -805,23 +805,23 @@ void RmlUiBackend::loadConfiguredFonts(const std::string &language) {
     state->emojiFontPath.clear();
 
     const ui::fonts::ConsoleFontAssets assets = ui::fonts::GetConsoleFontAssets(language, true);
-    const auto defaultRegularPath = karma::data::ResolveConfiguredAsset("hud.fonts.console.Regular.Font");
+    const auto defaultRegularPath = karma::common::data::ResolveConfiguredAsset("hud.fonts.console.Regular.Font");
     if (!defaultRegularPath.empty()) {
         state->regularFontPath = defaultRegularPath.string();
         loadFont(defaultRegularPath, false, "hud.fonts.console.Regular.Font");
     }
     if (assets.selection.regularFontKey != "hud.fonts.console.Regular.Font") {
-        const auto languageRegularPath = karma::data::ResolveConfiguredAsset(assets.selection.regularFontKey);
+        const auto languageRegularPath = karma::common::data::ResolveConfiguredAsset(assets.selection.regularFontKey);
         loadFont(languageRegularPath, true, assets.selection.regularFontKey.c_str());
     }
-    const auto titleFontPath = karma::data::ResolveConfiguredAsset(assets.titleKey);
+    const auto titleFontPath = karma::common::data::ResolveConfiguredAsset(assets.titleKey);
     loadFont(titleFontPath, false, assets.titleKey.c_str());
-    const auto headingFontPath = karma::data::ResolveConfiguredAsset(assets.headingKey);
+    const auto headingFontPath = karma::common::data::ResolveConfiguredAsset(assets.headingKey);
     loadFont(headingFontPath, false, assets.headingKey.c_str());
-    const auto buttonFontPath = karma::data::ResolveConfiguredAsset(assets.buttonKey);
+    const auto buttonFontPath = karma::common::data::ResolveConfiguredAsset(assets.buttonKey);
     loadFont(buttonFontPath, false, assets.buttonKey.c_str());
 
-    const auto emojiFontPath = karma::data::ResolveConfiguredAsset(assets.emojiKey);
+    const auto emojiFontPath = karma::common::data::ResolveConfiguredAsset(assets.emojiKey);
     if (!emojiFontPath.empty()) {
         state->emojiFontPath = emojiFontPath.string();
         loadFont(emojiFontPath, true, assets.emojiKey.c_str());
@@ -832,7 +832,7 @@ void RmlUiBackend::loadConfiguredFonts(const std::string &language) {
     }
 
     for (const auto &key : assets.selection.fallbackKeys) {
-        loadFont(karma::data::ResolveConfiguredAsset(key), true, key.c_str());
+        loadFont(karma::common::data::ResolveConfiguredAsset(key), true, key.c_str());
     }
 }
 
@@ -859,7 +859,7 @@ void RmlUiBackend::loadConsoleDocument() {
     state->bodyElement = nullptr;
     state->emojiMarkupCache.clear();
 
-    loadConfiguredFonts(karma::i18n::Get().language());
+    loadConfiguredFonts(karma::common::i18n::Get().language());
 
     Rml::Factory::ClearStyleSheetCache();
     Rml::Factory::ClearTemplateCache();
@@ -877,7 +877,7 @@ void RmlUiBackend::loadConsoleDocument() {
         spdlog::error("RmlUi: failed to load console RML from '{}'.", state->consolePath);
         return;
     }
-    ui::rmlui::ApplyTranslations(state->document, karma::i18n::Get());
+    ui::rmlui::ApplyTranslations(state->document, karma::common::i18n::Get());
     for (const auto &spec : ui::GetConsoleTabSpecs()) {
         if (!spec.key) {
             continue;

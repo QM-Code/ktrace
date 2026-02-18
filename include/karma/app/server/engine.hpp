@@ -5,7 +5,7 @@
 #include "karma/app/server/game_interface.hpp"
 #include "karma/audio/audio_system.hpp"
 #include "karma/audio/backend.hpp"
-#include "karma/common/simulation_clock.hpp"
+#include "karma/app/shared/simulation_clock.hpp"
 #include "karma/ecs/world.hpp"
 #include "karma/physics/backend.hpp"
 #include "karma/physics/physics_system.hpp"
@@ -39,7 +39,7 @@ class Engine {
     ecs::World world_{};
     audio::AudioSystem audio_system_{};
     physics::PhysicsSystem physics_system_{};
-    common::SimulationClock simulation_clock_{};
+    shared::SimulationClock simulation_clock_{};
     bool running_ = false;
     std::chrono::steady_clock::time_point last_tick_time_{};
 };

@@ -1,6 +1,6 @@
 #include "platform/backends/window_sdl3.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_properties.h>

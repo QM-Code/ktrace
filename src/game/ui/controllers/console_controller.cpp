@@ -59,7 +59,7 @@ ConsoleController::PersistResult ConsoleController::persistCommunityCredentials(
         return result;
     }
 
-    karma::json::Value creds = karma::json::Object();
+    karma::common::serialization::Value creds = karma::common::serialization::Object();
     if (const auto *existing = ui::UiConfig::GetCommunityCredentials()) {
         if (existing->is_object()) {
             creds = *existing;
@@ -70,7 +70,7 @@ ConsoleController::PersistResult ConsoleController::persistCommunityCredentials(
         creds.erase(key);
     } else {
         if (!creds.contains(key) || !creds[key].is_object()) {
-            creds[key] = karma::json::Object();
+            creds[key] = karma::common::serialization::Object();
         }
         creds[key]["username"] = username;
         if (key == "LAN") {

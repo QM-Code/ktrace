@@ -2,9 +2,9 @@
 
 #if defined(KARMA_HAS_RMLUI)
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <RmlUi/Core.h>
 
@@ -25,13 +25,13 @@ class AdapterReal final : public Adapter {
  public:
     bool init() override {
         output_width_ =
-            std::max<uint16_t>(256u, config::ReadUInt16Config({"ui.rmlui.SoftwareBridge.Width"}, 1024u));
+            std::max<uint16_t>(256u, common::config::ReadUInt16Config({"ui.rmlui.SoftwareBridge.Width"}, 1024u));
         output_height_ =
-            std::max<uint16_t>(144u, config::ReadUInt16Config({"ui.rmlui.SoftwareBridge.Height"}, 576u));
-        distance_ = config::ReadFloatConfig({"ui.rmlui.SoftwareBridge.Distance"}, 0.75f);
-        width_ = config::ReadFloatConfig({"ui.rmlui.SoftwareBridge.WidthMeters"}, 0.95f);
-        height_ = config::ReadFloatConfig({"ui.rmlui.SoftwareBridge.HeightMeters"}, 0.95f);
-        allow_fallback_ = config::ReadBoolConfig({"ui.rmlui.SoftwareBridge.AllowFallback"}, false);
+            std::max<uint16_t>(144u, common::config::ReadUInt16Config({"ui.rmlui.SoftwareBridge.Height"}, 576u));
+        distance_ = common::config::ReadFloatConfig({"ui.rmlui.SoftwareBridge.Distance"}, 0.75f);
+        width_ = common::config::ReadFloatConfig({"ui.rmlui.SoftwareBridge.WidthMeters"}, 0.95f);
+        height_ = common::config::ReadFloatConfig({"ui.rmlui.SoftwareBridge.HeightMeters"}, 0.95f);
+        allow_fallback_ = common::config::ReadBoolConfig({"ui.rmlui.SoftwareBridge.AllowFallback"}, false);
 
         Rml::SetSystemInterface(&system_interface_);
         Rml::SetRenderInterface(&render_interface_);
@@ -48,7 +48,7 @@ class AdapterReal final : public Adapter {
         }
 
         const auto font_regular =
-            data::ResolveConfiguredAsset("assets.hud.fonts.console.Regular.Font", "client/fonts/GoogleSans.ttf");
+            common::data::ResolveConfiguredAsset("assets.hud.fonts.console.Regular.Font", "client/fonts/GoogleSans.ttf");
         if (!font_regular.empty()) {
             const std::string font_regular_str = font_regular.string();
             const bool loaded = Rml::LoadFontFace(font_regular_str.c_str(), true);
@@ -218,7 +218,7 @@ class AdapterReal final : public Adapter {
                             render_interface_.drawCallCount(),
                             text_panels.size());
 
-        if (logging::ShouldTraceChannel("ui.system.rmlui.frames")) {
+        if (common::logging::ShouldTraceChannel("ui.system.rmlui.frames")) {
             KARMA_TRACE("ui.system.rmlui.frames",
                         "RmlAdapter[rmlui]: frame callbacks={} panels={} draw_calls={} texture_rev={}",
                         draw_callbacks.size(),

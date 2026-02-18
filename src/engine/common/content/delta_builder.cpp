@@ -8,7 +8,7 @@
 #include <chrono>
 #include <fstream>
 
-namespace karma::content {
+namespace karma::common::content {
 
 std::optional<ArchiveBytes> BuildDeltaArchiveFromManifestDiff(
     const std::filesystem::path& world_dir,
@@ -129,4 +129,4 @@ std::optional<ArchiveBytes> BuildDeltaArchiveFromManifestDiff(
     }
 }
 
-} // namespace karma::content
+} // namespace karma::common::content

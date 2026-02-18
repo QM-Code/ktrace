@@ -1,7 +1,7 @@
 #include "server/net/transport_event_source/internal.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/network/content/transfer_sender.hpp"
 #include "net/protocol_codec.hpp"
 #include "net/protocol.hpp"
@@ -47,7 +47,7 @@ bool TransportServerEventSource::sendInit(karma::network::PeerToken peer,
     return sendServerPayload(
         peer,
         bz3::net::EncodeServerInit(client_id,
-                                   karma::config::ReadStringConfig("serverName", app_name_),
+                                   karma::common::config::ReadStringConfig("serverName", app_name_),
                                    world_name,
                                    bz3::net::kProtocolVersion,
                                    world_hash,

@@ -1,6 +1,6 @@
 #include "karma/physics/world.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/physics/physics_system.hpp"
 #include "physics/facade_state.hpp"
 

@@ -1,7 +1,7 @@
 #include "karma/network/content/transfer_receiver.hpp"
 
 #include "karma/common/content/primitives.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/network/content/transfer_integrity.hpp"
 
 #include <spdlog/spdlog.h>
@@ -251,7 +251,7 @@ bool HandleTransferChunk(const TransferChunkPacket& packet,
         return false;
     }
 
-    karma::content::HashBytesFNV1a(state->payload_hash, chunk_data.data(), chunk_data.size());
+    karma::common::content::HashBytesFNV1a(state->payload_hash, chunk_data.data(), chunk_data.size());
     karma::network::content::HashChunkChainFNV1a(state->chunk_chain_hash,
                                                  packet.transfer_chunk_index,
                                                  chunk_data);
@@ -321,7 +321,7 @@ bool HandleTransferEnd(bool pending_world_package_active,
         return false;
     }
 
-    const std::string streamed_payload_hash = karma::content::Hash64Hex(state->payload_hash);
+    const std::string streamed_payload_hash = karma::common::content::Hash64Hex(state->payload_hash);
     if (!state->is_delta && !state->transfer_world_hash.empty() &&
         streamed_payload_hash != state->transfer_world_hash) {
         spdlog::error("{}: world transfer payload hash mismatch transfer_id='{}' expected='{}' got='{}'",
@@ -333,7 +333,7 @@ bool HandleTransferEnd(bool pending_world_package_active,
     }
 
     const std::string streamed_chunk_chain_hash =
-        karma::content::Hash64Hex(state->chunk_chain_hash);
+        karma::common::content::Hash64Hex(state->chunk_chain_hash);
     KARMA_TRACE("net.client",
                 "{}: world transfer end transfer_id='{}' mode={} chunks={} bytes={} payload_hash='{}' chunk_chain='{}'",
                 log_prefix,

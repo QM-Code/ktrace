@@ -2,7 +2,7 @@
 
 #include "karma/network/community/heartbeat_client.hpp"
 
-#include "karma/common/config_helpers.hpp"
+#include "karma/common/config/helpers.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -24,11 +24,11 @@ CommunityHeartbeat::CommunityHeartbeat(std::unique_ptr<IHeartbeatClient> client)
 
 CommunityHeartbeat::~CommunityHeartbeat() = default;
 
-void CommunityHeartbeat::configureFromConfig(const karma::json::Value& merged_config,
+void CommunityHeartbeat::configureFromConfig(const karma::common::serialization::Value& merged_config,
                                              uint16_t listen_port,
                                              const std::string& community_override) {
-    std::string advertise_host = karma::config::ReadStringConfig("network.ServerAdvertiseHost", "");
-    std::string server_host = karma::config::ReadStringConfig("network.ServerHost", "");
+    std::string advertise_host = karma::common::config::ReadStringConfig("network.ServerAdvertiseHost", "");
+    std::string server_host = karma::common::config::ReadStringConfig("network.ServerHost", "");
     if (advertise_host.empty() || advertise_host == "0.0.0.0") {
         advertise_host = server_host;
     }

@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string>
 
-namespace karma::content {
+namespace karma::common::content {
 
 uint64_t HashStringFNV1a(std::string_view value) {
     uint64_t hash = kFNV1aOffsetBasis64;
@@ -88,4 +88,4 @@ std::string ComputeWorldPackageHash(const std::vector<std::byte>& bytes) {
     return Hash64Hex(hash);
 }
 
-} // namespace karma::content
+} // namespace karma::common::content

@@ -1,13 +1,12 @@
 set(ENGINE_CORE_SOURCES
-    ${PROJECT_SOURCE_DIR}/src/engine/common/config_helpers.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/config_store.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/config_validation.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/config/helpers.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/config/store.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/config/validation.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/network/http/curl_global.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/data_dir_override.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/data_path_resolver.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/file_utils.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/i18n.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/logging.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/data/directory_override.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/data/path_resolver.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/i18n/i18n.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/logging/logging.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/archive.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/catalog.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/cache_store.cpp
@@ -16,8 +15,8 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/package_apply.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/primitives.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/sync_facade.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/simulation_clock.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/stb_image_impl.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/app/shared/simulation_clock.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/image/stb_image_impl.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/shared/backend_resolution.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/shared/bootstrap.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/server/bootstrap.cpp

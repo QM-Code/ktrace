@@ -1,6 +1,6 @@
 #include "karma/network/client/auth/community_credentials.hpp"
 
-#include "karma/common/config_store.hpp"
+#include "karma/common/config/store.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -76,7 +76,7 @@ bool IsLanLikeHost(const std::string& host_in) {
     return false;
 }
 
-std::optional<CommunityCredential> ReadCommunityCredentialEntry(const karma::json::Value& credentials,
+std::optional<CommunityCredential> ReadCommunityCredentialEntry(const karma::common::serialization::Value& credentials,
                                                                 const std::string& key) {
     const auto it = credentials.find(key);
     if (it == credentials.end() || !it->is_object()) {
@@ -103,7 +103,7 @@ std::optional<CommunityCredential> ReadCommunityCredentialEntry(const karma::jso
 std::optional<CommunityCredential> ResolveCommunityCredential(
     const std::optional<karma::cli::client::ServerEndpoint>& endpoint,
     const std::string& server_option_raw) {
-    const auto* credentials = karma::config::ConfigStore::Get("communityCredentials");
+    const auto* credentials = karma::common::config::ConfigStore::Get("communityCredentials");
     if (!credentials || !credentials->is_object()) {
         return std::nullopt;
     }

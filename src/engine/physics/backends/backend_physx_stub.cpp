@@ -1,6 +1,6 @@
 #include "physics/backends/backend_factory_internal.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -41,6 +41,12 @@ bool IsValidCollisionMask(const CollisionMask& mask) {
 
 bool IsFiniteVec3(const glm::vec3& value) {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+bool IsZeroVec3(const glm::vec3& value, float epsilon = 1e-6f) {
+    return std::fabs(value.x) <= epsilon
+           && std::fabs(value.y) <= epsilon
+           && std::fabs(value.z) <= epsilon;
 }
 
 physx::PxFilterData ToPxFilterData(const CollisionMask& mask) {
@@ -120,6 +126,16 @@ class PhysXBackend final : public Backend {
         gravity_enabled_.clear();
         trigger_enabled_.clear();
         collision_masks_.clear();
+        kinematic_enabled_.clear();
+        for (const auto& [id, material] : body_materials_) {
+            (void)id;
+            if (material) {
+                material->release();
+            }
+        }
+        body_materials_.clear();
+        friction_.clear();
+        restitution_.clear();
         linear_damping_.clear();
         angular_damping_.clear();
 
@@ -185,6 +201,16 @@ class PhysXBackend final : public Backend {
             || desc.angular_damping < 0.0f) {
             return kInvalidBodyId;
         }
+        if (!std::isfinite(desc.friction)
+            || !std::isfinite(desc.restitution)
+            || desc.friction < 0.0f
+            || desc.restitution < 0.0f
+            || desc.restitution > 1.0f) {
+            return kInvalidBodyId;
+        }
+        if (desc.is_static && desc.is_kinematic) {
+            return kInvalidBodyId;
+        }
         if (!desc.is_static && desc.rotation_locked && desc.translation_locked) {
             return kInvalidBodyId;
         }
@@ -223,9 +249,17 @@ class PhysXBackend final : public Backend {
                 return kInvalidBodyId;
         }
 
-        physx::PxShape* shape = physics_->createShape(geometry.any(), *default_material_);
+        physx::PxMaterial* material =
+            physics_->createMaterial(desc.friction, desc.friction, desc.restitution);
+        if (!material) {
+            KARMA_TRACE("physics.physx", "PhysicsBackend[physx]: failed to create per-body material");
+            return kInvalidBodyId;
+        }
+
+        physx::PxShape* shape = physics_->createShape(geometry.any(), *material);
         if (!shape) {
             KARMA_TRACE("physics.physx", "PhysicsBackend[physx]: failed to create shape");
+            material->release();
             return kInvalidBodyId;
         }
 
@@ -251,6 +285,7 @@ class PhysXBackend final : public Backend {
                 dynamic_actor->setLinearDamping(desc.linear_damping);
                 dynamic_actor->setAngularDamping(desc.angular_damping);
                 dynamic_actor->setActorFlag(physx::PxActorFlag::eDISABLE_GRAVITY, !desc.gravity_enabled);
+                dynamic_actor->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, desc.is_kinematic);
                 physx::PxRigidDynamicLockFlags lock_flags{};
                 bool has_lock_flags = false;
                 if (desc.rotation_locked) {
@@ -277,17 +312,32 @@ class PhysXBackend final : public Backend {
         shape->release();
         if (!actor) {
             KARMA_TRACE("physics.physx", "PhysicsBackend[physx]: failed to create actor");
+            material->release();
             return kInvalidBodyId;
         }
 
+        const bool is_dynamic = actor->is<physx::PxRigidDynamic>() != nullptr;
         scene_->addActor(*actor);
+        if (is_dynamic) {
+            auto* dynamic_actor = actor->is<physx::PxRigidDynamic>();
+            if (dynamic_actor) {
+                if (desc.awake) {
+                    dynamic_actor->wakeUp();
+                } else {
+                    dynamic_actor->putToSleep();
+                }
+            }
+        }
         const BodyId id = next_body_id_++;
         bodies_.emplace(id, actor);
-        const bool is_dynamic = actor->is<physx::PxRigidDynamic>() != nullptr;
         dynamic_bodies_.emplace(id, is_dynamic);
         gravity_enabled_.emplace(id, is_dynamic ? desc.gravity_enabled : false);
         trigger_enabled_.emplace(id, desc.is_trigger);
         collision_masks_.emplace(id, desc.collision_mask);
+        kinematic_enabled_.emplace(id, is_dynamic && desc.is_kinematic);
+        body_materials_.emplace(id, material);
+        friction_.emplace(id, desc.friction);
+        restitution_.emplace(id, desc.restitution);
         if (is_dynamic) {
             linear_damping_.emplace(id, desc.linear_damping);
             angular_damping_.emplace(id, desc.angular_damping);
@@ -312,6 +362,16 @@ class PhysXBackend final : public Backend {
         gravity_enabled_.erase(body);
         trigger_enabled_.erase(body);
         collision_masks_.erase(body);
+        kinematic_enabled_.erase(body);
+        const auto material_it = body_materials_.find(body);
+        if (material_it != body_materials_.end()) {
+            if (material_it->second) {
+                material_it->second->release();
+            }
+            body_materials_.erase(material_it);
+        }
+        friction_.erase(body);
+        restitution_.erase(body);
         linear_damping_.erase(body);
         angular_damping_.erase(body);
         bodies_.erase(it);
@@ -366,6 +426,186 @@ class PhysXBackend final : public Backend {
         }
 
         out_enabled = it->second;
+        return true;
+    }
+
+    bool setBodyKinematic(BodyId body, bool enabled) override {
+        const auto it = bodies_.find(body);
+        if (it == bodies_.end() || !it->second || !isDynamicBody(body)) {
+            return false;
+        }
+
+        auto* dynamic_actor = it->second->is<physx::PxRigidDynamic>();
+        if (!dynamic_actor) {
+            return false;
+        }
+
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end()) {
+            return false;
+        }
+        if (kinematic_it->second == enabled) {
+            return true;
+        }
+
+        dynamic_actor->setRigidBodyFlag(physx::PxRigidBodyFlag::eKINEMATIC, enabled);
+        dynamic_actor->wakeUp();
+        kinematic_enabled_[body] = enabled;
+        return true;
+    }
+
+    bool getBodyKinematic(BodyId body, bool& out_enabled) const override {
+        if (!isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto it = kinematic_enabled_.find(body);
+        if (it == kinematic_enabled_.end()) {
+            return false;
+        }
+        out_enabled = it->second;
+        return true;
+    }
+
+    bool setBodyAwake(BodyId body, bool enabled) override {
+        const auto it = bodies_.find(body);
+        if (it == bodies_.end() || !it->second || !isDynamicBody(body)) {
+            return false;
+        }
+
+        auto* dynamic_actor = it->second->is<physx::PxRigidDynamic>();
+        if (!dynamic_actor) {
+            return false;
+        }
+
+        if (enabled) {
+            dynamic_actor->wakeUp();
+        } else {
+            dynamic_actor->putToSleep();
+        }
+        return true;
+    }
+
+    bool getBodyAwake(BodyId body, bool& out_enabled) const override {
+        const auto it = bodies_.find(body);
+        if (it == bodies_.end() || !it->second || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto* dynamic_actor = it->second->is<physx::PxRigidDynamic>();
+        if (!dynamic_actor) {
+            return false;
+        }
+
+        out_enabled = !dynamic_actor->isSleeping();
+        return true;
+    }
+
+    bool addBodyForce(BodyId body, const glm::vec3& force) override {
+        if (!IsFiniteVec3(force)) {
+            return false;
+        }
+
+        const auto it = bodies_.find(body);
+        if (it == bodies_.end() || !it->second || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end() || kinematic_it->second) {
+            return false;
+        }
+        if (IsZeroVec3(force)) {
+            return true;
+        }
+
+        auto* dynamic_actor = it->second->is<physx::PxRigidDynamic>();
+        if (!dynamic_actor) {
+            return false;
+        }
+
+        dynamic_actor->addForce(ToPxVec3(force), physx::PxForceMode::eFORCE, true);
+        return true;
+    }
+
+    bool addBodyLinearImpulse(BodyId body, const glm::vec3& impulse) override {
+        if (!IsFiniteVec3(impulse)) {
+            return false;
+        }
+
+        const auto it = bodies_.find(body);
+        if (it == bodies_.end() || !it->second || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end() || kinematic_it->second) {
+            return false;
+        }
+        if (IsZeroVec3(impulse)) {
+            return true;
+        }
+
+        auto* dynamic_actor = it->second->is<physx::PxRigidDynamic>();
+        if (!dynamic_actor) {
+            return false;
+        }
+
+        dynamic_actor->addForce(ToPxVec3(impulse), physx::PxForceMode::eIMPULSE, true);
+        return true;
+    }
+
+    bool addBodyTorque(BodyId body, const glm::vec3& torque) override {
+        if (!IsFiniteVec3(torque)) {
+            return false;
+        }
+
+        const auto it = bodies_.find(body);
+        if (it == bodies_.end() || !it->second || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end() || kinematic_it->second) {
+            return false;
+        }
+        if (IsZeroVec3(torque)) {
+            return true;
+        }
+
+        auto* dynamic_actor = it->second->is<physx::PxRigidDynamic>();
+        if (!dynamic_actor) {
+            return false;
+        }
+
+        dynamic_actor->addTorque(ToPxVec3(torque), physx::PxForceMode::eFORCE, true);
+        return true;
+    }
+
+    bool addBodyAngularImpulse(BodyId body, const glm::vec3& impulse) override {
+        if (!IsFiniteVec3(impulse)) {
+            return false;
+        }
+
+        const auto it = bodies_.find(body);
+        if (it == bodies_.end() || !it->second || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end() || kinematic_it->second) {
+            return false;
+        }
+        if (IsZeroVec3(impulse)) {
+            return true;
+        }
+
+        auto* dynamic_actor = it->second->is<physx::PxRigidDynamic>();
+        if (!dynamic_actor) {
+            return false;
+        }
+
+        dynamic_actor->addTorque(ToPxVec3(impulse), physx::PxForceMode::eIMPULSE, true);
         return true;
     }
 
@@ -697,6 +937,69 @@ class PhysXBackend final : public Backend {
         return true;
     }
 
+    bool setBodyFriction(BodyId body, float friction) override {
+        if (!std::isfinite(friction) || friction < 0.0f) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end() || !body_it->second) {
+            return false;
+        }
+        const auto material_it = body_materials_.find(body);
+        if (material_it == body_materials_.end() || !material_it->second) {
+            return false;
+        }
+
+        material_it->second->setStaticFriction(friction);
+        material_it->second->setDynamicFriction(friction);
+        friction_[body] = friction;
+        if (auto* dynamic_actor = body_it->second->is<physx::PxRigidDynamic>()) {
+            dynamic_actor->wakeUp();
+        }
+        return true;
+    }
+
+    bool getBodyFriction(BodyId body, float& out_friction) const override {
+        const auto it = friction_.find(body);
+        if (it == friction_.end()) {
+            return false;
+        }
+        out_friction = it->second;
+        return true;
+    }
+
+    bool setBodyRestitution(BodyId body, float restitution) override {
+        if (!std::isfinite(restitution) || restitution < 0.0f || restitution > 1.0f) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end() || !body_it->second) {
+            return false;
+        }
+        const auto material_it = body_materials_.find(body);
+        if (material_it == body_materials_.end() || !material_it->second) {
+            return false;
+        }
+
+        material_it->second->setRestitution(restitution);
+        restitution_[body] = restitution;
+        if (auto* dynamic_actor = body_it->second->is<physx::PxRigidDynamic>()) {
+            dynamic_actor->wakeUp();
+        }
+        return true;
+    }
+
+    bool getBodyRestitution(BodyId body, float& out_restitution) const override {
+        const auto it = restitution_.find(body);
+        if (it == restitution_.end()) {
+            return false;
+        }
+        out_restitution = it->second;
+        return true;
+    }
+
     bool raycastClosest(const glm::vec3& origin,
                         const glm::vec3& direction,
                         float max_distance,
@@ -761,6 +1064,10 @@ class PhysXBackend final : public Backend {
     std::unordered_map<BodyId, bool> gravity_enabled_{};
     std::unordered_map<BodyId, bool> trigger_enabled_{};
     std::unordered_map<BodyId, CollisionMask> collision_masks_{};
+    std::unordered_map<BodyId, bool> kinematic_enabled_{};
+    std::unordered_map<BodyId, physx::PxMaterial*> body_materials_{};
+    std::unordered_map<BodyId, float> friction_{};
+    std::unordered_map<BodyId, float> restitution_{};
     std::unordered_map<BodyId, float> linear_damping_{};
     std::unordered_map<BodyId, float> angular_damping_{};
     float frame_dt_ = 0.0f;
@@ -788,6 +1095,14 @@ class PhysXBackendStub final : public Backend {
     bool getBodyTransform(BodyId, BodyTransform&) const override { return false; }
     bool setBodyGravityEnabled(BodyId, bool) override { return false; }
     bool getBodyGravityEnabled(BodyId, bool&) const override { return false; }
+    bool setBodyKinematic(BodyId, bool) override { return false; }
+    bool getBodyKinematic(BodyId, bool&) const override { return false; }
+    bool setBodyAwake(BodyId, bool) override { return false; }
+    bool getBodyAwake(BodyId, bool&) const override { return false; }
+    bool addBodyForce(BodyId, const glm::vec3&) override { return false; }
+    bool addBodyLinearImpulse(BodyId, const glm::vec3&) override { return false; }
+    bool addBodyTorque(BodyId, const glm::vec3&) override { return false; }
+    bool addBodyAngularImpulse(BodyId, const glm::vec3&) override { return false; }
     bool setBodyLinearVelocity(BodyId, const glm::vec3&) override { return false; }
     bool getBodyLinearVelocity(BodyId, glm::vec3&) const override { return false; }
     bool setBodyAngularVelocity(BodyId, const glm::vec3&) override { return false; }
@@ -804,6 +1119,10 @@ class PhysXBackendStub final : public Backend {
     bool getBodyTrigger(BodyId, bool&) const override { return false; }
     bool setBodyCollisionMask(BodyId, const CollisionMask&) override { return false; }
     bool getBodyCollisionMask(BodyId, CollisionMask&) const override { return false; }
+    bool setBodyFriction(BodyId, float) override { return false; }
+    bool getBodyFriction(BodyId, float&) const override { return false; }
+    bool setBodyRestitution(BodyId, float) override { return false; }
+    bool getBodyRestitution(BodyId, float&) const override { return false; }
     bool raycastClosest(const glm::vec3&, const glm::vec3&, float, RaycastHit&) const override { return false; }
 };
 

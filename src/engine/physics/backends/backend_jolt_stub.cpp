@@ -1,6 +1,6 @@
 #include "physics/backends/backend_factory_internal.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -139,7 +139,7 @@ bool IsZeroVec3(const glm::vec3& value, float epsilon = 1e-6f) {
 }
 
 void JoltTrace(const char* fmt, ...) {
-    if (!karma::logging::ShouldTraceChannel("physics.jolt")) {
+    if (!karma::common::logging::ShouldTraceChannel("physics.jolt")) {
         return;
     }
 
@@ -243,10 +243,13 @@ class JoltBackend final : public Backend {
             gravity_enabled_.clear();
             trigger_enabled_.clear();
             collision_masks_.clear();
+            kinematic_enabled_.clear();
             linear_damping_.clear();
             angular_damping_.clear();
             rotation_locked_.clear();
             translation_locked_.clear();
+            friction_.clear();
+            restitution_.clear();
         }
 
         physics_system_.reset();
@@ -304,8 +307,18 @@ class JoltBackend final : public Backend {
             || desc.angular_damping < 0.0f) {
             return kInvalidBodyId;
         }
+        if (!std::isfinite(desc.friction)
+            || !std::isfinite(desc.restitution)
+            || desc.friction < 0.0f
+            || desc.restitution < 0.0f
+            || desc.restitution > 1.0f) {
+            return kInvalidBodyId;
+        }
 
         const bool is_dynamic = !desc.is_static;
+        if (desc.is_static && desc.is_kinematic) {
+            return kInvalidBodyId;
+        }
         if (is_dynamic && desc.rotation_locked && desc.translation_locked) {
             return kInvalidBodyId;
         }
@@ -356,7 +369,9 @@ class JoltBackend final : public Backend {
             shape,
             ToJoltRVec3(desc.transform.position),
             ToJoltQuat(desc.transform.rotation),
-            is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
+            is_dynamic
+                ? (desc.is_kinematic ? JPH::EMotionType::Kinematic : JPH::EMotionType::Dynamic)
+                : JPH::EMotionType::Static,
             is_dynamic ? kObjectLayerMoving : kObjectLayerNonMoving);
         if (is_dynamic) {
             if (desc.rotation_locked && desc.translation_locked) {
@@ -390,7 +405,10 @@ class JoltBackend final : public Backend {
 
         body_interface.AddBody(
             body->GetID(),
-            is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+            (is_dynamic && desc.awake) ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+        if (is_dynamic && !desc.awake) {
+            body_interface.DeactivateBody(body->GetID());
+        }
 
         const BodyId id = next_body_id_++;
         bodies_.emplace(id, body->GetID());
@@ -398,13 +416,18 @@ class JoltBackend final : public Backend {
         gravity_enabled_.emplace(id, is_dynamic && desc.gravity_enabled);
         trigger_enabled_.emplace(id, desc.is_trigger);
         collision_masks_.emplace(id, desc.collision_mask);
+        kinematic_enabled_.emplace(id, is_dynamic && desc.is_kinematic);
         if (is_dynamic) {
             linear_damping_.emplace(id, desc.linear_damping);
             angular_damping_.emplace(id, desc.angular_damping);
             rotation_locked_.emplace(id, desc.rotation_locked);
             translation_locked_.emplace(id, desc.translation_locked);
         }
+        friction_.emplace(id, desc.friction);
+        restitution_.emplace(id, desc.restitution);
         body_interface.SetIsSensor(body->GetID(), desc.is_trigger);
+        body_interface.SetFriction(body->GetID(), desc.friction);
+        body_interface.SetRestitution(body->GetID(), desc.restitution);
         return id;
     }
 
@@ -427,10 +450,13 @@ class JoltBackend final : public Backend {
         gravity_enabled_.erase(body);
         trigger_enabled_.erase(body);
         collision_masks_.erase(body);
+        kinematic_enabled_.erase(body);
         linear_damping_.erase(body);
         angular_damping_.erase(body);
         rotation_locked_.erase(body);
         translation_locked_.erase(body);
+        friction_.erase(body);
+        restitution_.erase(body);
         bodies_.erase(it);
     }
 
@@ -501,6 +527,163 @@ class JoltBackend final : public Backend {
         }
 
         out_enabled = it->second;
+        return true;
+    }
+
+    bool setBodyKinematic(BodyId body, bool enabled) override {
+        if (!physics_system_ || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end()) {
+            return false;
+        }
+        if (kinematic_it->second == enabled) {
+            return true;
+        }
+
+        JPH::BodyInterface& body_interface = physics_system_->GetBodyInterface();
+        const bool currently_awake = body_interface.IsActive(body_it->second);
+        body_interface.SetMotionType(body_it->second,
+                                     enabled ? JPH::EMotionType::Kinematic : JPH::EMotionType::Dynamic,
+                                     currently_awake ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+        kinematic_enabled_[body] = enabled;
+        return true;
+    }
+
+    bool getBodyKinematic(BodyId body, bool& out_enabled) const override {
+        if (!physics_system_ || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto it = kinematic_enabled_.find(body);
+        if (it == kinematic_enabled_.end()) {
+            return false;
+        }
+        out_enabled = it->second;
+        return true;
+    }
+
+    bool setBodyAwake(BodyId body, bool enabled) override {
+        if (!physics_system_ || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+
+        JPH::BodyInterface& body_interface = physics_system_->GetBodyInterface();
+        if (enabled) {
+            body_interface.ActivateBody(body_it->second);
+        } else {
+            body_interface.DeactivateBody(body_it->second);
+        }
+        return true;
+    }
+
+    bool getBodyAwake(BodyId body, bool& out_enabled) const override {
+        if (!physics_system_ || !isDynamicBody(body)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+
+        out_enabled = physics_system_->GetBodyInterface().IsActive(body_it->second);
+        return true;
+    }
+
+    bool addBodyForce(BodyId body, const glm::vec3& force) override {
+        if (!physics_system_ || !isDynamicBody(body) || !IsFiniteVec3(force)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end() || kinematic_it->second) {
+            return false;
+        }
+        if (IsZeroVec3(force)) {
+            return true;
+        }
+
+        physics_system_->GetBodyInterface().AddForce(body_it->second, ToJoltVec3(force));
+        return true;
+    }
+
+    bool addBodyLinearImpulse(BodyId body, const glm::vec3& impulse) override {
+        if (!physics_system_ || !isDynamicBody(body) || !IsFiniteVec3(impulse)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end() || kinematic_it->second) {
+            return false;
+        }
+        if (IsZeroVec3(impulse)) {
+            return true;
+        }
+
+        physics_system_->GetBodyInterface().AddImpulse(body_it->second, ToJoltVec3(impulse));
+        return true;
+    }
+
+    bool addBodyTorque(BodyId body, const glm::vec3& torque) override {
+        if (!physics_system_ || !isDynamicBody(body) || !IsFiniteVec3(torque)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end() || kinematic_it->second) {
+            return false;
+        }
+        if (IsZeroVec3(torque)) {
+            return true;
+        }
+
+        physics_system_->GetBodyInterface().AddTorque(body_it->second, ToJoltVec3(torque));
+        return true;
+    }
+
+    bool addBodyAngularImpulse(BodyId body, const glm::vec3& impulse) override {
+        if (!physics_system_ || !isDynamicBody(body) || !IsFiniteVec3(impulse)) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+        const auto kinematic_it = kinematic_enabled_.find(body);
+        if (kinematic_it == kinematic_enabled_.end() || kinematic_it->second) {
+            return false;
+        }
+        if (IsZeroVec3(impulse)) {
+            return true;
+        }
+
+        physics_system_->GetBodyInterface().AddAngularImpulse(body_it->second, ToJoltVec3(impulse));
         return true;
     }
 
@@ -806,6 +989,73 @@ class JoltBackend final : public Backend {
         return true;
     }
 
+    bool setBodyFriction(BodyId body, float friction) override {
+        if (!physics_system_) {
+            return false;
+        }
+        if (!std::isfinite(friction) || friction < 0.0f) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+
+        const auto value_it = friction_.find(body);
+        if (value_it == friction_.end()) {
+            return false;
+        }
+
+        physics_system_->GetBodyInterface().SetFriction(body_it->second, friction);
+        friction_[body] = friction;
+        return true;
+    }
+
+    bool getBodyFriction(BodyId body, float& out_friction) const override {
+        const auto it = friction_.find(body);
+        if (it == friction_.end()) {
+            return false;
+        }
+        out_friction = it->second;
+        return true;
+    }
+
+    bool setBodyRestitution(BodyId body, float restitution) override {
+        if (!physics_system_) {
+            return false;
+        }
+        if (!std::isfinite(restitution) || restitution < 0.0f || restitution > 1.0f) {
+            return false;
+        }
+
+        const auto body_it = bodies_.find(body);
+        if (body_it == bodies_.end()) {
+            return false;
+        }
+
+        const auto value_it = restitution_.find(body);
+        if (value_it == restitution_.end()) {
+            return false;
+        }
+
+        // Bounded Jolt path: runtime restitution mutation is treated as unsupported.
+        // Callers use false to apply deterministic rebuild fallback.
+        if (std::fabs(value_it->second - restitution) > 1e-6f) {
+            return false;
+        }
+        return true;
+    }
+
+    bool getBodyRestitution(BodyId body, float& out_restitution) const override {
+        const auto it = restitution_.find(body);
+        if (it == restitution_.end()) {
+            return false;
+        }
+        out_restitution = it->second;
+        return true;
+    }
+
     bool raycastClosest(const glm::vec3& origin,
                         const glm::vec3& direction,
                         float max_distance,
@@ -861,10 +1111,13 @@ class JoltBackend final : public Backend {
     std::unordered_map<BodyId, bool> gravity_enabled_{};
     std::unordered_map<BodyId, bool> trigger_enabled_{};
     std::unordered_map<BodyId, CollisionMask> collision_masks_{};
+    std::unordered_map<BodyId, bool> kinematic_enabled_{};
     std::unordered_map<BodyId, float> linear_damping_{};
     std::unordered_map<BodyId, float> angular_damping_{};
     std::unordered_map<BodyId, bool> rotation_locked_{};
     std::unordered_map<BodyId, bool> translation_locked_{};
+    std::unordered_map<BodyId, float> friction_{};
+    std::unordered_map<BodyId, float> restitution_{};
     BodyId next_body_id_ = 1;
     float frame_dt_ = 0.0f;
     bool initialized_ = false;
@@ -890,6 +1143,14 @@ class JoltBackendStub final : public Backend {
     bool getBodyTransform(BodyId, BodyTransform&) const override { return false; }
     bool setBodyGravityEnabled(BodyId, bool) override { return false; }
     bool getBodyGravityEnabled(BodyId, bool&) const override { return false; }
+    bool setBodyKinematic(BodyId, bool) override { return false; }
+    bool getBodyKinematic(BodyId, bool&) const override { return false; }
+    bool setBodyAwake(BodyId, bool) override { return false; }
+    bool getBodyAwake(BodyId, bool&) const override { return false; }
+    bool addBodyForce(BodyId, const glm::vec3&) override { return false; }
+    bool addBodyLinearImpulse(BodyId, const glm::vec3&) override { return false; }
+    bool addBodyTorque(BodyId, const glm::vec3&) override { return false; }
+    bool addBodyAngularImpulse(BodyId, const glm::vec3&) override { return false; }
     bool setBodyLinearVelocity(BodyId, const glm::vec3&) override { return false; }
     bool getBodyLinearVelocity(BodyId, glm::vec3&) const override { return false; }
     bool setBodyAngularVelocity(BodyId, const glm::vec3&) override { return false; }
@@ -906,6 +1167,10 @@ class JoltBackendStub final : public Backend {
     bool getBodyTrigger(BodyId, bool&) const override { return false; }
     bool setBodyCollisionMask(BodyId, const CollisionMask&) override { return false; }
     bool getBodyCollisionMask(BodyId, CollisionMask&) const override { return false; }
+    bool setBodyFriction(BodyId, float) override { return false; }
+    bool getBodyFriction(BodyId, float&) const override { return false; }
+    bool setBodyRestitution(BodyId, float) override { return false; }
+    bool getBodyRestitution(BodyId, float&) const override { return false; }
     bool raycastClosest(const glm::vec3&, const glm::vec3&, float, RaycastHit&) const override { return false; }
 };
 

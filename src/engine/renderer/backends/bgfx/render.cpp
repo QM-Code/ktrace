@@ -3,7 +3,7 @@
 #include "../internal/direct_sampler_observability.hpp"
 #include "../internal/material_lighting.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 

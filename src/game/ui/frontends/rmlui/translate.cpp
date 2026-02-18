@@ -66,7 +66,7 @@ std::vector<std::string> split(std::string_view text, char delim) {
     return parts;
 }
 
-void applyElementTranslation(Rml::Element *element, const karma::i18n::I18n &i18n) {
+void applyElementTranslation(Rml::Element *element, const karma::common::i18n::I18n &i18n) {
     if (!element) {
         return;
     }
@@ -102,7 +102,7 @@ void applyElementTranslation(Rml::Element *element, const karma::i18n::I18n &i18
 
 } // namespace
 
-void ApplyTranslations(Rml::Element *root, const karma::i18n::I18n &i18n) {
+void ApplyTranslations(Rml::Element *root, const karma::common::i18n::I18n &i18n) {
     if (!root) {
         return;
     }

@@ -11,7 +11,7 @@
 #include <filesystem>
 #include <fstream>
 
-namespace karma::content {
+namespace karma::common::content {
 
 namespace {
 
@@ -357,4 +357,4 @@ bool ApplyDeltaArchiveOverBasePackage(const std::filesystem::path& target_root,
     return true;
 }
 
-} // namespace karma::content
+} // namespace karma::common::content

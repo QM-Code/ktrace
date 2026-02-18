@@ -1,7 +1,7 @@
 #include "karma/cli/server/app_options.hpp"
 
 #include "karma/cli/server/runtime_options.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -119,7 +119,7 @@ AppOptions ParseAppOptions(int argc,
     if (opts.trace_explicit && opts.trace_channels.empty()) {
         std::cerr << "Error: --trace requires a comma-separated channel list.\n";
         std::cerr << "\nAvailable trace channels:\n"
-                  << karma::logging::GetDefaultTraceChannelsHelp();
+                  << karma::common::logging::GetDefaultTraceChannelsHelp();
         std::exit(1);
     }
 

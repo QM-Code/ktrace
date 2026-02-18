@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 
 #include "ui/console/console_interface.hpp"
 #include "ui/controllers/console_controller.hpp"

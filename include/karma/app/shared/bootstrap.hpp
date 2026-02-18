@@ -1,7 +1,7 @@
 #pragma once
 
-#include "karma/common/config_store.hpp"
-#include "karma/common/config_validation.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/config/validation.hpp"
 
 #include <filesystem>
 #include <string>
@@ -16,7 +16,7 @@ struct BootstrapConfigSpec {
     bool enable_user_config = true;
     bool allow_user_config_data_dir_when_user_config_disabled = false;
     std::filesystem::path default_user_config_relative = std::filesystem::path("config.json");
-    std::vector<config::ConfigFileSpec> config_specs{};
+    std::vector<common::config::ConfigFileSpec> config_specs{};
 };
 
 void ConfigureLoggingFromOptions(bool timestamp_logging,
@@ -25,7 +25,7 @@ void ConfigureLoggingFromOptions(bool timestamp_logging,
 
 void ConfigureDataAndConfigFromSpec(const BootstrapConfigSpec& spec, int argc, char** argv);
 
-bool ReportRequiredConfigIssues(const std::vector<config::ValidationIssue>& issues, bool strict_config);
+bool ReportRequiredConfigIssues(const std::vector<common::config::ValidationIssue>& issues, bool strict_config);
 std::string ResolveConfiguredAppName(const std::string& fallback_name);
 
 } // namespace karma::app::shared

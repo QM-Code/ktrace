@@ -8,7 +8,7 @@
 #include "../internal/environment_lighting.hpp"
 #include "../internal/material_semantics.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/platform/window.hpp"
 #include "karma/renderer/layers.hpp"
 
@@ -61,7 +61,7 @@ public:
     }
 
     void traceVargs(const char* filePath, uint16_t line, const char* format, va_list argList) override {
-        if (!karma::logging::ShouldTraceChannel("render.bgfx.internal")) {
+        if (!karma::common::logging::ShouldTraceChannel("render.bgfx.internal")) {
             return;
         }
         std::array<char, 2048> stack_buf{};

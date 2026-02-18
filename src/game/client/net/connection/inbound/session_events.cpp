@@ -1,6 +1,6 @@
 #include "client/net/connection.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 namespace bz3::client::net {
 

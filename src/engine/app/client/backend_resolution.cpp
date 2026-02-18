@@ -1,7 +1,7 @@
 #include "karma/app/client/backend_resolution.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/config_store.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/config/store.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -12,7 +12,7 @@ renderer_backend::BackendKind ResolveRenderBackendFromOption(const std::string& 
                                                              bool option_explicit) {
     const std::string configured = option_explicit
         ? option_value
-        : config::ReadStringConfig("render.backend", "auto");
+        : common::config::ReadStringConfig("render.backend", "auto");
     const auto parsed = renderer_backend::ParseBackendKind(configured);
     if (!parsed) {
         const char* source = option_explicit ? "--backend-render" : "config 'render.backend'";
@@ -58,13 +58,13 @@ void ValidatePlatformBackendFromOption(const std::string& option_value, bool opt
 }
 
 std::string ReadPreferredVideoDriverFromConfig() {
-    if (const auto* value = config::ConfigStore::Get("platform.VideoDriver")) {
+    if (const auto* value = common::config::ConfigStore::Get("platform.VideoDriver")) {
         if (value->is_string()) {
             return value->get<std::string>();
         }
         throw std::runtime_error("Missing required string config: platform.VideoDriver");
     }
-    return config::ReadRequiredStringConfig("platform.SdlVideoDriver");
+    return common::config::ReadRequiredStringConfig("platform.SdlVideoDriver");
 }
 
 std::optional<ui::Backend> ResolveUiBackendOverrideFromOption(const std::string& option_value,

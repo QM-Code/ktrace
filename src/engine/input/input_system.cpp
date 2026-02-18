@@ -1,7 +1,7 @@
 #include "karma/input/input_system.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/platform/window.hpp"
 
 #include <cctype>
@@ -369,7 +369,7 @@ bool InputContext::actionPressed(const std::string& action) const {
 }
 
 namespace {
-void LoadBindingSection(const karma::json::Value& section,
+void LoadBindingSection(const karma::common::serialization::Value& section,
                         const std::string& label,
                         InputSystem& system,
                         bool allow_reserved) {
@@ -414,7 +414,7 @@ void LoadBindingSection(const karma::json::Value& section,
 } // namespace
 
 void LoadBindingsFromConfig(InputContext& context) {
-    const auto& root = karma::config::ReadRequiredObjectConfig("bindings");
+    const auto& root = karma::common::config::ReadRequiredObjectConfig("bindings");
     const auto* global = root.contains("global") ? &root["global"] : nullptr;
     const auto* game = root.contains("game") ? &root["game"] : nullptr;
     const auto* roaming = root.contains("roaming") ? &root["roaming"] : nullptr;

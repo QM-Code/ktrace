@@ -1,6 +1,6 @@
 #include "server/runtime/internal.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <atomic>
 #include <csignal>

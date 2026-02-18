@@ -2,9 +2,9 @@
 
 ## Project Snapshot
 - Current owner: `specialist-physics-refactor`
-- Status: `in progress` (Phase 4h validated in `build-a3`; Jolt lock-assert blocker closed with deterministic invalid-intent contract for dynamic both-lock configuration)
+- Status: `in progress` (Phase 4p validated in `build-a3`; explicit stale-runtime vs ineligible-state runtime-command failure classification matrix coverage landed)
 - Supersedes: `docs/projects/physics-backend.md` (retired to `docs/archive/physics-backend-retired-2026-02-17.md`)
-- Immediate next task: execute a bounded Phase 4 runtime-mutation follow-up slice for backend-neutral runtime material-property parity (`friction`/`restitution`) and deterministic ECS fallback behavior.
+- Immediate next task: execute a bounded Phase 4 follow-up to add runtime-command failure observability tags in `physics.system` traces for stale-runtime vs ineligible-state recovery paths without expanding API surface.
 - Validation gate: `./scripts/test-engine-backends.sh <build-dir>`
 
 ## Mission
@@ -542,6 +542,268 @@ Explicit remaining deferrals after Phase 4h:
 - No engine loop integration in `src/engine/app/*`.
 - No gameplay migration wiring.
 
+## Phase 4i Runtime Material-Property Mutation Parity Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended scene component contract in `include/karma/scene/physics_components.hpp`:
+  - added collider material intent fields (`friction`, `restitution`),
+  - added explicit validation contract (`friction >= 0`, `restitution in [0, 1]`),
+  - material deltas are now classified as `ColliderReconcileAction::UpdateRuntimeProperties`.
+- Extended backend-neutral substrate contracts:
+  - `include/karma/physics/backend.hpp`: `BodyDesc` now carries create-time `friction`/`restitution`,
+  - added runtime APIs (`set/get` friction, `set/get` restitution),
+  - `include/karma/physics/physics_system.hpp` + `src/engine/physics/physics_system.cpp` passthroughs added.
+- Backend implementation details:
+  - `src/engine/physics/backends/backend_physx_stub.cpp`:
+    - per-body material allocation at runtime body create,
+    - runtime friction/restitution set/get implemented (deterministic invalid/unknown rejection).
+  - `src/engine/physics/backends/backend_jolt_stub.cpp`:
+    - create-time friction/restitution ingestion implemented,
+    - runtime friction set/get supported,
+    - runtime restitution mutation intentionally reports unsupported on value change (deterministic `false`) to drive fallback coverage.
+- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+  - collider material values are now passed through body creation/rebuild descriptor,
+  - `UpdateRuntimeProperties` now applies trigger/filter/material runtime mutation first,
+  - deterministic rebuild fallback preserved on any unsupported/failure mutation result.
+- Added parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp`:
+  - material API checks (roundtrip + invalid/unknown/destroyed rejection),
+  - ECS material mutation no-churn success path (friction),
+  - ECS deterministic rebuild fallback path (restitution mutation unsupported/failure path).
+
+Explicit remaining deferrals after Phase 4i:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4j Runtime Kinematic-Intent Mutation Parity Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended scene rigidbody contracts in `include/karma/scene/physics_components.hpp`:
+  - added explicit `kinematic` intent field on `RigidBodyIntentComponent`,
+  - added validation rule rejecting static+kinematic intent (`InvalidKinematicState`),
+  - added `RigidBodyKinematicReconcileAction` classifier (`NoOp`/`UpdateRuntimeKinematic`/`RejectInvalidIntent`).
+- Extended backend-neutral substrate contracts:
+  - `include/karma/physics/backend.hpp`: `BodyDesc` now carries create-time `is_kinematic`,
+  - added runtime APIs (`set/get` kinematic enabled state),
+  - `include/karma/physics/physics_system.hpp` + `src/engine/physics/physics_system.cpp` passthroughs landed.
+- Backend implementation details:
+  - `src/engine/physics/backends/backend_jolt_stub.cpp`:
+    - create-time dynamic kinematic ingestion mapped to Jolt `EMotionType::Kinematic`,
+    - runtime set/get kinematic mutation support for dynamic bodies,
+    - deterministic `false` for invalid/unknown/non-dynamic/static-kinematic-invalid requests.
+  - `src/engine/physics/backends/backend_physx_stub.cpp`:
+    - create-time kinematic ingestion via `PxRigidBodyFlag::eKINEMATIC`,
+    - runtime set/get kinematic mutation support for dynamic bodies,
+    - deterministic `false` for invalid/unknown/non-dynamic/static-kinematic-invalid requests.
+- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+  - body creation now propagates rigidbody kinematic intent into `BodyDesc`,
+  - kinematic intent transitions now reconcile via runtime mutation first,
+  - deterministic rebuild fallback is applied when runtime kinematic mutation fails.
+- Added parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp`:
+  - kinematic API roundtrip + invalid/unknown/destroyed/static rejection checks,
+  - scene contract checks for static+kinematic rejection + kinematic reconcile classification,
+  - ECS kinematic toggle behavior with runtime success path and deterministic forced-failure rebuild fallback path.
+
+Explicit remaining deferrals after Phase 4j:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4k Runtime Sleep/Wake Mutation Parity Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended scene rigidbody contracts in `include/karma/scene/physics_components.hpp`:
+  - added explicit runtime awake intent (`awake`) on `RigidBodyIntentComponent`,
+  - added `RigidBodyAwakeReconcileAction` classifier (`NoOp`/`UpdateRuntimeAwakeState`/`RejectInvalidIntent`).
+- Extended backend-neutral substrate contracts:
+  - `include/karma/physics/backend.hpp`: `BodyDesc` now carries create-time `awake`,
+  - added runtime awake APIs (`setBodyAwake`/`getBodyAwake`) on backend + `PhysicsSystem` contracts,
+  - `include/karma/physics/physics_system.hpp` + `src/engine/physics/physics_system.cpp` passthroughs landed.
+- Backend implementation details:
+  - `src/engine/physics/backends/backend_jolt_stub.cpp`:
+    - create-time awake ingestion mapped to activation/deactivation behavior for dynamic bodies,
+    - runtime awake set/get supported for dynamic bodies,
+    - deterministic `false` for invalid/unknown/non-dynamic requests.
+  - `src/engine/physics/backends/backend_physx_stub.cpp`:
+    - create-time awake ingestion mapped to `wakeUp`/`putToSleep` for dynamic bodies,
+    - runtime awake set/get supported for dynamic bodies,
+    - deterministic `false` for invalid/unknown/non-dynamic requests.
+- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+  - body creation now propagates rigidbody awake intent into `BodyDesc`,
+  - awake transitions reconcile via runtime mutation first,
+  - runtime mutation failures in velocity/awake paths now deterministically rebuild runtime bodies instead of leaving stale teardown-only state,
+  - dynamic-body creation/rebuild now enforces awake intent as final runtime state after velocity policy application.
+- Added parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp`:
+  - awake API behavior checks (roundtrip + invalid/unknown/destroyed/static rejection),
+  - scene contract classifier checks for awake reconcile behavior,
+  - ECS awake toggle convergence checks with no body-id churn on runtime success path,
+  - deterministic rebuild/recovery coverage for forced runtime mutation failure path.
+
+Explicit remaining deferrals after Phase 4k:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4l Runtime Force/Impulse Mutation Parity Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended scene rigidbody contracts in `include/karma/scene/physics_components.hpp`:
+  - added runtime command intent fields on `RigidBodyIntentComponent` (`linear_force`, `linear_impulse`),
+  - clarified bounded command semantics in contract comments:
+    - force is applied each pre-sim while non-zero,
+    - impulse is one-shot and consumed only after successful runtime application,
+  - extended rigidbody intent validation to reject non-finite force/impulse command vectors.
+- Extended backend-neutral substrate contracts:
+  - `include/karma/physics/backend.hpp`:
+    - added runtime command APIs `addBodyForce` + `addBodyLinearImpulse`,
+    - defined deterministic invalid/unknown/non-dynamic/ineligible rejection contract for command mutation calls.
+  - `include/karma/physics/physics_system.hpp` + `src/engine/physics/physics_system.cpp`:
+    - passthrough methods for force/impulse runtime command APIs landed.
+- Backend implementation details:
+  - `src/engine/physics/backends/backend_jolt_stub.cpp`:
+    - runtime force/impulse command support added for dynamic non-kinematic bodies,
+    - deterministic `false` returned for invalid/unknown/non-dynamic/ineligible requests,
+    - zero-vector commands treated as deterministic bounded no-op success.
+  - `src/engine/physics/backends/backend_physx_stub.cpp`:
+    - runtime force (`PxForceMode::eFORCE`) and impulse (`PxForceMode::eIMPULSE`) support added for dynamic non-kinematic bodies,
+    - deterministic `false` returned for invalid/unknown/non-dynamic/ineligible requests,
+    - zero-vector commands treated as deterministic bounded no-op success.
+- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+  - pre-sim runtime command application helper added and invoked in both create/update paths,
+  - force commands are applied each pre-sim when non-zero,
+  - impulse commands are consumed only after successful runtime application,
+  - runtime command failure follows deterministic fallback behavior (teardown/rebuild/recovery path),
+  - impulse command remains pending when runtime command application fails.
+- Added parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp`:
+  - new `RunBodyForceImpulseApiChecks` coverage:
+    - dynamic force/impulse success path,
+    - static/invalid/unknown/destroyed rejection.
+  - expanded invalid/uninitialized API checks to cover force/impulse APIs.
+  - expanded scene contract checks to cover non-finite force/impulse intent rejection.
+  - expanded ECS sync checks for:
+    - force application path,
+    - one-shot impulse consume-on-success behavior,
+    - deterministic failure path with no-consume-on-failure + stable rejection/recovery behavior.
+
+Explicit remaining deferrals after Phase 4l:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4m Runtime Torque/Angular-Impulse Mutation Parity Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended scene rigidbody contracts in `include/karma/scene/physics_components.hpp`:
+  - added runtime command intent fields on `RigidBodyIntentComponent` (`angular_torque`, `angular_impulse`),
+  - extended rigidbody intent validation to reject non-finite torque/angular-impulse command vectors,
+  - added bounded command helper predicates (`HasRuntimeAngularTorqueCommand`, `HasRuntimeAngularImpulseCommand`).
+- Extended backend-neutral substrate contracts:
+  - `include/karma/physics/backend.hpp`:
+    - added runtime command APIs `addBodyTorque` + `addBodyAngularImpulse`,
+    - maintained deterministic invalid/unknown/non-dynamic/ineligible rejection contract for runtime command mutation calls.
+  - `include/karma/physics/physics_system.hpp` + `src/engine/physics/physics_system.cpp`:
+    - passthrough methods for torque/angular-impulse runtime command APIs landed.
+- Backend implementation details:
+  - `src/engine/physics/backends/backend_jolt_stub.cpp`:
+    - runtime torque/angular-impulse command support added for dynamic non-kinematic bodies,
+    - deterministic `false` returned for invalid/unknown/non-dynamic/ineligible requests,
+    - zero-vector commands treated as deterministic bounded no-op success.
+  - `src/engine/physics/backends/backend_physx_stub.cpp`:
+    - runtime torque (`PxForceMode::eFORCE`) and angular impulse (`PxForceMode::eIMPULSE`) support added for dynamic non-kinematic bodies,
+    - deterministic `false` returned for invalid/unknown/non-dynamic/ineligible requests,
+    - zero-vector commands treated as deterministic bounded no-op success.
+- Updated ECS sync in `src/engine/physics/ecs_sync_system.cpp`:
+  - pre-sim runtime command helper now applies torque each pre-sim when non-zero,
+  - angular-impulse commands are one-shot and consumed only after successful runtime application,
+  - runtime command failure follows deterministic fallback behavior (teardown/rebuild/recovery path),
+  - one-shot angular-impulse command remains pending when runtime command application fails.
+- Added parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp`:
+  - `RunBodyForceImpulseApiChecks` now covers torque/angular-impulse success and static/invalid/unknown/destroyed rejection,
+  - invalid/uninitialized API checks expanded to include torque/angular-impulse APIs,
+  - scene contract checks expanded for non-finite torque/angular-impulse intent rejection,
+  - ECS sync checks expanded for torque application path, one-shot angular-impulse consume-on-success, and deterministic no-consume-on-failure fallback behavior.
+
+Explicit remaining deferrals after Phase 4m:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4n Runtime Command Lifecycle Controls Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended scene rigidbody command lifecycle contract in `include/karma/scene/physics_components.hpp`:
+  - added persistent command enable flags (`linear_force_enabled`, `angular_torque_enabled`),
+  - added explicit command clear/reset request (`clear_runtime_commands_requested`),
+  - added lifecycle helpers (`HasRuntimeCommandClearRequest`, `ClearRuntimeCommandIntents`),
+  - force/torque command detection helpers now honor persistent enable flags.
+- Updated ECS command reconciliation in `src/engine/physics/ecs_sync_system.cpp`:
+  - clear/reset request is reconciled first, clears force/torque/impulse intents, and consumes clear request on successful reconciliation,
+  - command intents on ineligible bodies (static or kinematic) are now deterministically preserved without teardown/rebuild churn,
+  - existing eligible-body runtime failure policy is preserved for real backend API failures (runtime call failure still returns failure for deterministic fallback path).
+- Extended parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp`:
+  - scene contract checks now cover persistent enable-gating behavior and clear helper reset semantics,
+  - ECS checks now cover clear/reset consume-on-success behavior and ineligible command stability without body-id churn,
+  - existing eligible force/torque + one-shot impulse/angular-impulse behavior remains covered and passing.
+
+Explicit remaining deferrals after Phase 4n:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4o Runtime Command Failure-Path Coverage Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp` with focused runtime-command failure-path fixtures:
+  - forced runtime command-apply failure via backend runtime-state desync (temporary backend kinematic mutation on ECS-owned dynamic intent),
+  - asserted one-shot command recovery semantics (`linear_impulse`, `angular_impulse`) with deterministic consume behavior after successful recovery,
+  - asserted persistent command stability (`linear_force`, `angular_torque`) across repeated induced failure cycles,
+  - asserted deterministic clear/reset reconciliation with stable no-churn runtime convergence.
+- Kept slice bounded to parity-tests/docs ownership:
+  - no new substrate API surface,
+  - no backend feature expansion,
+  - no telemetry/trace feature work.
+
+Explicit remaining deferrals after Phase 4o:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
+## Phase 4p Runtime Command Failure Classification Matrix Coverage Slice (2026-02-18)
+Landed in this bounded slice:
+- Extended parity coverage in `src/engine/physics/tests/physics_backend_parity_test.cpp` with an explicit stale-runtime vs ineligible-state command-failure matrix for:
+  - `linear_force`,
+  - `linear_impulse`,
+  - `angular_torque`,
+  - `angular_impulse`.
+- Added explicit non-dynamic ineligible-state ECS coverage:
+  - runtime command APIs reject deterministically,
+  - one-shot commands remain pending while ineligible,
+  - persistent commands remain stable until explicit clear/reset,
+  - deterministic recovery convergence is asserted once body intent returns to eligible dynamic state.
+- Tightened kinematic ineligible-state coverage with explicit runtime API rejection assertions for all four command paths.
+- Added stale-runtime (destroyed runtime body / stale binding id) coverage:
+  - API-level command apply fails deterministically for stale ids,
+  - ECS pre-sim fallback rebuild path preserves pending command intents while failure conditions persist,
+  - clear/reset and recovery convergence remain deterministic once state is valid again.
+- Kept slice bounded to parity-tests/docs ownership:
+  - no backend API contract expansion,
+  - no gameplay semantics work,
+  - no lock ownership changes.
+
+Explicit remaining deferrals after Phase 4p:
+- No backend-native player-controller runtime object.
+- No grounded/controller movement gameplay semantics in engine physics contracts.
+- No real static-mesh geometry ingestion pipeline.
+- No engine loop integration in `src/engine/app/*`.
+- No gameplay migration wiring.
+
 ## Current Status
 - `2026-02-17`: Project created as full replacement for backend-only parity track.
 - `2026-02-17`: `physics-backend.md` retired and subsumed into this plan.
@@ -673,7 +935,78 @@ Explicit remaining deferrals after Phase 4h:
   - `./scripts/test-engine-backends.sh build-a3` (pass)
   - `./docs/scripts/lint-project-docs.sh` (pass)
   - `./abuild.py --lock-status -d build-a3` (owner verified)
-- Next implementation slice: execute a bounded Phase 4 runtime material-property mutation parity follow-up (`friction`/`restitution`) with deterministic substrate/ECS fallback semantics across Jolt/PhysX.
+- `2026-02-18`: Phase 4i runtime material-property mutation parity slice landed:
+  - collider material intent (`friction`/`restitution`) is now validated and reconciled as runtime properties,
+  - substrate + `PhysicsSystem` material create/runtime APIs landed,
+  - PhysX runtime material mutation is native per-body; Jolt restitution runtime mutation reports unsupported deterministically for ECS fallback coverage.
+- `2026-02-18`: Phase 4i validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4j runtime kinematic-intent mutation parity slice landed:
+  - scene rigidbody kinematic intent + validation/classification helpers landed,
+  - substrate/backends now expose runtime kinematic set/get APIs with deterministic invalid/non-dynamic rejection,
+  - ECS sync now applies runtime kinematic mutation first with deterministic rebuild fallback.
+- `2026-02-18`: Phase 4j validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4k runtime sleep/wake mutation parity slice landed:
+  - scene rigidbody awake intent + reconcile classifier landed,
+  - substrate/backends now expose runtime awake set/get APIs with deterministic invalid/non-dynamic rejection,
+  - ECS sync now applies awake mutation runtime-first and uses deterministic rebuild fallback for velocity/awake runtime mutation failures.
+- `2026-02-18`: Phase 4k validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4l runtime force/impulse mutation parity slice landed:
+  - scene rigidbody runtime command intent fields + finite-value validation landed,
+  - substrate/backends now expose runtime force/impulse command APIs with deterministic invalid/non-dynamic/ineligible rejection,
+  - ECS sync now applies force per pre-sim, consumes impulse on successful apply, and preserves impulse on runtime command failure.
+- `2026-02-18`: Phase 4l validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4m runtime torque/angular-impulse mutation parity slice landed:
+  - scene rigidbody runtime command intent now includes torque/angular-impulse with finite-value validation,
+  - substrate/backends now expose runtime torque/angular-impulse command APIs with deterministic invalid/non-dynamic/ineligible rejection,
+  - ECS sync now applies torque per pre-sim, consumes angular impulse on successful apply, and preserves angular impulse on runtime command failure.
+- `2026-02-18`: Phase 4m validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4n runtime command lifecycle controls slice landed:
+  - scene rigidbody intent now carries persistent force/torque enable flags and explicit clear/reset request,
+  - ECS sync now reconciles clear requests deterministically and preserves ineligible command state without teardown churn,
+  - parity coverage now asserts clear/reset consume-on-success and ineligible state stability while keeping eligible command behavior green.
+- `2026-02-18`: Phase 4n validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4o runtime-command failure-path coverage slice landed:
+  - parity fixtures now force runtime command-apply failure conditions and validate deterministic recovery convergence,
+  - one-shot command recovery behavior and persistent-command repeated-failure stability are asserted per backend,
+  - clear/reset reconciliation behavior remains deterministic under repeated pre-sim checks.
+- `2026-02-18`: Phase 4o validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- `2026-02-18`: Phase 4p runtime-command failure classification matrix slice landed:
+  - parity coverage now explicitly separates stale-runtime-id failures from ineligible non-dynamic and ineligible kinematic command-apply failures,
+  - one-shot no-consume-on-failure, persistent-command stability, and deterministic clear/recovery convergence are asserted across matrix cases.
+- `2026-02-18`: Phase 4p validation completed in `build-a3`:
+  - `./abuild.py -c --test-physics -d build-a3 -b jolt,physx` (pass)
+  - `./scripts/test-engine-backends.sh build-a3` (pass)
+  - `./docs/scripts/lint-project-docs.sh` (pass)
+  - `./abuild.py --lock-status -d build-a3` (owner verified)
+- Next implementation slice: execute a bounded Phase 4 follow-up to add runtime-command failure observability tags in `physics.system` traces for stale-runtime/ineligible-state recovery paths.
 
 ## Handoff Checklist
 - [x] `physics-refactor.md` remains the single active physics project doc in `docs/projects/`.

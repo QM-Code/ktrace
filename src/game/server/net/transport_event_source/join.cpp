@@ -1,7 +1,7 @@
 #include "server/net/transport_event_source/internal.hpp"
 
 #include "karma/common/content/sync_facade.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -9,12 +9,12 @@ namespace bz3::server::net::detail {
 
 namespace {
 
-std::vector<karma::content::ManifestEntry> ToContentManifest(
+std::vector<karma::common::content::ManifestEntry> ToContentManifest(
     const std::vector<WorldManifestEntry>& manifest) {
-    std::vector<karma::content::ManifestEntry> converted{};
+    std::vector<karma::common::content::ManifestEntry> converted{};
     converted.reserve(manifest.size());
     for (const auto& entry : manifest) {
-        converted.push_back(karma::content::ManifestEntry{
+        converted.push_back(karma::common::content::ManifestEntry{
             .path = entry.path,
             .size = entry.size,
             .hash = entry.hash});
@@ -61,7 +61,7 @@ void TransportServerEventSource::onJoinResult(uint32_t client_id,
         const ClientConnectionState& state = state_it->second;
         auto world_manifest_content = ToContentManifest(world_manifest);
         auto cached_world_manifest_content = ToContentManifest(state.cached_world_manifest);
-        auto cached_state = karma::content::BuildServerCachedContentState(
+        auto cached_state = karma::common::content::BuildServerCachedContentState(
             state.cached_world_hash,
             state.cached_world_id,
             state.cached_world_revision,
@@ -69,7 +69,7 @@ void TransportServerEventSource::onJoinResult(uint32_t client_id,
             state.cached_world_manifest_hash,
             state.cached_world_manifest_file_count,
             std::move(cached_world_manifest_content));
-        const auto sync_request = karma::content::BuildServerContentSyncRequest(
+        const auto sync_request = karma::common::content::BuildServerContentSyncRequest(
             world_dir,
             world_name,
             world_id,
@@ -81,7 +81,7 @@ void TransportServerEventSource::onJoinResult(uint32_t client_id,
             std::move(world_manifest_content),
             world_package,
             std::move(cached_state));
-        const auto sync_plan = karma::content::BuildDefaultServerContentSyncPlan(sync_request,
+        const auto sync_plan = karma::common::content::BuildDefaultServerContentSyncPlan(sync_request,
                                                                                   "ServerEventSource");
 
         const bool cache_identity_match = sync_plan.cache_identity_match;

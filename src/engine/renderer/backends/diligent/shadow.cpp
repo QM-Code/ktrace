@@ -1,6 +1,6 @@
 #include "internal.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <DiligentCore/Graphics/GraphicsTools/interface/MapHelper.hpp>
 

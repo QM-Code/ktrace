@@ -1,7 +1,7 @@
 #pragma once
 
 #include "karma/common/content/types.hpp"
-#include "karma/common/json.hpp"
+#include "karma/common/serialization/json.hpp"
 
 #include <filesystem>
 #include <map>
@@ -9,16 +9,16 @@
 #include <string>
 #include <vector>
 
-namespace karma::data {
+namespace karma::common::data {
 struct ConfigLayerSpec;
 }
 
-namespace karma::content {
+namespace karma::common::content {
 
 struct AssetCatalog {
     std::map<std::string, std::filesystem::path> entries;
 
-    void mergeFromJson(const karma::json::Value& assets_json, const std::filesystem::path& base_dir);
+    void mergeFromJson(const karma::common::serialization::Value& assets_json, const std::filesystem::path& base_dir);
     std::filesystem::path resolvePath(const std::string& key, const char* log_context) const;
     std::optional<std::filesystem::path> findPath(const std::string& key) const;
 };
@@ -26,17 +26,17 @@ struct AssetCatalog {
 struct WorldContent {
     std::string name;
     std::filesystem::path rootDir;
-    karma::json::Value config;
+    karma::common::serialization::Value config;
     AssetCatalog assets;
 
-    void mergeLayer(const karma::json::Value& layer_json, const std::filesystem::path& base_dir);
+    void mergeLayer(const karma::common::serialization::Value& layer_json, const std::filesystem::path& base_dir);
     std::filesystem::path resolveAssetPath(const std::string& key, const char* log_context) const;
 };
 
-WorldContent LoadWorldContent(const std::vector<karma::data::ConfigLayerSpec>& base_specs,
-                              const std::optional<karma::json::Value>& world_config,
+WorldContent LoadWorldContent(const std::vector<karma::common::data::ConfigLayerSpec>& base_specs,
+                              const std::optional<karma::common::serialization::Value>& world_config,
                               const std::filesystem::path& world_dir,
                               const std::string& fallback_name,
                               const std::string& log_context);
 
-} // namespace karma::content
+} // namespace karma::common::content

@@ -134,6 +134,48 @@ bool ApplyRuntimeVelocityPolicy(PhysicsSystem& physics_system,
            && physics_system.setBodyAngularVelocity(body, out_angular_velocity);
 }
 
+bool ApplyRuntimeForceImpulseCommands(PhysicsSystem& physics_system,
+                                      physics_backend::BodyId body,
+                                      scene::RigidBodyIntentComponent& rigidbody) {
+    if (scene::HasRuntimeCommandClearRequest(rigidbody)) {
+        scene::ClearRuntimeCommandIntents(rigidbody);
+        return true;
+    }
+
+    const bool has_force = scene::HasRuntimeLinearForceCommand(rigidbody);
+    const bool has_impulse = scene::HasRuntimeLinearImpulseCommand(rigidbody);
+    const bool has_torque = scene::HasRuntimeAngularTorqueCommand(rigidbody);
+    const bool has_angular_impulse = scene::HasRuntimeAngularImpulseCommand(rigidbody);
+    if (!has_force && !has_impulse && !has_torque && !has_angular_impulse) {
+        return true;
+    }
+
+    // Runtime command intents on ineligible bodies are stably preserved until clear/reset or eligibility transition.
+    if (!rigidbody.dynamic || rigidbody.kinematic) {
+        return true;
+    }
+
+    if (has_force && !physics_system.addBodyForce(body, rigidbody.linear_force)) {
+        return false;
+    }
+    if (has_impulse) {
+        if (!physics_system.addBodyLinearImpulse(body, rigidbody.linear_impulse)) {
+            return false;
+        }
+        rigidbody.linear_impulse = glm::vec3(0.0f, 0.0f, 0.0f);
+    }
+    if (has_torque && !physics_system.addBodyTorque(body, rigidbody.angular_torque)) {
+        return false;
+    }
+    if (has_angular_impulse) {
+        if (!physics_system.addBodyAngularImpulse(body, rigidbody.angular_impulse)) {
+            return false;
+        }
+        rigidbody.angular_impulse = glm::vec3(0.0f, 0.0f, 0.0f);
+    }
+    return true;
+}
+
 struct PreservedRuntimeState {
     physics_backend::BodyTransform transform{};
     glm::vec3 linear_velocity{0.0f, 0.0f, 0.0f};
@@ -192,10 +234,14 @@ void BuildBodyDesc(const scene::RigidBodyIntentComponent& rigidbody,
     out_desc.angular_damping = rigidbody.angular_damping;
     out_desc.mass = rigidbody.dynamic ? rigidbody.mass : 0.0f;
     out_desc.is_static = !rigidbody.dynamic;
+    out_desc.is_kinematic = rigidbody.dynamic && rigidbody.kinematic;
+    out_desc.awake = rigidbody.dynamic && rigidbody.awake;
     out_desc.gravity_enabled = rigidbody.dynamic && rigidbody.gravity_enabled;
     out_desc.rotation_locked = rigidbody.rotation_locked;
     out_desc.translation_locked = rigidbody.translation_locked;
     out_desc.is_trigger = collider.is_trigger;
+    out_desc.friction = collider.friction;
+    out_desc.restitution = collider.restitution;
     out_desc.collision_mask.layer = collider.mask.layer;
     out_desc.collision_mask.collides_with = collider.mask.collides_with;
     out_desc.collider_shape.local_center = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -439,6 +485,14 @@ void EcsSyncSystem::preSimulate(ecs::World& world) {
                 physics_system_.destroyBody(body);
                 return false;
             }
+            if (rigidbody->dynamic && !physics_system_.setBodyAwake(body, rigidbody->awake)) {
+                physics_system_.destroyBody(body);
+                return false;
+            }
+            if (!ApplyRuntimeForceImpulseCommands(physics_system_, body, *rigidbody)) {
+                physics_system_.destroyBody(body);
+                return false;
+            }
             binding.last_transform = create_transform;
             bindings_[entity] = binding;
 
@@ -521,7 +575,10 @@ void EcsSyncSystem::preSimulate(ecs::World& world) {
             collision_mask.layer = collider->mask.layer;
             collision_mask.collides_with = collider->mask.collides_with;
             const bool filter_update_ok = physics_system_.setBodyCollisionMask(binding.body, collision_mask);
-            if (!trigger_update_ok || !filter_update_ok) {
+            const bool friction_update_ok = physics_system_.setBodyFriction(binding.body, collider->friction);
+            const bool restitution_update_ok =
+                physics_system_.setBodyRestitution(binding.body, collider->restitution);
+            if (!trigger_update_ok || !filter_update_ok || !friction_update_ok || !restitution_update_ok) {
                 // Deterministic fallback path for unsupported runtime mutation: rebuild runtime object.
                 physics_system_.destroyBody(binding.body);
                 bindings_.erase(binding_it);
@@ -532,6 +589,21 @@ void EcsSyncSystem::preSimulate(ecs::World& world) {
 
         if (rigidbody->dynamic && binding.rigidbody_intent.gravity_enabled != rigidbody->gravity_enabled) {
             (void)physics_system_.setBodyGravityEnabled(binding.body, rigidbody->gravity_enabled);
+        }
+        const scene::RigidBodyKinematicReconcileAction kinematic_action =
+            scene::ClassifyRigidBodyKinematicReconcileAction(binding.rigidbody_intent, *rigidbody);
+        if (kinematic_action == scene::RigidBodyKinematicReconcileAction::RejectInvalidIntent) {
+            teardown_entities.push_back(entity);
+            continue;
+        }
+        if (kinematic_action == scene::RigidBodyKinematicReconcileAction::UpdateRuntimeKinematic) {
+            if (!physics_system_.setBodyKinematic(binding.body, rigidbody->kinematic)) {
+                // Deterministic fallback path for runtime mutation failure: rebuild runtime object.
+                physics_system_.destroyBody(binding.body);
+                bindings_.erase(binding_it);
+                (void)create_binding();
+                continue;
+            }
         }
         if (rigidbody->dynamic
             && (!scene::NearlyEqualFloat(binding.rigidbody_intent.linear_damping, rigidbody->linear_damping)
@@ -585,7 +657,32 @@ void EcsSyncSystem::preSimulate(ecs::World& world) {
                                         binding.velocity_ownership,
                                         binding.runtime_linear_velocity,
                                         binding.runtime_angular_velocity)) {
+            // Deterministic fallback path for runtime mutation failure: rebuild runtime object.
+            physics_system_.destroyBody(binding.body);
+            bindings_.erase(binding_it);
+            (void)create_binding();
+            continue;
+        }
+        const scene::RigidBodyAwakeReconcileAction awake_action =
+            scene::ClassifyRigidBodyAwakeReconcileAction(binding.rigidbody_intent, *rigidbody);
+        if (awake_action == scene::RigidBodyAwakeReconcileAction::RejectInvalidIntent) {
             teardown_entities.push_back(entity);
+            continue;
+        }
+        if (awake_action == scene::RigidBodyAwakeReconcileAction::UpdateRuntimeAwakeState) {
+            if (!physics_system_.setBodyAwake(binding.body, rigidbody->awake)) {
+                // Deterministic fallback path for runtime mutation failure: rebuild runtime object.
+                physics_system_.destroyBody(binding.body);
+                bindings_.erase(binding_it);
+                (void)create_binding();
+                continue;
+            }
+        }
+        if (!ApplyRuntimeForceImpulseCommands(physics_system_, binding.body, *rigidbody)) {
+            // Deterministic fallback path for runtime mutation failure: rebuild runtime object.
+            physics_system_.destroyBody(binding.body);
+            bindings_.erase(binding_it);
+            (void)create_binding();
             continue;
         }
 

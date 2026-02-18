@@ -3,13 +3,13 @@
 #include "karma/common/content/delta_builder.hpp"
 #include "karma/common/content/package_apply.hpp"
 #include "karma/common/content/primitives.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
 #include <filesystem>
 
-namespace karma::content {
+namespace karma::common::content {
 
 namespace {
 
@@ -546,4 +546,4 @@ bool ApplyIncomingPackageToCache(const ClientContentSyncRequest& request,
     return true;
 }
 
-} // namespace karma::content
+} // namespace karma::common::content

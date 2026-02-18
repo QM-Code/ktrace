@@ -1,6 +1,6 @@
 #include "ui/backends/imgui/internal.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 namespace karma::ui::imgui {
 namespace {

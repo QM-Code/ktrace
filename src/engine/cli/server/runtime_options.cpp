@@ -1,10 +1,10 @@
 #include "karma/cli/server/runtime_options.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/config_store.hpp"
-#include "karma/common/data_path_resolver.hpp"
-#include "karma/common/json.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/data/path_resolver.hpp"
+#include "karma/common/serialization/json.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -139,18 +139,18 @@ std::optional<std::filesystem::path> ApplyConfigOverlay(const std::string& serve
     }
 
     const auto overlay_json_opt =
-        data::LoadJsonFile(*overlay_path, "server config overlay", spdlog::level::err);
+        common::data::LoadJsonFile(*overlay_path, "server config overlay", spdlog::level::err);
     if (!overlay_json_opt || !overlay_json_opt->is_object()) {
         throw std::runtime_error("Failed to load server config overlay object from "
                                  + overlay_path->string());
     }
 
     const std::filesystem::path overlay_base_dir = overlay_path->parent_path();
-    if (!config::ConfigStore::AddRuntimeLayer("server config overlay", *overlay_json_opt, overlay_base_dir)) {
+    if (!common::config::ConfigStore::AddRuntimeLayer("server config overlay", *overlay_json_opt, overlay_base_dir)) {
         throw std::runtime_error("Failed to add server config overlay runtime layer.");
     }
 
-    const auto* overlay_layer = config::ConfigStore::LayerByLabel("server config overlay");
+    const auto* overlay_layer = common::config::ConfigStore::LayerByLabel("server config overlay");
     if (!overlay_layer || !overlay_layer->is_object()) {
         throw std::runtime_error("Runtime layer lookup failed for server config overlay.");
     }
@@ -168,7 +168,7 @@ uint16_t ResolveListenPort(uint16_t listen_port,
     if (listen_port_explicit) {
         return listen_port;
     }
-    return config::ReadUInt16Config({"network.ServerPort"}, fallback_port);
+    return common::config::ReadUInt16Config({"network.ServerPort"}, fallback_port);
 }
 
 } // namespace karma::cli::server

@@ -1,7 +1,7 @@
 #include "ui/backends/imgui/internal.hpp"
 
-#include "karma/common/config_helpers.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/helpers.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -34,8 +34,8 @@ class ImGuiBackend final : public BackendDriver {
         ImGui::SetCurrentContext(context_);
         ImGui::StyleColorsDark();
 
-        output_width_ = std::max<uint16_t>(256u, config::ReadUInt16Config({"ui.imgui.SoftwareBridge.Width"}, 1024u));
-        output_height_ = std::max<uint16_t>(144u, config::ReadUInt16Config({"ui.imgui.SoftwareBridge.Height"}, 576u));
+        output_width_ = std::max<uint16_t>(256u, common::config::ReadUInt16Config({"ui.imgui.SoftwareBridge.Width"}, 1024u));
+        output_height_ = std::max<uint16_t>(144u, common::config::ReadUInt16Config({"ui.imgui.SoftwareBridge.Height"}, 576u));
 
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
@@ -167,7 +167,7 @@ class ImGuiBackend final : public BackendDriver {
             callback();
             drew_ui = true;
         }
-        if (!drew_ui && logging::ShouldTraceChannel("ui.system.imgui.frames")) {
+        if (!drew_ui && common::logging::ShouldTraceChannel("ui.system.imgui.frames")) {
             ImGui::SetNextWindowPos(ImVec2(24.0f, 24.0f), ImGuiCond_Always);
             ImGui::SetNextWindowSize(ImVec2(400.0f, 140.0f), ImGuiCond_Always);
             ImGui::Begin("ImGui Backend Debug", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);

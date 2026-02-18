@@ -1,6 +1,6 @@
 #include "karma/app/server/engine.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -144,7 +144,7 @@ void Engine::tick() {
                         world_.entities().size());
 
     const int sim_steps = simulation_clock_.beginFrame(dt);
-    if (logging::ShouldTraceChannel("engine.sim.frames")) {
+    if (common::logging::ShouldTraceChannel("engine.sim.frames")) {
         const float frame_ms = raw_dt * 1000.0f;
         const float fps = (raw_dt > 1e-6f) ? (1.0f / raw_dt) : 0.0f;
         KARMA_TRACE("engine.sim.frames",

@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string>
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/renderer/render_system.hpp"
 #include <glm/glm.hpp>
 
@@ -232,7 +232,7 @@ void Engine::tick() {
     for (int i = 0; i < physics_steps; ++i) {
         physics_system_.simulateFixedStep(simulation_clock_.fixedDeltaTime());
     }
-    if (logging::ShouldTraceChannel("engine.sim.frames")) {
+    if (common::logging::ShouldTraceChannel("engine.sim.frames")) {
         const float frame_ms = raw_dt * 1000.0f;
         const float fps = (raw_dt > 1e-6f) ? (1.0f / raw_dt) : 0.0f;
         KARMA_TRACE("engine.sim.frames",
@@ -251,7 +251,7 @@ void Engine::tick() {
                     raw_dt,
                     config_.simulation_max_frame_dt);
     }
-    if (logging::ShouldTraceChannel("engine.sim")) {
+    if (common::logging::ShouldTraceChannel("engine.sim")) {
         sim_trace_window_seconds_ += raw_dt;
         sim_trace_window_dt_sum_ += raw_dt;
         sim_trace_window_max_dt_ = std::max(sim_trace_window_max_dt_, raw_dt);

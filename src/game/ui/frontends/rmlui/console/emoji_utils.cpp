@@ -4,7 +4,7 @@
 #include <sstream>
 #include <vector>
 
-#include "karma/common/data_path_resolver.hpp"
+#include "karma/common/data/path_resolver.hpp"
 
 namespace ui {
 namespace {
@@ -184,7 +184,7 @@ std::string renderTextWithTwemoji(std::string_view text) {
         }
 
         const std::string fileName = buildTwemojiFilename(sequence);
-        const std::filesystem::path imagePath = karma::data::Resolve("client/ui/emoji/twemoji/" + fileName + ".png");
+        const std::filesystem::path imagePath = karma::common::data::Resolve("client/ui/emoji/twemoji/" + fileName + ".png");
         if (std::filesystem::exists(imagePath)) {
             const std::string srcPath = "emoji/twemoji/" + fileName + ".png";
             out.append("<img src=\"");

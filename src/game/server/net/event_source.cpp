@@ -1,8 +1,8 @@
 #include "server/net/event_source.hpp"
 #include "server/net/transport_event_source.hpp"
 
-#include "karma/common/config_store.hpp"
-#include "karma/common/logging.hpp"
+#include "karma/common/config/store.hpp"
+#include "karma/common/logging/logging.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -85,7 +85,7 @@ class ScriptedServerEventSource final : public ServerEventSource {
     size_t next_index_ = 0;
 };
 
-bool ReadDouble(const karma::json::Value& value, const char* key, double* out) {
+bool ReadDouble(const karma::common::serialization::Value& value, const char* key, double* out) {
     const auto it = value.find(key);
     if (it == value.end()) {
         return false;
@@ -101,7 +101,7 @@ bool ReadDouble(const karma::json::Value& value, const char* key, double* out) {
     return false;
 }
 
-bool ReadUint32(const karma::json::Value& value, const char* key, uint32_t* out) {
+bool ReadUint32(const karma::common::serialization::Value& value, const char* key, uint32_t* out) {
     const auto it = value.find(key);
     if (it == value.end()) {
         return false;
@@ -121,7 +121,7 @@ bool ReadUint32(const karma::json::Value& value, const char* key, uint32_t* out)
     return false;
 }
 
-bool ReadFloat(const karma::json::Value& value, const char* key, float* out) {
+bool ReadFloat(const karma::common::serialization::Value& value, const char* key, float* out) {
     double raw = 0.0;
     if (!ReadDouble(value, key, &raw)) {
         return false;
@@ -148,7 +148,7 @@ std::string NormalizeEventType(std::string type) {
 
 std::vector<ScheduledEvent> LoadScriptedEventsFromConfig() {
     std::vector<ScheduledEvent> schedule;
-    const auto* events_value = karma::config::ConfigStore::Get("server.startupEvents");
+    const auto* events_value = karma::common::config::ConfigStore::Get("server.startupEvents");
     if (!events_value) {
         return schedule;
     }

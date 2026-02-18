@@ -2,7 +2,7 @@
 
 #include "../internal/direct_sampler_observability.hpp"
 
-#include "karma/common/data_path_resolver.hpp"
+#include "karma/common/data/path_resolver.hpp"
 
 #include <array>
 #include <cctype>
@@ -465,8 +465,8 @@ std::string ComposeBgfxSignedEnvelopeVerificationPayload(
 BgfxDirectSamplerShaderAlignment EvaluateBgfxDirectSamplerShaderAlignment() {
     namespace fs = std::filesystem;
     BgfxDirectSamplerShaderAlignment report{};
-    report.source_path = karma::data::Resolve("bgfx/shaders/mesh/fs_mesh.sc").string();
-    report.binary_path = karma::data::Resolve("bgfx/shaders/bin/vk/mesh/fs_mesh.bin").string();
+    report.source_path = karma::common::data::Resolve("bgfx/shaders/mesh/fs_mesh.sc").string();
+    report.binary_path = karma::common::data::Resolve("bgfx/shaders/bin/vk/mesh/fs_mesh.bin").string();
     report.integrity_manifest_path = report.binary_path + ".integrity";
 
     std::error_code ec{};

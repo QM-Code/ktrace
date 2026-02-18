@@ -1,6 +1,6 @@
 #include "server/net/transport_event_source/internal.hpp"
 
-#include "karma/common/logging.hpp"
+#include "karma/common/logging/logging.hpp"
 #include "karma/network/config/transport_mapping.hpp"
 
 #include <spdlog/spdlog.h>
