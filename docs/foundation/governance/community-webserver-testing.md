@@ -144,4 +144,4 @@ For each run, record:
 - `docs/foundation/governance/testing-ci-governance.md`
 - `docs/foundation/governance/community-auth-demo-testing.md`
 - `docs/foundation/policy/execution-policy.md`
-- `docs/projects/webserver-unit-tests.md`
+- `docs/archive/webserver-unit-tests-retired-2026-02-18.md`

@@ -4,10 +4,10 @@
 #include "server/net/transport_event_source.hpp"
 
 #include "karma/common/config_store.hpp"
+#include "karma/common/content/archive.hpp"
 #include "karma/common/content/manifest.hpp"
 #include "karma/common/content/primitives.hpp"
 #include "karma/common/data_path_resolver.hpp"
-#include "karma/common/world_archive.hpp"
 #include "network/tests/loopback_transport_fixture.hpp"
 
 #include <algorithm>
@@ -294,7 +294,7 @@ std::optional<WorldFixture> BuildWorldFixture(const std::filesystem::path& world
     fixture.world_id = world_id;
 
     try {
-        fixture.world_package = world::BuildWorldArchive(world_dir);
+        fixture.world_package = karma::content::BuildWorldArchive(world_dir);
     } catch (const std::exception&) {
         return std::nullopt;
     }

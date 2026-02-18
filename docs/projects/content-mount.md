@@ -27,7 +27,8 @@ This project enables:
 ## Owned Paths
 - `m-rewrite/src/engine/common/data_path_resolver.*`
 - `m-rewrite/include/karma/common/data_path_resolver.hpp`
-- `m-rewrite/src/engine/common/world_archive.*`
+- `m-rewrite/include/karma/common/content/archive.hpp`
+- `m-rewrite/src/engine/common/content/archive.cpp`
 - `m-rewrite/src/game/net/protocol_codec.*`
 - `m-rewrite/src/game/server/net/transport_event_source.cpp`
 - `m-rewrite/src/game/server/net/transport_event_source/*`
@@ -73,7 +74,7 @@ This project enables:
 - delta applicability heuristics are functional but need tuning/telemetry hardening plus one bounded regression coverage addition.
 2. Deferred boundary-hygiene candidate tracking
 - Deferred extraction candidate from `engine-game-boundary-hygiene` (world/package transfer assembler path in `src/game/client/net/connection/inbound/world_transfer.cpp`) remains intentionally game-owned.
-- Revisit via `docs/projects/engine-game-boundary-hygiene.md` with protocol-boundary review entry criteria and acceptance gates; do not silently fold this into generic engineization work.
+- Revisit via a new scoped follow-up using `docs/archive/engine-game-boundary-hygiene-retired-2026-02-18.md` as baseline context, with protocol-boundary review entry criteria and acceptance gates; do not silently fold this into generic engineization work.
 
 ## Execution Plan
 1. Harden delta-selection policy with trace-backed tuning and regression tests.

@@ -15,10 +15,9 @@ set(ENGINE_CORE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/manifest.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/package_apply.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/content/primitives.cpp
+    ${PROJECT_SOURCE_DIR}/src/engine/common/content/sync_facade.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/simulation_clock.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/common/stb_image_impl.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/world_archive.cpp
-    ${PROJECT_SOURCE_DIR}/src/engine/common/world_content.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/backend_resolution.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/bootstrap_scaffold.cpp
     ${PROJECT_SOURCE_DIR}/src/engine/app/server_bootstrap_runner.cpp

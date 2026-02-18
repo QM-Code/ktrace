@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `codex`
-- Status: `paused (baseline coverage landed)`
-- Immediate next task: deferred until resumed; next logical slice is handler-level unit tests for `users.py`, `user_profile.py`, and `server_edit.py` mutation flows.
+- Status: `completed/maintenance (handler mutation-flow coverage, including permission/CSRF guardrails, landed)`
+- Immediate next task: maintenance-only: when webserver handler internals change, land matching unit-test updates in the same slice.
 - Validation gate:
   - `python3 ./src/webserver/tests/validate_strings.py --all`
   - `python3 -m unittest discover -s src/webserver/tests/unit -p "test_*.py"`
@@ -79,7 +79,15 @@ Integration checks should follow `docs/foundation/governance/community-webserver
 - `2026-02-13`: added `src/webserver/tests/unit/test_router_dispatch.py` covering API route dispatch, token-path rewriting, static/upload traversal rejection, and static/upload cache-header serving.
 - `2026-02-13`: added `src/webserver/tests/unit/test_account_handler.py` covering account handler GET renders, POST CSRF enforcement, logout cookie clearing, and register/login success redirects.
 - `2026-02-13`: added `src/webserver/tests/unit/test_router_users_permissions.py` covering users-management route permission gates and tokenized `/users/*` dispatch rewriting.
-- `2026-02-13`: current suite inventory is 10 test modules under `src/webserver/tests/unit/` with `93` passing tests (`python3 -m unittest discover -s src/webserver/tests/unit -p "test_*.py"`).
+- `2026-02-18`: added `src/webserver/tests/unit/test_handler_mutation_flows.py` with mutation-flow DB assertions for:
+  - `users.py`: create user (including root-admin grant path), lock user, and self settings edit (email/language/password).
+  - `user_profile.py`: add/trust/remove admin mutation actions.
+  - `server_edit.py`: edit server metadata and delete server flows.
+- `2026-02-18`: expanded `src/webserver/tests/unit/test_handler_mutation_flows.py` with negative mutation-path coverage:
+  - `users.py`: invalid-CSRF create rejection and non-admin lock rejection with no DB mutation.
+  - `user_profile.py`: invalid-CSRF add-admin rejection and non-manager add-admin rejection with no DB mutation.
+  - `server_edit.py`: invalid-CSRF edit/delete rejection and non-owner delete rejection with no DB mutation.
+- `2026-02-18`: current suite inventory is 11 test modules under `src/webserver/tests/unit/` with `108` passing tests (`python3 -m unittest discover -s src/webserver/tests/unit -p "test_*.py"`).
 
 ## Open Questions
 - Should the harness standardize on `unittest` only, or allow `pytest` if already available?

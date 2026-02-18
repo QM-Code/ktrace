@@ -1,10 +1,11 @@
 #include "client/net/world_package/internal.hpp"
 
 #include "karma/common/config_store.hpp"
+#include "karma/common/content/archive.hpp"
 #include "karma/common/content/package_apply.hpp"
+#include "karma/common/content/sync_facade.hpp"
 #include "karma/common/data_path_resolver.hpp"
 #include "karma/common/logging.hpp"
-#include "karma/common/world_archive.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -69,6 +70,9 @@ bool ApplyWorldPackageForServer(const std::string& host,
                                 std::string_view delta_base_world_content_hash) {
     const std::filesystem::path server_cache_dir =
         karma::data::EnsureUserWorldDirectoryForServer(host, port);
+    const std::filesystem::path active_identity_path = ActiveWorldIdentityPath(server_cache_dir);
+    const std::filesystem::path active_manifest_path = ActiveWorldManifestPath(server_cache_dir);
+    const std::filesystem::path world_packages_by_world_root = WorldPackagesByWorldRoot(server_cache_dir);
     if (world_id.empty() || world_revision.empty()) {
         spdlog::error("ClientConnection: missing world identity metadata for world '{}' (id='{}' rev='{}')",
                       world_name,
@@ -89,113 +93,46 @@ bool ApplyWorldPackageForServer(const std::string& host,
         return true;
     }
 
-    const auto cached_manifest = ReadCachedWorldManifest(server_cache_dir);
-    std::vector<bz3::net::WorldManifestEntry> effective_world_manifest{};
-    if (!world_manifest.empty()) {
-        effective_world_manifest = world_manifest;
-    } else {
-        const bool can_reuse_cached_manifest = world_data.empty() &&
-                                               !world_manifest_hash.empty() &&
-                                               world_manifest_file_count > 0 &&
-                                               !cached_manifest.empty() &&
-                                               ComputeManifestHash(cached_manifest) == world_manifest_hash &&
-                                               cached_manifest.size() == world_manifest_file_count;
-        if (can_reuse_cached_manifest) {
-            effective_world_manifest = cached_manifest;
-            KARMA_TRACE("net.client",
-                        "ClientConnection: init omitted manifest entries for world='{}'; reusing cached manifest entries={} hash='{}'",
-                        world_name,
-                        effective_world_manifest.size(),
-                        world_manifest_hash);
-        } else if (world_data.empty() && !world_manifest_hash.empty() && world_manifest_file_count > 0) {
-            spdlog::warn("ClientConnection: init omitted manifest entries for world '{}' but cached manifest is unavailable/mismatched (manifest_hash='{}' manifest_files={})",
-                         world_name,
-                         world_manifest_hash,
-                         world_manifest_file_count);
-        }
-    }
-    LogManifestDiffPlan(world_name, cached_manifest, effective_world_manifest);
+    karma::content::ClientContentSyncRequest sync_request{};
+    sync_request.source_host = host;
+    sync_request.source_port = port;
+    sync_request.world_packages_by_world_root = world_packages_by_world_root;
+    sync_request.active_identity_path = active_identity_path;
+    sync_request.active_manifest_path = active_manifest_path;
+    sync_request.world_name = std::string(world_name);
+    sync_request.world_id = std::string(world_id);
+    sync_request.world_revision = std::string(world_revision);
+    sync_request.world_hash = std::string(world_hash);
+    sync_request.world_content_hash = std::string(world_content_hash);
+    sync_request.world_manifest_hash = std::string(world_manifest_hash);
+    sync_request.world_manifest_file_count = world_manifest_file_count;
+    sync_request.world_size = world_size;
+    sync_request.world_manifest = ToContentManifest(world_manifest);
+    sync_request.world_data = world_data;
+    sync_request.is_delta_transfer = is_delta_transfer;
+    sync_request.delta_base_world_id = std::string(delta_base_world_id);
+    sync_request.delta_base_world_revision = std::string(delta_base_world_revision);
+    sync_request.delta_base_world_hash = std::string(delta_base_world_hash);
+    sync_request.delta_base_world_content_hash = std::string(delta_base_world_content_hash);
+    sync_request.require_exact_revision = true;
+    sync_request.max_revisions_per_world = kDefaultMaxRevisionsPerWorld;
+    sync_request.max_packages_per_revision = kDefaultMaxPackagesPerRevision;
+    sync_request.max_component_len = kMaxCachePathComponentLen;
 
-    const std::string world_package_cache_key = ResolveWorldPackageCacheKey(world_content_hash, world_hash);
-    const std::filesystem::path package_root =
-        PackageRootForIdentity(server_cache_dir, world_id, world_revision, world_package_cache_key);
-
-    if (!world_data.empty()) {
-        if (is_delta_transfer) {
-            if (!ApplyDeltaArchiveOverCachedBase(server_cache_dir,
-                                                 world_name,
-                                                 world_id,
-                                                 world_revision,
-                                                 world_hash,
-                                                 world_content_hash,
-                                                 world_manifest_hash,
-                                                 world_manifest_file_count,
-                                                 effective_world_manifest,
-                                                 delta_base_world_id,
-                                                 delta_base_world_revision,
-                                                 delta_base_world_hash,
-                                                 delta_base_world_content_hash,
-                                                 world_data)) {
-                spdlog::error("ClientConnection: failed to apply world delta package for world '{}' (base id='{}' rev='{}')",
-                              world_name,
-                              delta_base_world_id,
-                              delta_base_world_revision);
-                return false;
-            }
-        } else {
-            if (world_size > 0 && world_size != world_data.size()) {
-                spdlog::error("ClientConnection: world package size mismatch for '{}' (expected={} got={})",
-                              world_name,
-                              world_size,
-                              world_data.size());
-                return false;
-            }
-            if (!world_hash.empty()) {
-                const std::string computed_hash = ComputeWorldPackageHash(world_data);
-                if (computed_hash != world_hash) {
-                    spdlog::error("ClientConnection: world package hash mismatch for '{}' (expected={} got={})",
-                                  world_name,
-                                  world_hash,
-                                  computed_hash);
-                    return false;
-                }
-            }
-
-            if (!ExtractWorldArchiveAtomically(world_data,
-                                               package_root,
-                                               world_name,
-                                               world_content_hash,
-                                               world_manifest_hash,
-                                               world_manifest_file_count,
-                                               effective_world_manifest)) {
-                spdlog::error("ClientConnection: failed to extract world package for world '{}'", world_name);
-                return false;
-            }
-        }
-    } else {
-        if (!std::filesystem::exists(package_root) || !std::filesystem::is_directory(package_root)) {
-            spdlog::error("ClientConnection: server skipped world package transfer for '{}' hash='{}' content_hash='{}', but cache is missing",
-                          world_name,
-                          world_hash,
-                          world_content_hash);
+    karma::content::ClientContentSyncResult sync_result{};
+    if (!karma::content::ApplyIncomingPackageToCache(sync_request,
+                                                     &sync_result,
+                                                     "ClientConnection")) {
+        if (world_data.empty() &&
+            (!world_hash.empty() || !world_content_hash.empty()) &&
+            !world_id.empty() &&
+            !world_revision.empty()) {
             ClearCachedWorldIdentity(server_cache_dir);
-            return false;
         }
-        if (!ValidateCachedWorldIdentity(server_cache_dir,
-                                         world_name,
-                                         world_hash,
-                                         world_content_hash,
-                                         world_id,
-                                         world_revision,
-                                         world_manifest_hash,
-                                         world_manifest_file_count,
-                                         true)) {
-            ClearCachedWorldIdentity(server_cache_dir);
-            return false;
-        }
+        return false;
     }
 
-    auto world_config = world::ReadWorldJsonFile(package_root / "config.json");
+    auto world_config = karma::content::ReadWorldJsonFile(sync_result.package_root / "config.json");
     if (world_config.has_value() && !world_config->is_object()) {
         spdlog::error("ClientConnection: world package config.json is not a JSON object for world '{}'",
                       world_name);
@@ -204,42 +141,16 @@ bool ApplyWorldPackageForServer(const std::string& host,
 
     static_cast<void>(karma::config::ConfigStore::RemoveRuntimeLayer(kRuntimeLayerLabel));
     karma::data::ClearPackageMounts();
-    karma::data::RegisterPackageMount(kPackageMountId, package_root);
+    karma::data::RegisterPackageMount(kPackageMountId, sync_result.package_root);
 
     if (world_config.has_value() &&
-        !karma::config::ConfigStore::AddRuntimeLayer(kRuntimeLayerLabel, *world_config, package_root)) {
+        !karma::config::ConfigStore::AddRuntimeLayer(kRuntimeLayerLabel,
+                                                     *world_config,
+                                                     sync_result.package_root)) {
         karma::data::ClearPackageMounts();
         spdlog::error("ClientConnection: failed to add runtime layer for world '{}'", world_name);
         return false;
     }
-
-    if (!PersistCachedWorldIdentity(server_cache_dir,
-                                    world_hash,
-                                    world_content_hash,
-                                    world_id,
-                                    world_revision)) {
-        spdlog::warn("ClientConnection: failed to persist cached world identity hash='{}' content_hash='{}' id='{}' rev='{}' for {}:{}",
-                     world_hash,
-                     world_content_hash,
-                     world_id,
-                     world_revision,
-                     host,
-                     port);
-    }
-    if (!PersistCachedWorldManifest(server_cache_dir, effective_world_manifest)) {
-        spdlog::warn("ClientConnection: failed to persist cached world manifest entries={} for {}:{}",
-                     effective_world_manifest.size(),
-                     host,
-                     port);
-    }
-
-    TouchPathIfPresent(package_root);
-    TouchPathIfPresent(package_root.parent_path());
-    TouchPathIfPresent(package_root.parent_path().parent_path());
-    PruneWorldPackageCache(server_cache_dir,
-                           world_id,
-                           world_revision,
-                           world_package_cache_key);
 
     KARMA_TRACE("net.client",
                 "ClientConnection: applied world package world='{}' id='{}' rev='{}' hash='{}' content_hash='{}' bytes={} manifest_entries={} cache='{}' cache_hit={} transfer_mode={}",
@@ -249,10 +160,10 @@ bool ApplyWorldPackageForServer(const std::string& host,
                 world_hash.empty() ? "-" : std::string(world_hash),
                 world_content_hash.empty() ? "-" : std::string(world_content_hash),
                 world_data.size(),
-                effective_world_manifest.size(),
-                package_root.string(),
-                world_data.empty() ? 1 : 0,
-                world_data.empty() ? "none" : (is_delta_transfer ? "delta" : "full"));
+                sync_result.effective_world_manifest.size(),
+                sync_result.package_root.string(),
+                sync_result.cache_hit ? 1 : 0,
+                sync_result.transfer_mode);
     return true;
 }
 

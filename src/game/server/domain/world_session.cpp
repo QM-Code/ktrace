@@ -2,10 +2,10 @@
 
 #include "karma/cli/server_runtime_options.hpp"
 #include "karma/common/config_helpers.hpp"
+#include "karma/common/content/archive.hpp"
 #include "karma/common/content/manifest.hpp"
 #include "karma/common/content/primitives.hpp"
 #include "karma/common/logging.hpp"
-#include "karma/common/world_archive.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -80,7 +80,7 @@ std::optional<WorldSessionContext> LoadWorldSessionContext(
             return std::nullopt;
         }
         try {
-            context.world_package = world::BuildWorldArchive(context.world_dir);
+            context.world_package = karma::content::BuildWorldArchive(context.world_dir);
         } catch (const std::exception& ex) {
             spdlog::error("{}: failed to package server config base directory '{}': {}",
                           app_name,

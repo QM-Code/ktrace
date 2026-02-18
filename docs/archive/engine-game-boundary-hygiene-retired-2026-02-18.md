@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-engine-boundary-e2`
-- Status: `in progress (E0.6/E1/E2/E3/E4 landed on build-a1; transfer sender/receiver extraction moved to engine network content modules with thin game wrappers)`
-- Immediate next task: execute E5 by adding an optional engine default content-sync facade and hardening BZ3 adapter adoption paths.
+- Status: `complete (E0.6/E1/E2/E3/E4/E5/E6a/E6b landed on build-a1; world compatibility wrappers retired in-tree and callsites use content modules directly)`
+- Immediate next task: archive this project doc and remove it from active assignment rotation after overseer closeout.
 - Validation gate: `./abuild.py -c -d <build-dir>` + `./scripts/test-server-net.sh <build-dir>` + `./scripts/test-engine-backends.sh <build-dir>` + `ctest --test-dir <build-dir> -R client_world_package_safety_integration_test --output-on-failure` + `./docs/scripts/lint-project-docs.sh`.
 
 ## Mission
@@ -31,11 +31,6 @@ This extraction is cross-cutting and touches engine common/network plus game cli
 - `src/engine/common/content/*` (engine-owned content implementations)
 - `include/karma/network/content/*` (engine-owned transfer contracts)
 - `src/engine/network/content/*` (engine-owned transfer implementations)
-- legacy compatibility wrappers during migration:
-- `include/karma/common/world_archive.hpp`
-- `include/karma/common/world_content.hpp`
-- `src/engine/common/world_archive.cpp`
-- `src/engine/common/world_content.cpp`
 - Coordinated adapter touchpoints:
 - `src/game/client/net/connection/*`
 - `src/game/client/net/world_package/*`
@@ -52,7 +47,7 @@ This extraction is cross-cutting and touches engine common/network plus game cli
 - Outputs exposed:
   - engine-level content sync primitives (manifest/hash/cache/delta/atomic promote),
   - engine-level transfer state machines (sender retry/resume and receiver assembly/integrity),
-  - optional engine default facade for package apply + mount activation.
+  - optional engine default facade for server sync planning and client cache/apply flow (final mount/runtime-layer activation remains game-owned).
 - Coordinate before changing:
   - `src/game/net/protocol.hpp`
   - `src/game/net/protocol_codec.*`
@@ -225,6 +220,14 @@ This extraction is cross-cutting and touches engine common/network plus game cli
 - Add optional engine default content sync facade for new games.
 - Update BZ3 adapters to consume facade.
 
+9. E6 compatibility-shim retirement prep:
+- migrate in-repo callsites from `world::*` wrapper APIs to `karma::content::*`.
+- keep wrapper files in place until all known consumers are retired.
+
+10. E6b wrapper retirement:
+- delete legacy `world_*` compatibility wrapper files after in-repo migration completes.
+- remove wrapper source wiring from engine build targets.
+
 ## Validation
 From `m-rewrite/`:
 
@@ -288,11 +291,33 @@ ctest --test-dir <build-dir> -R client_world_package_safety_integration_test --o
   - `./scripts/test-engine-backends.sh build-a1` *(pass)*
   - `ctest --test-dir build-a1 -R client_world_package_safety_integration_test --output-on-failure` *(pass)*
   - `./docs/scripts/lint-project-docs.sh` *(pass)*
+- `2026-02-18`: E5 landed: added optional engine default content-sync facade in `include/karma/common/content/sync_facade.hpp` + `src/engine/common/content/sync_facade.cpp`; migrated `src/game/server/net/transport_event_source/join.cpp` and `src/game/client/net/world_package/apply.cpp` to thin adapters over the facade while keeping protocol/protobuf ownership in game net/proto paths.
+- `2026-02-18`: E5 validation on `build-a1`:
+  - `./abuild.py -c -d build-a1` *(pass)*
+  - `./scripts/test-server-net.sh build-a1` *(pass)*
+  - `./scripts/test-engine-backends.sh build-a1` *(pass)*
+  - `ctest --test-dir build-a1 -R client_world_package_safety_integration_test --output-on-failure` *(pass)*
+  - `./docs/scripts/lint-project-docs.sh` *(pass)*
+- `2026-02-18`: E6a landed: migrated remaining in-repo wrapper callsites to `karma::content::*` (`BuildWorldArchive`, `ReadWorldJsonFile`) and replaced direct `karma/common/world_archive.hpp` includes in game callsites with `karma/common/content/archive.hpp`; compatibility wrapper files remain in place.
+- `2026-02-18`: E6a validation on `build-a1`:
+  - `./abuild.py -c -d build-a1` *(pass)*
+  - `./scripts/test-server-net.sh build-a1` *(pass)*
+  - `./scripts/test-engine-backends.sh build-a1` *(pass)*
+  - `ctest --test-dir build-a1 -R client_world_package_safety_integration_test --output-on-failure` *(pass)*
+  - `./docs/scripts/lint-project-docs.sh` *(pass)*
+- `2026-02-18`: E6b landed: retired legacy wrapper files (`include/karma/common/world_archive.hpp`, `include/karma/common/world_content.hpp`, `src/engine/common/world_archive.cpp`, `src/engine/common/world_content.cpp`) and removed wrapper source entries from `src/engine/CMakeLists.txt`.
+- `2026-02-18`: E6b verification scans:
+  - `rg -n "#include \"karma/common/world_archive.hpp\"|#include \"karma/common/world_content.hpp\"" include src` *(no matches)*
+  - `rg -n "\\bworld::(BuildWorldArchive|ExtractWorldArchive|ReadWorldJsonFile|LoadWorldContent)\\b" include src` *(no matches)*
+- `2026-02-18`: E6b validation on `build-a1`:
+  - `./abuild.py -c -d build-a1` *(pass)*
+  - `./scripts/test-server-net.sh build-a1` *(pass)*
+  - `./scripts/test-engine-backends.sh build-a1` *(pass)*
+  - `ctest --test-dir build-a1 -R client_world_package_safety_integration_test --output-on-failure` *(pass)*
+  - `./docs/scripts/lint-project-docs.sh` *(pass)*
 
 ## Open Questions
-- Should `world::*` namespace be retained as compatibility shims only during migration, with target APIs moving to `karma::content`?
-- Should transfer integrity remain FNV-based for parity, or should engine default to stronger hash options while keeping compatibility mode?
-- Should engine default facade own mount/runtime-layer updates directly, or expose those as callbacks for game-owned final activation?
+- Are any out-of-repo consumers still including retired `world_*` headers and requiring a transition note in archive handoff?
 
 ## Handoff Checklist
 - [x] Candidate inventory documented with concrete source paths.
@@ -304,3 +329,6 @@ ctest --test-dir <build-dir> -R client_world_package_safety_integration_test --o
 - [x] E2 manifest/cache extraction implemented with engine-owned modules and thin game wrappers.
 - [x] E3 delta/package-apply extraction implemented with engine-owned modules and thin game wrappers.
 - [x] E4 transfer sender/receiver extraction implemented with engine-owned modules and thin game wrappers.
+- [x] E5 optional default content-sync facade + BZ3 adapter hardening implemented with protocol boundaries preserved.
+- [x] E6a compatibility-shim retirement prep completed: in-repo callsites migrated off `world::*` wrappers; wrappers retained for compatibility.
+- [x] E6b wrapper retirement completed: wrapper files removed and engine build wiring cleaned.

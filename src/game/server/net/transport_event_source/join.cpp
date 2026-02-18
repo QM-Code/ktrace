@@ -1,10 +1,28 @@
 #include "server/net/transport_event_source/internal.hpp"
 
+#include "karma/common/content/sync_facade.hpp"
 #include "karma/common/logging.hpp"
 
 #include <spdlog/spdlog.h>
 
 namespace bz3::server::net::detail {
+
+namespace {
+
+std::vector<karma::content::ManifestEntry> ToContentManifest(
+    const std::vector<WorldManifestEntry>& manifest) {
+    std::vector<karma::content::ManifestEntry> converted{};
+    converted.reserve(manifest.size());
+    for (const auto& entry : manifest) {
+        converted.push_back(karma::content::ManifestEntry{
+            .path = entry.path,
+            .size = entry.size,
+            .hash = entry.hash});
+    }
+    return converted;
+}
+
+} // namespace
 
 void TransportServerEventSource::onJoinResult(uint32_t client_id,
                                               bool accepted,
@@ -41,75 +59,47 @@ void TransportServerEventSource::onJoinResult(uint32_t client_id,
 
         state_it->second.joined = true;
         const ClientConnectionState& state = state_it->second;
-        const bool cache_identity_match = !world_id.empty() && !world_revision.empty() &&
-                                          state.cached_world_id == world_id &&
-                                          state.cached_world_revision == world_revision;
-        const bool cache_hash_match = !world_package_hash.empty() &&
-                                      state.cached_world_hash == world_package_hash;
-        const bool cache_content_match = !world_content_hash.empty() &&
-                                         state.cached_world_content_hash == world_content_hash;
-        const bool cache_manifest_match = !world_manifest_hash.empty() &&
-                                          state.cached_world_manifest_hash == world_manifest_hash &&
-                                          state.cached_world_manifest_file_count == world_manifest_file_count;
-        const bool cache_hit =
-            cache_identity_match && (cache_hash_match || cache_content_match || cache_manifest_match);
-        const ManifestDiffPlan manifest_diff =
-            BuildServerManifestDiffPlan(state.cached_world_manifest, world_manifest);
-        std::string_view cache_reason = "miss";
-        if (cache_hit) {
-            if (cache_hash_match) {
-                cache_reason = "package_hash";
-            } else if (cache_content_match) {
-                cache_reason = "content_hash";
-            } else {
-                cache_reason = "manifest_summary";
-            }
-        }
-        const bool send_world_package = !world_package.empty() && !cache_hit;
-        const bool send_manifest_entries = !cache_hit || !cache_manifest_match;
+        const karma::content::ServerContentSyncRequest sync_request{
+            .world_dir = world_dir,
+            .world_name = std::string(world_name),
+            .world_id = std::string(world_id),
+            .world_revision = std::string(world_revision),
+            .world_package_hash = std::string(world_package_hash),
+            .world_content_hash = std::string(world_content_hash),
+            .world_manifest_hash = std::string(world_manifest_hash),
+            .world_manifest_file_count = world_manifest_file_count,
+            .world_manifest = ToContentManifest(world_manifest),
+            .world_package = world_package,
+            .cached_state = karma::content::ServerCachedContentState{
+                .world_hash = state.cached_world_hash,
+                .world_id = state.cached_world_id,
+                .world_revision = state.cached_world_revision,
+                .world_content_hash = state.cached_world_content_hash,
+                .world_manifest_hash = state.cached_world_manifest_hash,
+                .world_manifest_file_count = state.cached_world_manifest_file_count,
+                .world_manifest = ToContentManifest(state.cached_world_manifest)}};
+        const auto sync_plan = karma::content::BuildDefaultServerContentSyncPlan(sync_request,
+                                                                                  "ServerEventSource");
+
+        const bool cache_identity_match = sync_plan.cache_identity_match;
+        const bool cache_hash_match = sync_plan.cache_hash_match;
+        const bool cache_content_match = sync_plan.cache_content_match;
+        const bool cache_manifest_match = sync_plan.cache_manifest_match;
+        const bool cache_hit = sync_plan.cache_hit;
+        const auto& manifest_diff = sync_plan.manifest_diff;
+        const std::string cache_reason = sync_plan.cache_reason;
+        const bool send_world_package = sync_plan.send_world_package;
+        const bool send_manifest_entries = sync_plan.send_manifest_entries;
         static const std::vector<std::byte> empty_world_package{};
         static const std::vector<WorldManifestEntry> empty_world_manifest{};
         const auto& world_payload = empty_world_package;
         const auto& world_manifest_payload = send_manifest_entries ? world_manifest : empty_world_manifest;
-        std::vector<std::byte> delta_world_package{};
-        const std::vector<std::byte>* transfer_payload = &empty_world_package;
-        std::string_view transfer_mode = "none";
-        uint64_t transfer_bytes = 0;
-        bool transfer_is_delta = false;
-        std::string transfer_delta_base_world_id{};
-        std::string transfer_delta_base_world_revision{};
-        std::string transfer_delta_base_world_hash{};
-        std::string transfer_delta_base_world_content_hash{};
-
         LogServerManifestDiffPlan(client_id, world_name, manifest_diff);
+        const std::vector<std::byte>* transfer_payload = &empty_world_package;
         if (send_world_package) {
-            transfer_mode = "chunked_full";
-            transfer_payload = &world_package;
-            transfer_bytes = world_package.size();
-
-            const bool can_try_delta = manifest_diff.incoming_manifest_available &&
-                                       state.cached_world_id == world_id &&
-                                       !state.cached_world_revision.empty() &&
-                                       (manifest_diff.reused_bytes > 0 || manifest_diff.removed_entries > 0);
-            if (can_try_delta) {
-                const auto delta_archive = BuildWorldDeltaArchive(world_dir,
-                                                                  manifest_diff,
-                                                                  world_id,
-                                                                  world_revision,
-                                                                  state.cached_world_revision);
-                if (delta_archive.has_value() && !delta_archive->empty() &&
-                    delta_archive->size() < world_package.size()) {
-                    delta_world_package = std::move(*delta_archive);
-                    transfer_payload = &delta_world_package;
-                    transfer_bytes = delta_world_package.size();
-                    transfer_is_delta = true;
-                    transfer_mode = "chunked_delta";
-                    transfer_delta_base_world_id = state.cached_world_id;
-                    transfer_delta_base_world_revision = state.cached_world_revision;
-                    transfer_delta_base_world_hash = state.cached_world_hash;
-                    transfer_delta_base_world_content_hash = state.cached_world_content_hash;
-                }
-            }
+            transfer_payload = sync_plan.transfer_is_delta
+                                   ? &sync_plan.delta_world_package
+                                   : &world_package;
         }
 
         static_cast<void>(sendJoinResponse(peer, true, ""));
@@ -133,11 +123,11 @@ void TransportServerEventSource::onJoinResult(uint32_t client_id,
                                      world_package_hash,
                                      world_content_hash,
                                      *transfer_payload,
-                                     transfer_is_delta,
-                                     transfer_delta_base_world_id,
-                                     transfer_delta_base_world_revision,
-                                     transfer_delta_base_world_hash,
-                                     transfer_delta_base_world_content_hash)) {
+                                     sync_plan.transfer_is_delta,
+                                     sync_plan.transfer_delta_base_world_id,
+                                     sync_plan.transfer_delta_base_world_revision,
+                                     sync_plan.transfer_delta_base_world_hash,
+                                     sync_plan.transfer_delta_base_world_content_hash)) {
             spdlog::error("ServerEventSource: failed to stream world package to client_id={} world='{}'",
                           client_id,
                           world_name);
@@ -154,9 +144,9 @@ void TransportServerEventSource::onJoinResult(uint32_t client_id,
                     world_revision,
                     sessions.size(),
                     world_payload.size(),
-                    transfer_mode,
-                    transfer_bytes,
-                    transfer_is_delta ? 1 : 0,
+                    sync_plan.transfer_mode,
+                    sync_plan.transfer_bytes,
+                    sync_plan.transfer_is_delta ? 1 : 0,
                     world_package_hash.empty() ? "-" : std::string(world_package_hash),
                     world_content_hash.empty() ? "-" : std::string(world_content_hash),
                     world_manifest_hash.empty() ? "-" : std::string(world_manifest_hash),
@@ -177,9 +167,9 @@ void TransportServerEventSource::onJoinResult(uint32_t client_id,
                     world_revision,
                     sessions.size(),
                     world_payload.size(),
-                    transfer_mode,
-                    transfer_bytes,
-                    transfer_is_delta ? 1 : 0,
+                    sync_plan.transfer_mode,
+                    sync_plan.transfer_bytes,
+                    sync_plan.transfer_is_delta ? 1 : 0,
                     cache_hit ? 1 : 0,
                     cache_reason);
         return;
