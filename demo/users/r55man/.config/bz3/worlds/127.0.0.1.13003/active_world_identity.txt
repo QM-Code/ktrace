@@ -1,4 +1,0 @@
-hash=345f5023e0a52549
-content_hash=2a70768907bd28f9
-id=cache-world
-revision=2a70768907bd28f9

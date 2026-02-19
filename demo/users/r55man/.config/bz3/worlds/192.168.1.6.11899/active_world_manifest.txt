@@ -1,2 +1,0 @@
-"audio/laser.wav" 20184 "daeffb74b379fcfa"
-"config.json" 605 "013ee16431d8c833"

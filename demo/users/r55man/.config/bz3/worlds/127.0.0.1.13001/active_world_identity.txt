@@ -1,3 +1,0 @@
-hash=345f5023e0a52549
-id=cache-world
-revision=345f5023e0a52549

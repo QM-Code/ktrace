@@ -1,4 +1,4 @@
-name: Core Test Suite
+name: Overseer Sanity
 
 on:
   pull_request:
@@ -9,62 +9,53 @@ on:
   workflow_dispatch:
 
 jobs:
-  core-tests:
+  sanity:
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
         working-directory: .
-    env:
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install System Dependencies
+      - name: Verify Required Tracked Files
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            ninja-build \
-            pkg-config \
-            zip \
-            unzip \
-            tar \
-            curl \
-            autoconf \
-            automake \
-            libtool
+          required=(
+            "README.md"
+            ".gitignore"
+            "agent/BOOTSTRAP.md"
+            "install/README.parent.md"
+            "install/PROJECT.template.md"
+            "install/ASSIGNMENTS.template.md"
+            "install/SPECIALIST_PACKET.template.md"
+            "install/read.template"
+            "install/execute.template"
+            "install/map.template"
+            "scripts/setup.sh"
+            "scripts/setup.bat"
+            "scripts/lint-config-projects.sh"
+          )
+          for path in "${required[@]}"; do
+            if [[ ! -f "${path}" ]]; then
+              echo "Missing required file: ${path}" >&2
+              exit 1
+            fi
+          done
 
-      - name: Cache vcpkg Binary Artifacts
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.vcpkg-cache
-          key: vcpkg-bin-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt') }}
-          restore-keys: |
-            vcpkg-bin-${{ runner.os }}-
+      - name: Verify Config Ignore Rule
+        run: grep -Fx "/config/" .gitignore
 
-      - name: Bootstrap vcpkg
+      - name: Validate BOOTSTRAP References
         run: |
-          git clone https://github.com/microsoft/vcpkg.git "${RUNNER_TEMP}/vcpkg"
-          "${RUNNER_TEMP}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
-          echo "VCPKG_ROOT=${RUNNER_TEMP}/vcpkg" >> "${GITHUB_ENV}"
+          grep -F "config/read" agent/BOOTSTRAP.md
+          grep -F "config/execute" agent/BOOTSTRAP.md
+          grep -F "config/map" agent/BOOTSTRAP.md
+          grep -F "config/projects/ASSIGNMENTS.md" agent/BOOTSTRAP.md
+          grep -F "install/read.template" agent/BOOTSTRAP.md
+          grep -F "install/execute.template" agent/BOOTSTRAP.md
+          grep -F "install/map.template" agent/BOOTSTRAP.md
 
-      - name: Enforce Network Backend Encapsulation Guardrail
-        run: ./scripts/check-network-backend-encapsulation.sh
-
-      - name: Configure
-        run: |
-          cmake -S . -B build-dev \
-            -DBUILD_TESTING=ON \
-            -DFETCHCONTENT_UPDATES_DISCONNECTED=ON \
-            -DKARMA_RENDER_BACKENDS='bgfx;diligent' \
-            -DKARMA_PHYSICS_BACKENDS='jolt;physx' \
-            -DKARMA_AUDIO_BACKENDS='sdl3audio;miniaudio' \
-            -DKARMA_ENABLE_RMLUI_BACKEND=ON
-
-      - name: Run Engine Backend Test Suite
-        run: ./scripts/test-engine-backends.sh
-
-      - name: Run Server Network Test Suite
-        run: ./scripts/test-server-net.sh
+      - name: Run Setup Stub
+        run: bash ./scripts/setup.sh

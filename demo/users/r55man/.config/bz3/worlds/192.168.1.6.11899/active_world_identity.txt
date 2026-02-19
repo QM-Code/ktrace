@@ -1,4 +1,0 @@
-hash=8653f992eeb92dba
-content_hash=6b0060fcd75bec8a
-id=r55man-1
-revision=6b0060fcd75bec8a

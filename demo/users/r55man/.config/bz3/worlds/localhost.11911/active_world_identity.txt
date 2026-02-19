@@ -1,4 +1,0 @@
-hash=91fc3d9a6b8a3f83
-content_hash=9cbc9e2e6f02c6b5
-id=common
-revision=9cbc9e2e6f02c6b5
