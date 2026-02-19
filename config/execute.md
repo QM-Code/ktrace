@@ -1,0 +1,28 @@
+KARMA -> BZ3 SDK Contract Policy (Required):
+- This cross-repo handoff contract is locked until explicitly changed by human-approved policy/docs updates.
+- Integration path is package-based only: `m-bz3` must consume KARMA via `find_package(KarmaEngine CONFIG REQUIRED)`.
+- Do not allow direct raw include/lib wiring from `m-bz3` into `m-karma` build artifacts.
+- Canonical producer command (`m-karma` repo root):
+  - `./abuild.py -c -d build-sdk --install-sdk out/karma-sdk`
+- Canonical consumer command (`m-bz3` repo root):
+  - `./abuild.py -c -d build-sdk --karma-sdk ../m-karma/out/karma-sdk --ignore-lock`
+- Canonical SDK roots under `<KARMA_SDK_ROOT>`:
+  - `<KARMA_SDK_ROOT>/include`
+  - `<KARMA_SDK_ROOT>/lib`
+  - `<KARMA_SDK_ROOT>/lib/cmake/KarmaEngine`
+  - `<KARMA_SDK_ROOT>/lib/cmake/KarmaEngine/KarmaEngineConfig.cmake`
+- Required imported targets in downstream CMake:
+  - `karma::engine_core`
+  - `karma::engine_client` (non-Diligent SDK export path for now)
+- For any specialist packet touching KARMA/BZ3 build integration, enforce this contract explicitly.
+
+- enforce `abuild.py`-only build policy and isolated build dirs,
+- do not draft specialist instruction packets until selection is made,
+- after selection, draft only the selected packet,
+- enforce named specialist identity plus build-slot lock ownership (`ABUILD_AGENT_NAME`, `abuild.py --claim-lock`, `abuild.py --release-lock`),
+- enforce explicit wrapper build-dir args in parallel work,
+- enforce demo test-data policy: reusable local fixtures/state must live under `m-rewrite/demo/` (`communities`, `users`, `worlds`), not personal `~/.config/bz3` or ad-hoc `/tmp`,
+- include `m-dev` parity posture (what is still missing and why it is/isn't active now),
+- include q-karma capability-intake posture (adopt now vs deferred),
+- define the next specialist instructions the human should send,
+- whenever the human asks for a specialist prompt, return one fully copy-pastable prompt block (single fenced `text` block) with concrete instructions and no placeholders/template skeleton.

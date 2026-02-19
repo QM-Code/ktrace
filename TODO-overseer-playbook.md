@@ -8,10 +8,6 @@ This file defines overseer-only workflow:
 
 Execution command policy (for all specialists) is canonical in `docs/foundation/policy/execution-policy.md`.
 
-Mode note:
-- Standalone mode (default): `m-rewrite` only.
-- Integration mode (optional): `m-rewrite` + `m-dev` + `q-karma` via `docs/overseer/BOOTSTRAP.md`.
-
 ## Overseer Responsibilities
 1. Keep direction aligned with `docs/AGENTS.md`, `docs/foundation/policy/execution-policy.md`, and `docs/foundation/policy/decisions-log.md`.
 2. Convert user goals into bounded specialist packets.

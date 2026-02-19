@@ -1,19 +1,20 @@
 # KARMA SDK Header Allowlist
 
 ## Project Snapshot
-- Current owner: `overseer`
-- Status: `not started`
-- Immediate next task: run H0 baseline packet to remove header-shadowing from one `m-bz3` target and validate SDK-only include resolution.
+- Current owner: `codex`
+- Status: `complete (H0-H6 delivered: SDK include boundary hardening + allowlist install + drift guard + compatibility-reviewed prune validated)`
+- Immediate next task: maintain `cmake/KarmaSdkHeaders.cmake` classification on future header additions and rerun drift/integration validation gates.
 - Validation gate:
-  - `m-overseer`: `./scripts/lint-config-projects.sh`
-  - `m-karma`: `./abuild.py -c -d build-sdk --install-sdk out/karma-sdk`
-  - `m-bz3`: `./abuild.py -c -d build-sdk --karma-sdk ../m-karma/out/karma-sdk --ignore-lock`
+  - `m-overseer`: `./scripts/lint-projects.sh`
+  - `m-karma`: `./abuild.py -c -d build-a6 --install-sdk out/karma-sdk`
+  - `m-bz3`: `./abuild.py -c -d build-a7 --karma-sdk ../m-karma/out/karma-sdk`
+  - `m-bz3`: `./scripts/test-server-net.sh build-a7`
 
 ## Mission
 Narrow `m-karma` SDK-installed headers from broad `include/karma/*` copy to an explicit allowlist while ensuring `m-bz3` actually consumes SDK headers (not local shadow copies) through the locked `find_package(KarmaEngine CONFIG REQUIRED)` integration contract.
 
 ## Foundation References
-- `config/projects/diligent.md`
+- `projects/diligent.md`
 - `m-karma/CMakeLists.txt`
 - `m-karma/src/engine/CMakeLists.txt`
 - `m-bz3/CMakeLists.txt`
@@ -41,8 +42,8 @@ This is a cross-repo packaging and boundary-hardening effort with direct impact 
 5. Allowlist changes must preserve locked KARMA -> BZ3 package contract.
 
 ## Owned Paths
-- `m-overseer/config/projects/headers.md`
-- `m-overseer/config/projects/ASSIGNMENTS.md`
+- `m-overseer/projects/headers.md`
+- `m-overseer/projects/ASSIGNMENTS.md`
 - `m-karma/CMakeLists.txt`
 - `m-karma/include/karma/*` (public-header declarations only)
 - `m-karma/cmake/*` (if helper manifest/list file is introduced)
@@ -142,16 +143,109 @@ cd ../m-bz3
 
 ## Current Status
 - `2026-02-19`: Project initialized; baseline issue set captured from current `m-karma`/`m-bz3` state.
+- `2026-02-19`: `H0` completed with one bounded target slice on `m-bz3`:
+  - edited `m-bz3/src/game/CMakeLists.txt` to remove `${PROJECT_SOURCE_DIR}/include` from `target_include_directories(bz3-server PRIVATE ...)` while keeping `${PROJECT_SOURCE_DIR}/src`.
+  - validated via:
+    - `cd m-karma && ABUILD_AGENT_NAME=specialist-headers-h0 ./abuild.py -c -d build-a6 --install-sdk out/karma-sdk`
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h0 ./abuild.py -c -d build-a7 --karma-sdk ../m-karma/out/karma-sdk`
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h0 ./scripts/test-server-net.sh build-a7`
+  - compile flag evidence:
+    - `build-a7/src/game/CMakeFiles/bz3-server.dir/flags.make` now contains `-isystem /home/karmak/dev/bz3-rewrite/m-karma/out/karma-sdk/include` and does **not** contain `-I/home/karmak/dev/bz3-rewrite/m-bz3/include`.
+    - `build-a7/src/game/CMakeFiles/bz3.dir/flags.make` still contains `-I/home/karmak/dev/bz3-rewrite/m-bz3/include` (expected; out of scope for H0).
+- `2026-02-19`: `H1` completed with bounded consumer-side include migration (migrate, not promote):
+  - missing legacy include mappings:
+    - `karma/app/ui_context.h` -> `ui/core/ui_context_compat.hpp`
+    - `karma/input/bindings_text.hpp` -> `ui/console/bindings_text.hpp`
+    - `karma/graphics/texture_handle.hpp` -> `ui/core/texture_handle.hpp`
+  - added compatibility/migration headers:
+    - `m-bz3/src/ui/core/ui_context_compat.hpp`
+    - `m-bz3/src/ui/console/bindings_text.hpp`
+    - `m-bz3/src/ui/core/texture_handle.hpp`
+  - include-site rewires:
+    - `m-bz3/src/ui/core/backend.hpp`
+    - `m-bz3/src/ui/core/system.hpp`
+    - `m-bz3/src/ui/core/ui_layer_adapter.hpp`
+    - `m-bz3/src/ui/console/keybindings.hpp`
+    - `m-bz3/src/ui/frontends/imgui/hud/radar.hpp`
+    - `m-bz3/src/ui/frontends/rmlui/hud/radar.hpp`
+  - validation:
+    - `rg -n "karma/(app/ui_context\\.h|input/bindings_text\\.hpp|graphics/texture_handle\\.hpp)" m-bz3/src m-bz3/include` -> no matches under code paths.
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h1 ./abuild.py -c -d build-a7 --karma-sdk ../m-karma/out/karma-sdk`
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h1 ./scripts/test-server-net.sh build-a7` (`2/2` tests passed).
+- `2026-02-19`: `H2-H3` completed by moving SDK header installation to an explicit allowlist manifest:
+  - added `m-karma/cmake/KarmaSdkHeaders.cmake` with a reviewed `KARMA_ENGINE_SDK_HEADER_RELATIVE` list (current count: `82`).
+  - wired `m-karma/CMakeLists.txt` to consume the manifest and install each allowlisted header explicitly.
+  - removed broad directory install (`install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/karma ...)`) in favor of per-header install calls with missing-file guardrails.
+  - validation:
+    - `cd m-karma && ABUILD_AGENT_NAME=specialist-headers-h2 ./abuild.py -c -d build-a6 --install-sdk out/karma-sdk`
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h2 ./abuild.py -c -d build-a7 --karma-sdk ../m-karma/out/karma-sdk`
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h2 ./scripts/test-server-net.sh build-a7` (`2/2` tests passed).
+- `2026-02-19`: `H4` completed with automated SDK header drift guard:
+  - added executable guard script: `m-karma/scripts/check-sdk-header-allowlist.sh`.
+  - wired guard into CTest as `karma_sdk_header_allowlist_guard` in `m-karma/CMakeLists.txt`.
+  - validation:
+    - `cd m-karma && ./scripts/check-sdk-header-allowlist.sh` (`OK: manifest matches include tree (82 headers)`).
+    - `cd m-karma/build-a6 && ctest -R karma_sdk_header_allowlist_guard --output-on-failure` (`1/1` passed).
+    - `cd m-karma && ABUILD_AGENT_NAME=specialist-headers-h4 ./abuild.py -c -d build-a6 --install-sdk out/karma-sdk`
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h4 ./abuild.py -c -d build-a7 --karma-sdk ../m-karma/out/karma-sdk`
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h4 ./scripts/test-server-net.sh build-a7` (`2/2` tests passed).
+- `2026-02-19`: `H6` optional pruning follow-on completed (compatibility-reviewed):
+  - split header classification in `m-karma/cmake/KarmaSdkHeaders.cmake`:
+    - `KARMA_ENGINE_SDK_HEADER_RELATIVE`: `68` installed/public headers
+    - `KARMA_ENGINE_INTERNAL_HEADER_RELATIVE`: `14` non-installed internal headers kept in source tree
+  - updated drift guard (`m-karma/scripts/check-sdk-header-allowlist.sh`) to validate manifest classification as a disjoint public/internal partition that exactly matches `include/karma/*`.
+  - validated pruned install to fresh SDK path:
+    - `cd m-karma && ABUILD_AGENT_NAME=specialist-headers-h6 ./abuild.py -c -d build-a6 --install-sdk out/karma-sdk-pruned`
+    - installed header count in `out/karma-sdk-pruned/include/karma/*`: `68`
+    - excluded from install (internal list): `14` headers
+  - integration validation:
+    - `cd m-karma/build-a6 && ctest -R karma_sdk_header_allowlist_guard --output-on-failure` (`1/1` passed)
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h6 ./abuild.py -c -d build-a7 --karma-sdk ../m-karma/out/karma-sdk-pruned`
+    - `cd m-bz3 && ABUILD_AGENT_NAME=specialist-headers-h6 ./scripts/test-server-net.sh build-a7` (`2/2` tests passed)
+
+### H0 Shadowing Inventory (2026-02-19)
+Targets in `m-bz3/src/game/CMakeLists.txt` that still (or previously) carried `${PROJECT_SOURCE_DIR}/include` in include dirs:
+- `bz3`
+- `bz3-server` (updated in H0 to remove local include root)
+- `server_net_contract_test`
+- `server_runtime_event_rules_test`
+- `shot_system_physics_hit_test`
+- `shot_system_query_diagnostics_test`
+- `server_runtime_shot_physics_integration_test`
+- `server_runtime_shot_damage_integration_test`
+- `server_runtime_shot_damage_idempotence_integration_test`
+- `shot_physics_runtime_context_test`
+- `server_runtime_shot_pilot_smoke_test`
+- `shot_pilot_health_test`
+- `shot_pilot_state_machine_test`
+- `shot_pilot_recast_controller_test`
+- `shot_pilot_calibration_test`
+- `client_runtime_cli_contract_test`
+- `community_heartbeat_integration_test`
+- `server_join_runtime_contract_test`
+- `server_session_runtime_contract_test`
+- `transport_loopback_integration_test`
+- `transport_multiclient_loopback_test`
+- `transport_disconnect_lifecycle_integration_test`
+- `client_world_package_safety_integration_test`
+- `tank_drive_controller_test`
+- `tank_collision_probe_shape_test`
+- `tank_collision_query_test`
+- `tank_collision_resolution_test`
+- `tank_collision_guardrails_test`
+- `tank_camera_collision_test`
+- `tank_motion_authority_pilot_test`
+- `tank_motion_authority_state_machine_test`
 
 ## Open Questions
 - Should `m-bz3/include/karma/*` be fully removed, or kept temporarily behind a controlled migration flag?
-- Where should the allowlist manifest live (`m-karma/CMakeLists.txt` variable vs dedicated file under `m-karma/cmake/`)?
 - Should SDK header-surface CI/guard run in `m-karma` only, or also be validated from `m-bz3` integration CI?
 
 ## Handoff Checklist
-- [ ] Shadowing audit completed and documented
-- [ ] Missing include mappings resolved (migrate or promote)
-- [ ] Explicit SDK header allowlist implemented
-- [ ] Broad directory install removed/replaced
-- [ ] Drift guard added and passing
-- [ ] End-to-end KARMA SDK export + BZ3 consume validation passing
+- [x] Shadowing audit completed and documented
+- [x] Missing include mappings resolved (migrate or promote)
+- [x] Explicit SDK header allowlist implemented
+- [x] Broad directory install removed/replaced
+- [x] Drift guard added and passing
+- [x] End-to-end KARMA SDK export + BZ3 consume validation passing
+- [x] Optional compatibility-reviewed allowlist pruning completed and validated
