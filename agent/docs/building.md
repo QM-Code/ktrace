@@ -60,6 +60,9 @@ Avoid relying on personal `~/.config/...` or ad-hoc `/tmp` state for durable wor
 ## KARMA -> BZ3 SDK Contract (Locked)
 - Consumer integration path is package-based only:
   - `find_package(KarmaEngine CONFIG REQUIRED)`
+- Diligent renderer dependency is package-based in both repos:
+  - `find_package(DiligentEngine CONFIG REQUIRED)`
+  - source should come from repo overlay port `vcpkg-overlays/diligentengine` (no `FetchContent` fallback)
 - Raw include/lib wiring from consumer into KARMA build artifacts is disallowed.
 
 Canonical commands:

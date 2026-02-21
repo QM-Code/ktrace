@@ -79,7 +79,7 @@ Implement every lighting/shadow technique that is actively used in q-karma demo 
 5. Any intentional divergence from q-karma algorithm/flow requires explicit rationale plus validation evidence in the handoff.
 
 ## Foundation References
-- `docs/overseer/execution-policy.md`
+- `docs/building.md`
 - `docs/overseer/operating-model.md`
 - `docs/overseer/playbook.md`
 - `docs/archive/renderer-shadow-hardening-superseded-2026-02-17.md` (source of carry-over unfinished items)
@@ -126,7 +126,7 @@ Read-only comparison root:
   - backend-parity lighting/shadow behavior in rewrite sandbox.
   - runtime-wired controls needed for deterministic bz3 verification.
 - Coordinate before changing:
-  - `docs/specialist/validation-matrix.md`
+  - `docs/specialists.md`
   - `docs/archive/renderer-parity-retired-2026-02-17.md` (historical thresholds/rubrics)
   - `docs/overseer/operating-model.md`
 

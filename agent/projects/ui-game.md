@@ -18,7 +18,7 @@ This track is explicitly a staging/alignment track:
 
 ## Foundation References
 - `docs/overseer/operating-model.md`
-- `docs/overseer/execution-policy.md`
+- `docs/building.md`
 - `docs/projects/ui-engine.md`
 - `docs/projects/gameplay-migration.md`
 - `docs/projects/radar.md`

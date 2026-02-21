@@ -29,7 +29,7 @@ Target outcomes:
 5. tanks can jump and land on buildings
 
 ## Foundation References
-- `m-overseer/projects/archive/gameplay-retired-2026-02-21.md`
+- `m-overseer/agent/projects/archive/gameplay-retired-2026-02-21.md`
 - `m-bz3/src/server/server_game.cpp`
 - `m-bz3/src/server/runtime/shot_pilot_step.cpp`
 - `m-bz3/src/server/domain/shot_system.cpp`
@@ -76,8 +76,8 @@ This track is a focused playable product loop bring-up across gameplay/runtime s
 - Secondary track: `shared unblocker` (for backend seam additions required by gameplay contracts)
 
 ## Owned Paths
-- `m-overseer/projects/gameplay.md`
-- `m-overseer/projects/ASSIGNMENTS.md`
+- `m-overseer/agent/projects/gameplay.md`
+- `m-overseer/agent/projects/ASSIGNMENTS.md`
 - `m-bz3/src/client/game/*`
 - `m-bz3/src/client/net/*`
 - `m-bz3/src/server/*`

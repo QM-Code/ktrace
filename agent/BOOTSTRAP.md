@@ -95,7 +95,8 @@ Only the following files and/or subdirectories should exist:
 
 ## Required Reading (relative to <home>)
 
-- agent/docs/overseer/execution-policy.md
+- agent/docs/overseer/building.md
+- agent/docs/overseer/testing.md
 
 ## Projects
 
@@ -109,10 +110,11 @@ Only the following files and/or subdirectories should exist:
 - Read `projects/ASSIGNMENTS.md` to identify active project docs and ownership.
 - Ensure `<home>/agent/projects/ASSIGNMENTS.md` tracks active project files using `<home>/templates/ASSIGNMENTS.md` format.
 - Use <home>/agent/templates/SPECIALIST_PACKET.md as a template for constructing specialist packets.
-- Have specialists read the non-overseer documentation under required reading:
-  - <home>/agent/docs/specialist/quickstart.md
-  - <home>/agent/docs/specialist/validation-matrix.md
-  - <home>/agent/docs/specialist/community-runbook.md
+- Have specialists follow the instructions their bootstrap file when starting:
+  - <home>/agent/docs/specialists.md
+- Also have specialists read the building and testing documents:
+  - <home>/agent/docs/building.md
+  - <home>/agent/docs/testing.md
 - Do not be shy about giving the specialist agents complex multi-part commands. These are very competent agents. We pay a lot for them :)
 
 ## Startup

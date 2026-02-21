@@ -17,8 +17,8 @@ Define and implement one maintainable, explicit build+packaging contract for `Ka
 - `m-karma/src/engine/CMakeLists.txt`
 - `m-karma/cmake/KarmaEngineConfig.cmake.in`
 - `m-bz3/CMakeLists.txt`
-- `m-overseer/docs/overseer/execution-policy.md`
-- `m-overseer/projects/cmake.md`
+- `m-overseer/agent/docs/building.md`
+- `m-overseer/agent/projects/ARCHIVE/cmake.md`
 
 ## Why This Is Separate
 - This is cross-repo and cross-platform infrastructure work, not a gameplay/render feature slice.
@@ -42,8 +42,8 @@ Use a hybrid linkage policy with one exported target contract:
 | Android | `STATIC` preferred (`SHARED` only when needed) | if shared, package per-ABI `.so` into APK/AAB | ABI-scoped `jniLibs` / Gradle packaging | per-ABI build + launch smoke |
 
 ## Owned Paths
-- `m-overseer/projects/multiplatform.md`
-- `m-overseer/projects/ASSIGNMENTS.md`
+- `m-overseer/agent/projects/multiplatform.md`
+- `m-overseer/agent/projects/ASSIGNMENTS.md`
 - `m-karma/CMakeLists.txt`
 - `m-karma/src/engine/CMakeLists.txt`
 - `m-karma/cmake/KarmaEngineConfig.cmake.in`

@@ -14,7 +14,7 @@ Deliver a rewrite-owned radar system where:
 
 ## Foundation References
 - `docs/overseer/operating-model.md`
-- `docs/overseer/execution-policy.md`
+- `docs/building.md`
 - `docs/overseer/playbook.md`
 - `projects/ui-engine.md`
 - `projects/gameplay.md`
