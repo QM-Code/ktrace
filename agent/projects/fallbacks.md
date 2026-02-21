@@ -2,11 +2,11 @@
 
 ## Project Snapshot
 - Current owner: `overseer`
-- Status: `in progress (baseline provenance captured from configured build trees)`
-- Immediate next task: remove safe fallback blocks in `m-karma/cmake/20_dependencies.cmake` and `m-bz3/cmake/20_dependencies.cmake`.
+- Status: `in progress (safe fallback cleanup landed; wrapper validation complete on dedicated slots)`
+- Immediate next task: decide closure/archive and whether to spin a follow-on for transport-loopback registration diagnostics in SDK consumer profiles.
 - Validation gate:
-  - `m-karma`: `./abuild.py -c -d build-sdk -b bgfx,diligent`, `./abuild.py -c -d build-sdk-static -b bgfx`, `./scripts/test-engine-backends.sh build-sdk`
-  - `m-bz3`: `./abuild.py -c -d build-sdk -b bgfx`, `./scripts/test-server-net.sh build-sdk`
+  - `m-karma`: `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-sdk -b bgfx`, `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-static -b bgfx --sdk-linkage static`, `./scripts/test-engine-backends.sh build-fallbacks-sdk`, `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -d build-fallbacks-sdk --install-sdk out/karma-sdk-fallbacks`
+  - `m-bz3`: `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-sdk -b bgfx --karma-sdk ../m-karma/out/karma-sdk-fallbacks`, `ABUILD_AGENT_NAME=overseer-fallbacks KARMA_SDK_ROOT=../m-karma/out/karma-sdk-fallbacks ./scripts/test-server-net.sh build-fallbacks-sdk`
   - `m-overseer`: `./agent/scripts/lint-projects.sh`
 
 ## Mission
@@ -45,11 +45,11 @@ This is a cross-repo dependency policy track. It is mostly CMake dependency-sour
   - SDK export behavior in `m-karma/src/engine/cmake/client_wiring.cmake`
 
 ## Non-Goals
-- No attempt here to remove the remaining required fallbacks (`stb`, `enet`, conditional `bgfx`) yet.
+- No further dependency-source migrations beyond this track's package-only cleanup and prior `stb`/`enet`/`bgfx` updates.
 - No backend architecture rewrite.
 - No runtime behavior changes.
 
-## Baseline: Actual Fallback Usage In Current Builds
+## Baseline (Historical, Superseded By 2026-02-21 Changes)
 Configured builds checked:
 - `m-karma/build-sdk` (shared, `bgfx;diligent`)
 - `m-karma/build-sdk-static` (static, `bgfx`)
@@ -107,14 +107,26 @@ Expected post-change behavior:
 ```bash
 # m-karma
 cd m-karma
-./abuild.py -c -d build-sdk -b bgfx,diligent
-./abuild.py -c -d build-sdk-static -b bgfx
-./scripts/test-engine-backends.sh build-sdk
+export ABUILD_AGENT_NAME=overseer-fallbacks
+./abuild.py --claim-lock -d build-fallbacks-sdk
+./abuild.py --claim-lock -d build-fallbacks-static
+./abuild.py -c -d build-fallbacks-sdk -b bgfx
+./abuild.py -c -d build-fallbacks-static -b bgfx --sdk-linkage static
+./scripts/test-engine-backends.sh build-fallbacks-sdk
+./abuild.py -d build-fallbacks-sdk --install-sdk out/karma-sdk-fallbacks
 
 # m-bz3
 cd ../m-bz3
-./abuild.py -c -d build-sdk -b bgfx
-./scripts/test-server-net.sh build-sdk
+export ABUILD_AGENT_NAME=overseer-fallbacks
+./abuild.py --claim-lock -d build-fallbacks-sdk
+./abuild.py -c -d build-fallbacks-sdk -b bgfx --karma-sdk ../m-karma/out/karma-sdk-fallbacks
+KARMA_SDK_ROOT=../m-karma/out/karma-sdk-fallbacks ./scripts/test-server-net.sh build-fallbacks-sdk
+./abuild.py --release-lock -d build-fallbacks-sdk
+
+# release m-karma locks
+cd ../m-karma
+./abuild.py --release-lock -d build-fallbacks-sdk
+./abuild.py --release-lock -d build-fallbacks-static
 
 # project-doc lint
 cd ../m-overseer
@@ -124,20 +136,24 @@ cd ../m-overseer
 ## Build/Run Commands
 ```bash
 cd m-karma
-export ABUILD_AGENT_NAME=specialist-fallback-cleanup
-./abuild.py --claim-lock -d build-sdk
-./abuild.py --claim-lock -d build-sdk-static
-./abuild.py -c -d build-sdk -b bgfx,diligent
-./abuild.py -c -d build-sdk-static -b bgfx
-./scripts/test-engine-backends.sh build-sdk
-./abuild.py --release-lock -d build-sdk
-./abuild.py --release-lock -d build-sdk-static
+export ABUILD_AGENT_NAME=overseer-fallbacks
+./abuild.py --claim-lock -d build-fallbacks-sdk
+./abuild.py --claim-lock -d build-fallbacks-static
+./abuild.py -c -d build-fallbacks-sdk -b bgfx
+./abuild.py -c -d build-fallbacks-static -b bgfx --sdk-linkage static
+./scripts/test-engine-backends.sh build-fallbacks-sdk
+./abuild.py -d build-fallbacks-sdk --install-sdk out/karma-sdk-fallbacks
 
 cd ../m-bz3
-./abuild.py --claim-lock -d build-sdk
-./abuild.py -c -d build-sdk -b bgfx
-./scripts/test-server-net.sh build-sdk
-./abuild.py --release-lock -d build-sdk
+export ABUILD_AGENT_NAME=overseer-fallbacks
+./abuild.py --claim-lock -d build-fallbacks-sdk
+./abuild.py -c -d build-fallbacks-sdk -b bgfx --karma-sdk ../m-karma/out/karma-sdk-fallbacks
+KARMA_SDK_ROOT=../m-karma/out/karma-sdk-fallbacks ./scripts/test-server-net.sh build-fallbacks-sdk
+./abuild.py --release-lock -d build-fallbacks-sdk
+
+cd ../m-karma
+./abuild.py --release-lock -d build-fallbacks-sdk
+./abuild.py --release-lock -d build-fallbacks-static
 ```
 
 ## First Session Checklist
@@ -160,15 +176,25 @@ cd ../m-bz3
   - `m-karma`: `./abuild.py -c -d build-sdk-10 -b bgfx` passed after ENet include/API compatibility updates.
   - `m-bz3`: `./abuild.py -c -d build-sdk-10 -b bgfx` passed.
   - Combined guard validated in both repos via `./abuild.py -c -d build-combined-check -b bgfx,diligent` (fails with intentional policy error).
+- `2026-02-21`: Removed remaining safe fallback blocks (`glm`, `assimp`, `spdlog`, `miniz`, `nlohmann_json`) and `include(FetchContent)` from both `m-karma/cmake/20_dependencies.cmake` and `m-bz3/cmake/20_dependencies.cmake`.
+- `2026-02-21`: `m-karma` validation passed on dedicated slots:
+  - `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-sdk -b bgfx`
+  - `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-static -b bgfx --sdk-linkage static`
+  - `./scripts/test-engine-backends.sh build-fallbacks-sdk` (2/2 tests passed).
+- `2026-02-21`: Installed SDK for consumer validation:
+  - `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -d build-fallbacks-sdk --install-sdk out/karma-sdk-fallbacks`
+- `2026-02-21`: `m-bz3` validation passed with explicit SDK prefix:
+  - `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-sdk -b bgfx --karma-sdk ../m-karma/out/karma-sdk-fallbacks`
+  - `ABUILD_AGENT_NAME=overseer-fallbacks KARMA_SDK_ROOT=../m-karma/out/karma-sdk-fallbacks ./scripts/test-server-net.sh build-fallbacks-sdk` (9/9 gameplay tests passed).
+  - Transport loopback suite not registered in this profile (wrapper emitted expected diagnostic; not a gate failure).
 
 ## Open Questions
-- Should `stb` move to required package resolution (vcpkg/overlay) in a follow-on, or remain header-only FetchContent by policy?
-- Should `enet` move from unconditional FetchContent to package-only resolution with explicit imported-target normalization?
-- If combined renderer mode is eventually dropped entirely, should `bgfx` fallback be removed and package-only enforced?
+- Should `scripts/test-server-net.sh` accept/pass `--karma-sdk` (or set `KARMA_SDK_ROOT`) internally so SDK consumer slots do not require external environment setup?
+- Should transport loopback registration (`network_test_support`) for this SDK consumer profile be tracked as a separate follow-on project?
 
 ## Handoff Checklist
 - [x] Provenance evidence captured from configured build trees.
 - [x] Keep/remove matrix documented.
 - [x] Concrete implementation steps documented.
 - [x] CMake cleanup edits landed in `m-karma` + `m-bz3`.
-- [ ] Full wrapper test suites executed (`test-engine-backends.sh`, `test-server-net.sh`).
+- [x] Full wrapper test suites executed (`test-engine-backends.sh`, `test-server-net.sh`).
