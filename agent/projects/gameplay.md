@@ -30,7 +30,7 @@ Target outcomes:
 
 ## Foundation References
 - `m-overseer/agent/projects/archive/gameplay-retired-2026-02-21.md`
-- `m-bz3/src/server/server_game.cpp`
+- `m-bz3/src/server/runtime/server_game.cpp`
 - `m-bz3/src/server/runtime/shot_pilot_step.cpp`
 - `m-bz3/src/server/domain/shot_system.cpp`
 - `m-bz3/src/client/game/lifecycle.cpp`
@@ -47,12 +47,12 @@ This track is a focused playable product loop bring-up across gameplay/runtime s
 ### Outcome Status Matrix
 | Outcome | Current posture | Evidence | Gap |
 |---|---|---|---|
-| `0` Join + auto name | **partial** | server fallback name is deterministic `player-<client_id>` when join name is empty: `m-bz3/src/server/server_game.cpp:208`; client normally sends configured username (`userDefaults.username`): `m-bz3/src/client/runtime/startup_options.cpp:23`, `m-bz3/data/client/config.json:8`; duplicate active names are rejected: `m-bz3/src/server/server_game.cpp:212` | default client behavior does not reliably produce auto-assigned unique names when no explicit name is passed |
+| `0` Join + auto name | **partial** | server fallback name is deterministic `player-<client_id>` when join name is empty: `m-bz3/src/server/runtime/server_game.cpp:208`; client normally sends configured username (`userDefaults.username`): `m-bz3/src/client/runtime/startup_options.cpp:23`, `m-bz3/data/client/config.json:8`; duplicate active names are rejected: `m-bz3/src/server/runtime/server_game.cpp:212` | default client behavior does not reliably produce auto-assigned unique names when no explicit name is passed |
 | `1` First-person tank drive | **partial** | tank mode exists but default config disables it: `m-bz3/data/client/config.json:142`; startup reads it default false: `m-bz3/src/client/game/lifecycle.cpp:26`; observer/roaming remains fallback when no tank entity: `m-bz3/src/client/game/lifecycle.cpp:245` | default launch path lands in observer mode, not play mode |
-| `2` Shoot + kill | **partial** | authoritative shot/damage/death pipeline exists (`D3/G4/G5` landed); server kill flow emits death + score event: `m-bz3/src/server/runtime/shot_pilot_step.cpp:128`; but client shot send currently uses zero pos/vel: `m-bz3/src/client/net/connection/outbound.cpp:74`; server applies incoming shot vectors directly: `m-bz3/src/server/runtime_event_rules.cpp:65` | gameplay shot spawn/velocity from local tank/camera is not wired |
+| `2` Shoot + kill | **partial** | authoritative shot/damage/death pipeline exists (`D3/G4/G5` landed); server kill flow emits death + score event: `m-bz3/src/server/runtime/shot_pilot_step.cpp:128`; but client shot send currently uses zero pos/vel: `m-bz3/src/client/net/connection/outbound.cpp:74`; server applies incoming shot vectors directly: `m-bz3/src/server/runtime/event_rules.cpp:65` | gameplay shot spawn/velocity from local tank/camera is not wired |
 | `3` Server-authoritative running score | **partial** | server mutates session score on kill: `m-bz3/src/server/runtime/shot_damage.cpp:58`; server broadcasts `SetScore`: `m-bz3/src/server/net/transport_event_source/events.cpp:27` | client receive seam is trace-only, not HUD/game-state presentation: `m-bz3/src/client/net/connection/inbound/session_events.cpp:53` |
 | `4` Ricochet off buildings | **not implemented** | shot currently expires on first non-ignored physics hit: `m-bz3/src/server/domain/shot_system.cpp:163` | no bounce/reflection model or ricochet lifecycle state |
-| `5` Jump + land on buildings | **not implemented** | `jump` input is declared: `m-bz3/src/ui/console/keybindings.cpp:15`; local tank motion does not consume jump action: `m-bz3/src/client/game/tank_motion.cpp:28`; tank/actor gravity currently disabled in key paths: `m-bz3/src/client/game/tank_entity.cpp:152`, `m-bz3/src/server/server_game.cpp:357` | no gameplay jump impulse, airtime state, landing rules, or vertical physics behavior |
+| `5` Jump + land on buildings | **not implemented** | `jump` input is declared: `m-bz3/src/ui/console/keybindings.cpp:15`; local tank motion does not consume jump action: `m-bz3/src/client/game/tank_motion.cpp:28`; tank/actor gravity currently disabled in key paths: `m-bz3/src/client/game/tank_entity.cpp:152`, `m-bz3/src/server/runtime/server_game.cpp:357` | no gameplay jump impulse, airtime state, landing rules, or vertical physics behavior |
 
 ### Additional High-Impact Findings
 1. Non-parity actor debug behavior is still active in server tick path and can corrupt gameplay expectations:
@@ -110,7 +110,7 @@ This track is a focused playable product loop bring-up across gameplay/runtime s
 - Intended files:
   - `m-bz3/src/client/runtime/startup_options.cpp`
   - `m-bz3/src/client/game/lifecycle.cpp`
-  - `m-bz3/src/server/server_game.cpp`
+  - `m-bz3/src/server/runtime/server_game.cpp`
   - `m-bz3/src/server/domain/actor_system.cpp`
   - `m-bz3/src/tests/server_runtime_lifecycle_contract_test.cpp`
   - `m-bz3/src/tests/server_runtime_event_rules_test.cpp`
@@ -130,7 +130,7 @@ This track is a focused playable product loop bring-up across gameplay/runtime s
 - Intended files:
   - `m-bz3/src/client/game/*` (shot origin/aim seam)
   - `m-bz3/src/client/net/connection/outbound.cpp`
-  - `m-bz3/src/server/runtime_event_rules.cpp` (validation only if needed)
+  - `m-bz3/src/server/runtime/event_rules.cpp` (validation only if needed)
   - `m-bz3/src/tests/client_shot_reconciliation_test.cpp`
   - `m-bz3/src/tests/server_runtime_shot_damage_integration_test.cpp`
 - Acceptance:
@@ -174,7 +174,7 @@ This track is a focused playable product loop bring-up across gameplay/runtime s
 - Intended files:
   - `m-bz3/src/client/game/tank_motion.cpp`
   - `m-bz3/src/client/game/tank_entity.cpp`
-  - `m-bz3/src/server/server_game.cpp`
+  - `m-bz3/src/server/runtime/server_game.cpp`
   - `m-bz3/src/server/runtime/event_loop.cpp`
   - `m-bz3/src/tests/*tank*` + lifecycle/physics integration tests
   - optional `m-karma` grounded/query seam if strictly required

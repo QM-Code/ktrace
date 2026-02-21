@@ -35,7 +35,7 @@ The plan prioritizes highest-value targets first and assumes full refactor freed
 - `m-karma/src/ui/backend_factory.cpp:13`
 - `m-bz3/cmake/game/sources.cmake:1`
 - `m-bz3/cmake/game/targets.cmake:5`
-- `m-bz3/src/server/server_game.cpp:74`
+- `m-bz3/src/server/runtime/server_game.cpp:74`
 - `m-bz3/src/server/domain/actor_system.cpp:113`
 - `m-bz3/src/server/runtime/run.cpp:57`
 - `m-bz3/src/client/game/lifecycle.cpp:153`
@@ -149,7 +149,7 @@ This is an intentionally cross-cutting cleanup program, not a feature slice. It 
 
 ### 10) Efficiency Opportunities
 - Runtime:
-  - remove repeated `world->entities()` scans in `ServerGame::findActorForSession` (`m-bz3/src/server/server_game.cpp:74`) by maintaining actor index maps.
+  - remove repeated `world->entities()` scans in `ServerGame::findActorForSession` (`m-bz3/src/server/runtime/server_game.cpp:74`) by maintaining actor index maps.
   - remove synthetic actor drift/health decay simulation from authoritative server actor tick path (`m-bz3/src/server/domain/actor_system.cpp:124`).
 - Build-time:
   - move heavy inline rendering semantics from headers to `.cpp` where possible (`m-karma/src/renderer/backends/internal/*`), reducing compile fanout.
