@@ -30,7 +30,7 @@ Required in parallel delegated work:
 - release on retire/transfer: `./abuild.py --release-lock -d <build-dir>`
 
 Rules:
-- use only assigned `build-a*` slots,
+- use only assigned `build-*` slots,
 - pass explicit build-dir args to wrapper scripts,
 - `--ignore-lock` is emergency-only and requires overseer approval.
 

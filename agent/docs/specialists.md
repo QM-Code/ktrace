@@ -2,23 +2,27 @@
 
 ## Role
 
-You are a coding specialist.
+You are a coding specialist in a multi-repo project.
 
-## 
+You will be assigned a specific project by a project manager.
 
-Purpose:
-- give coding specialists the minimum required instructions to execute one slice safely.
+## Notation
 
-## Read Order
-1. `docs/specialists.md` (this file; read Quickstart + Validation Matrix sections)
-2. `projects/ASSIGNMENTS.md`
-3. assigned `projects/<project>.md`
-4. optional: `docs/building.md` for policy details
+- <root> : project root directory : /home/karmak/dev/bz3-rewrite/
+- <home> : overseer/specialist home directory : <root>/m-overseer/
+
+## Required reading
+
+- <home>/agent/docs/building.md
+- <home>/agent/docs/testing.md
+- <home>/agent/projects/ASSIGNMENTS.md
+- <home>/agent/projects/<project>.md (your assigned project)
+
 
 ## Start-of-Slice Checklist
 1. Confirm assigned project, scope, and owned paths.
-2. Set identity: `export ABUILD_AGENT_NAME=<agent-name>`.
-3. Claim assigned slot(s): `./abuild.py --claim-lock -d <build-dir>`.
+2. Set build identity: `export ABUILD_AGENT_NAME=<agent-name>`.
+3. Claim assigned build slot(s): `./abuild.py --claim-lock -d <build-dir>`.
 4. Run default configure/build command for assigned dir:
 - `./abuild.py -c -d <build-dir>`
 5. For `m-bz3` consumer slices that depend on local `m-karma` SDK output, pass the SDK prefix explicitly:
@@ -46,15 +50,19 @@ Purpose:
 - exact commands run + outcomes,
 - remaining risks/open questions.
 
-## End-of-Slice
-- Release lock when retiring/transferring slot:
+## End-of-Session
+- Release lock at the end of your coding session:
   - `./abuild.py --release-lock -d <build-dir>`
-# Specialist Validation Matrix
 
-Purpose:
+
+## Specialist Validation Matrix
+
+### Purpose:
+
 - define required validation per touch scope with minimal ambiguity.
 
-## Build Command Baseline
+### Build Command Baseline
+
 Use delegated wrapper build command:
 - `./abuild.py -c -d <build-dir>`
 
@@ -63,7 +71,7 @@ Add backend selectors only when required by scope:
 - ui: `-b imgui,rmlui`
 - physics: `-b jolt,physx`
 
-## Required Gates By Touch Scope
+### Required Gates By Touch Scope
 
 | Touch scope | Required validation |
 |---|---|
@@ -73,11 +81,11 @@ Add backend selectors only when required by scope:
 | Community webserver/auth paths | Run community runbook checks in `docs/testing.md` plus wrapper(s) if engine/game code also changed |
 | Docs-only / project-tracking only | Wrapper gates optional unless project doc explicitly requires them |
 
-## Wrapper Invocation Rules
+### Wrapper Invocation Rules
 - In parallel delegated work, always pass explicit build-dir args.
 - Avoid relying on wrapper defaults (`build-dev`) during concurrent specialist work.
 
-## Evidence Format
+### Evidence Format
 For each required gate, report:
 1. exact command,
 2. pass/fail outcome,
