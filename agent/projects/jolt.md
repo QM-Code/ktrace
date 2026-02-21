@@ -2,12 +2,12 @@
 
 ## Project Snapshot
 - Current owner: `overseer`
-- Status: `in progress` (new follow-on issue track carved out from `cmake.md`)
-- Immediate next task: dispatch a bounded specialist slice to fix parity test asset-path resolution in `m-karma` without changing runtime backend behavior.
+- Status: `in progress` (resolver fix landed and validated on `build-sdk-10`)
+- Immediate next task: decide close-out/archive criteria and whether to centralize asset-path resolver helper for other parity suites.
 - Validation gate:
   - `m-karma`: `ctest --test-dir build-cmake-karma -R physics_backend_parity_jolt -V --output-on-failure`
   - `m-karma`: `./scripts/test-engine-backends.sh build-cmake-karma`
-  - `m-overseer`: `./scripts/lint-projects.sh`
+  - `m-overseer`: `./agent/scripts/lint-projects.sh`
 
 ## Mission
 Resolve the deterministic `physics_backend_parity_jolt` failure in `m-karma` that reports:
@@ -16,7 +16,6 @@ Resolve the deterministic `physics_backend_parity_jolt` failure in `m-karma` tha
 This work is scoped to test/parity harness correctness and issue triage/closure, not CMake structure work.
 
 ## Foundation References
-- `m-overseer/agent/projects/ARCHIVE/cmake.md`
 - `m-karma/scripts/test-engine-backends.sh`
 - `m-karma/src/physics/tests/physics_backend_parity_test.cpp`
 - `m-karma/src/physics/backends/jolt.cpp`
@@ -25,7 +24,7 @@ This work is scoped to test/parity harness correctness and issue triage/closure,
 
 ## Why This Is Separate
 - Failure reproduces in both `build-cmake-karma` and pre-existing `build-a6`, so it is not introduced by `KARMA-S1` CMake decomposition.
-- Keeping this isolated lets `cmake.md` close on its own objective (mechanical CMake split) while tracking the pre-existing parity defect independently.
+- Keeping this isolated preserves the completed CMake split objective while tracking the pre-existing parity defect independently.
 
 ## Baseline Findings
 1. Reproduction is deterministic:
@@ -100,17 +99,21 @@ ctest --test-dir build-cmake-karma -R physics_backend_parity_jolt -V --output-on
 5. Update this doc and `ASSIGNMENTS.md`.
 
 ## Current Status
-- `2026-02-21`: Project created from `cmake.md` close-out as a pre-existing blocker follow-on.
+- `2026-02-21`: Project created as a pre-existing blocker follow-on after CMake split close-out.
 - `2026-02-21`: Deterministic fail confirmed in both `build-cmake-karma` and `build-a6`.
 - `2026-02-21`: Root-cause hypothesis documented: test asset-path resolver parent-depth assumption mismatch after repo layout changes.
+- `2026-02-21`: Landed bounded resolver fix in `m-karma/src/physics/tests/physics_backend_parity_test.cpp` replacing fixed parent-depth traversal with upward asset/repo-root search.
+- `2026-02-21`: Validation passed on active dir `build-sdk-10`:
+  - `ctest --test-dir build-sdk-10 -R physics_backend_parity_jolt -V --output-on-failure`
+  - `./scripts/test-engine-backends.sh build-sdk-10`
 
 ## Open Questions
-- Should fix strategy be minimal parent-depth correction (`5 -> 4`) or robust upward search for repo-root sentinel?
 - Should static-mesh fixture path resolution helper be centralized to reduce repeated layout assumptions in parity tests?
+- Residual risk: other large parity suites may still contain fixed-depth/test-layout assumptions and should be audited incrementally.
 
 ## Handoff Checklist
-- [ ] Bounded resolver fix landed
-- [ ] `physics_backend_parity_jolt` passes
-- [ ] `test-engine-backends.sh` rerun and results captured
-- [ ] `ASSIGNMENTS.md` updated
-- [ ] Risks/open questions recorded
+- [x] Bounded resolver fix landed
+- [x] `physics_backend_parity_jolt` passes
+- [x] `test-engine-backends.sh` rerun and results captured
+- [x] `ASSIGNMENTS.md` updated
+- [x] Risks/open questions recorded
