@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `overseer`
-- Status: `in progress (safe fallback cleanup landed; wrapper validation complete on dedicated slots)`
-- Immediate next task: decide closure/archive and whether to spin a follow-on for transport-loopback registration diagnostics in SDK consumer profiles.
+- Status: `done (archived 2026-02-21)`
+- Immediate next task: none (track closed).
 - Validation gate:
   - `m-karma`: `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-sdk -b bgfx`, `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-static -b bgfx --sdk-linkage static`, `./scripts/test-engine-backends.sh build-fallbacks-sdk`, `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -d build-fallbacks-sdk --install-sdk out/karma-sdk-fallbacks`
   - `m-bz3`: `ABUILD_AGENT_NAME=overseer-fallbacks ./abuild.py -c -d build-fallbacks-sdk -b bgfx --karma-sdk ../m-karma/out/karma-sdk-fallbacks`, `ABUILD_AGENT_NAME=overseer-fallbacks KARMA_SDK_ROOT=../m-karma/out/karma-sdk-fallbacks ./scripts/test-server-net.sh build-fallbacks-sdk`
@@ -27,7 +27,7 @@ Document exactly which FetchContent fallbacks are still needed under SDK + vcpkg
 This is a cross-repo dependency policy track. It is mostly CMake dependency-sourcing cleanup, not gameplay/rendering feature work.
 
 ## Owned Paths
-- `m-overseer/agent/projects/fallbacks.md`
+- `m-overseer/agent/projects/ARCHIVE/fallbacks.md`
 - `m-overseer/agent/projects/ASSIGNMENTS.md`
 - planned implementation files:
   - `m-karma/cmake/20_dependencies.cmake`

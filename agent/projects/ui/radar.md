@@ -1,24 +1,25 @@
-# Radar System (Engine Substrate + Game Behavior)
+# UI Radar System (Engine Substrate + Game Behavior)
 
 ## Project Snapshot
 - Current owner: `overseer`
 - Status: `in progress (research baseline complete; implementation not started)`
-- Immediate next task: execute `R1` engine substrate slice: add generic offscreen render-target contract + multi-camera pass scheduling scaffold in rewrite-owned renderer interfaces.
-- Validation gate: `./abuild.py -c -d <build-dir> -b bgfx,diligent,imgui,rmlui` plus runtime smoke across renderer/UI combinations and `./docs/scripts/lint-project-docs.sh`.
+- Immediate next task: execute `R1` engine substrate slice: add generic offscreen render-target contract + multi-camera pass scheduling scaffold in `m-karma` renderer interfaces.
+- Validation gate: docs updates: `cd m-overseer && ./agent/scripts/lint-projects.sh`; implementation slices: `cd m-karma && ./abuild.py -c -d <build-dir> -b bgfx,diligent,imgui,rmlui` with runtime smoke in `m-bz3`.
 
 ## Mission
-Deliver a rewrite-owned radar system where:
+Deliver a radar system where:
 - engine provides generic technology for camera-to-texture picture-in-picture rendering,
 - game defines the radar concept, tracked gameplay entities, orientation policy, and visual semantics,
-- implementation preserves rewrite ownership boundaries while reusing proven behavior/flow from `q-karma` and `m-dev`.
+- implementation preserves `m-karma`/`m-bz3` ownership boundaries while reusing proven behavior/flow from `q-karma` and `m-dev`.
 
 ## Foundation References
-- `docs/overseer/operating-model.md`
-- `docs/building.md`
-- `docs/overseer/playbook.md`
-- `projects/ui-engine.md`
+- `projects/ui.md`
+- `projects/ui/karma.md`
+- `projects/ui/bz3.md`
 - `projects/gameplay.md`
 - `projects/lighting.md`
+- `../docs/building.md`
+- `../docs/testing.md`
 
 ## Why This Is Separate
 Radar is a cross-cutting engine/game/UI feature with high boundary risk:
@@ -45,20 +46,20 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
 - `src/game/ui/frontends/imgui/hud/radar.cpp` and `src/game/ui/frontends/rmlui/hud/radar.cpp` show backend-specific HUD composition from radar texture.
 - `data/client/ui/hud.rml` and `hud.rcss` define radar HUD panel; `transform: scale(1, -1)` normalizes texture orientation for display.
 
-### `m-rewrite` current baseline
-- Radar data assets already exist:
+### `m-karma` + `m-bz3` current baseline
+- Radar data assets already exist in `m-bz3`:
   - shaders: `data/client/shaders/radar.vert`, `data/client/shaders/radar.frag`
   - HUD panel markup/styles: `data/client/ui/hud.rml`, `data/client/ui/hud.rcss`
   - config knobs: `data/client/config.json` (`gui.radar`, `ui.hud.radar`, `assets.shaders.radar`)
-- Engine renderer contracts currently do not expose offscreen render-target lifecycle or camera-to-target pass APIs:
-  - `include/karma/renderer/device.hpp`
-  - `include/karma/renderer/backend.hpp`
-  - `src/engine/renderer/render_system.cpp`
-- Scene components currently lack an engine-owned camera component contract:
-  - `include/karma/scene/components.hpp`
-- Current UI path is software-overlay texture generation, and RmlUi external texture loading is explicitly unimplemented:
-  - `src/engine/ui/backends/rmlui/cpu_renderer.cpp`
-- Result: rewrite has radar assets but lacks the engine substrate that can produce/route a radar texture to game HUD layers.
+- Engine renderer contracts currently do not expose full offscreen render-target lifecycle or camera-to-target pass APIs in `m-karma`:
+  - `m-karma/include/karma/renderer/device.hpp`
+  - `m-karma/include/karma/renderer/backend.hpp`
+  - `m-karma/src/renderer/render_system.cpp`
+- Scene components currently lack a fully settled engine-owned camera component contract:
+  - `m-karma/include/karma/scene/components.hpp`
+- Current UI path in `m-karma` still has external-texture parity gaps:
+  - `m-karma/src/ui/backends/rmlui/cpu_renderer.cpp`
+- Result: `m-bz3` has radar assets, but `m-karma` still needs substrate closure to reliably route radar textures into both HUD backends.
 
 ## Direction Lock (Non-Negotiable)
 1. Radar remains game-owned as a concept and behavior (`what radar means`, `what appears`, `how it behaves`).
@@ -67,20 +68,23 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
    - adopt `q-karma` architecture/flow for generic substrate,
    - adopt `m-dev` gameplay behavior where it is radar-specific parity.
 4. No backend API/type leakage into `src/game/*`.
-5. No engine-level `Radar*` gameplay concepts in `src/engine/*`.
+5. No engine-level `Radar*` gameplay concepts in `m-karma/src/*`.
+
+## End Goal (Meet-In-The-Middle)
+Radar is exposed to `m-bz3` gameplay/UI code as a normal HUD/console item, while all reusable rendering technology (offscreen pass scheduling, render-target lifecycle, and UI texture plumbing) remains engine-owned in `m-karma` and shared with non-radar overlays.
 
 ## Owned Paths
-- `docs/projects/radar.md`
-- `docs/projects/ASSIGNMENTS.md`
-- `include/karma/renderer/*`
-- `src/engine/renderer/*`
-- `include/karma/scene/components.hpp` and related scene/camera ownership surfaces
-- `include/karma/ui/*`
-- `src/engine/ui/*`
-- `src/game/client/*` (new radar runtime + integration slices)
-- `data/client/shaders/radar.*`
-- `data/client/ui/hud.*`
-- `data/client/config*.json` (radar config wiring only)
+- `m-overseer/agent/projects/ui/radar.md`
+- `m-overseer/agent/projects/ASSIGNMENTS.md`
+- `m-karma/include/karma/renderer/*`
+- `m-karma/src/renderer/*`
+- `m-karma/include/karma/scene/components.hpp` and related scene/camera ownership surfaces
+- `m-karma/include/karma/ui/*`
+- `m-karma/src/ui/*`
+- `m-bz3/src/game/client/*` (new radar runtime + integration slices)
+- `m-bz3/data/client/shaders/radar.*`
+- `m-bz3/data/client/ui/hud.*`
+- `m-bz3/data/client/config*.json` (radar config wiring only)
 
 ## Interface Boundaries
 - Inputs consumed:
@@ -90,11 +94,13 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
   - engine-generic offscreen pass and UI external-texture contracts
   - game-owned radar runtime and HUD bindings
 - Coordinate before changing:
-  - `src/engine/CMakeLists.txt`
-  - `src/game/CMakeLists.txt`
-  - renderer backend contract files in `src/engine/renderer/backends/*`
-  - UI backend contract files in `src/engine/ui/backends/*`
-  - `docs/projects/ui-engine.md` and `docs/projects/gameplay-migration.md` (when radar hooks overlap their scopes)
+  - `m-karma/CMakeLists.txt`
+  - `m-bz3/CMakeLists.txt`
+  - renderer backend contract files in `m-karma/src/renderer/backends/*`
+  - UI backend contract files in `m-karma/src/ui/backends/*`
+  - `projects/ui.md`
+  - `projects/ui/karma.md`
+  - `projects/ui/bz3.md`
 
 ## Comparative Decision Matrix
 | Concern | `q-karma` approach | `m-dev` approach | Rewrite decision |
@@ -106,7 +112,7 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
 | Orientation behavior | Top-down follow camera in demo | Player-forward-up policy (world rotates in radar) | Preserve m-dev behavior as game policy. |
 | UI presentation | ImGui draws target texture | ImGui + RmlUi HUD integration | Require both UI backends in rewrite validation. |
 
-## Target Architecture In `m-rewrite`
+## Target Architecture in `m-karma` + `m-bz3`
 
 ### Engine Substrate (generic, no radar semantics)
 1. Render-target lifecycle API in renderer contracts:
@@ -193,23 +199,26 @@ Radar is a cross-cutting engine/game/UI feature with high boundary risk:
 - Do not widen scope into unrelated gameplay migration or non-radar UI refactors.
 
 ## Validation
-From `m-rewrite/`:
+From repo roots as appropriate:
 
 ```bash
 # Build with renderer + UI backend coverage for radar slices
+cd m-karma
 ./abuild.py -c -d <build-dir> -b bgfx,diligent,imgui,rmlui
 
 # Renderer contract regression (required when renderer/backend files are touched)
 ./scripts/test-engine-backends.sh <build-dir>
 
 # Runtime smoke (radar/HUD visibility path in both renderer and UI backends)
+cd m-bz3
 timeout 20s ./<build-dir>/bz3 --backend-render bgfx --backend-ui imgui --data-dir ./data --user-config data/client/config.json
 timeout 20s ./<build-dir>/bz3 --backend-render diligent --backend-ui imgui --data-dir ./data --user-config data/client/config.json
 timeout 20s ./<build-dir>/bz3 --backend-render bgfx --backend-ui rmlui --data-dir ./data --user-config data/client/config.json
 timeout 20s ./<build-dir>/bz3 --backend-render diligent --backend-ui rmlui --data-dir ./data --user-config data/client/config.json
 
 # Docs structure gate
-./docs/scripts/lint-project-docs.sh
+cd m-overseer
+./agent/scripts/lint-projects.sh
 ```
 
 ## Trace Channels
@@ -228,13 +237,14 @@ timeout 20s ./<build-dir>/bz3 --backend-render diligent --backend-ui rmlui --dat
 - `2026-02-18`: research baseline completed from:
   - `q-karma` engine-first offscreen camera/render-target/UI handle model,
   - `m-dev` game-owned radar behavior and richer gameplay semantics,
-  - `m-rewrite` current renderer/UI substrate gaps and existing radar assets.
+  - `m-karma` + `m-bz3` current renderer/UI substrate gaps and existing radar assets.
 - `2026-02-18`: direction lock established:
   - engine owns generic PiP substrate,
   - game owns radar semantics and behavior.
 - `2026-02-18`: implementation readiness:
-  - rewrite already contains radar shaders/config/HUD panel assets,
+  - `m-bz3` already contains radar shaders/config/HUD panel assets,
   - missing engine contracts are now explicitly scoped as R1-R3.
+- `2026-02-22`: moved from `ui-radar.md` to `ui/radar.md` and aligned under the `ui.md` superproject.
 
 ## Open Questions
 - Should camera pass ownership live in `scene::CameraComponent` ECS data, a renderer-pass registry, or a hybrid model?
@@ -246,5 +256,5 @@ timeout 20s ./<build-dir>/bz3 --backend-render diligent --backend-ui rmlui --dat
 ## Handoff Checklist
 - [ ] Engine substrate slice and game radar slice remain separated by boundary rules in this doc.
 - [ ] Renderer/UI backend parity validations are recorded for every implementation handoff.
-- [ ] `docs/projects/ASSIGNMENTS.md` row is updated in the same handoff.
+- [ ] `m-overseer/agent/projects/ASSIGNMENTS.md` row is updated in the same handoff.
 - [ ] Risks and unresolved questions are carried forward explicitly.

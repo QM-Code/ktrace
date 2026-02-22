@@ -5,7 +5,7 @@
 - Status: `in progress (new active bring-up track; prior migration track retired)`
 - Immediate next task: dispatch first bounded implementation slice `GP-S1` (join/play defaults + remove non-parity actor tick drift).
 - Validation gate:
-  - `m-overseer`: `./scripts/lint-projects.sh`
+  - `m-overseer`: `./agent/scripts/lint-projects.sh`
   - `m-bz3`: `./abuild.py -c -d <bz3-build-dir>`, `./scripts/test-server-net.sh <bz3-build-dir>`, targeted `ctest` packet for touched contracts
   - `m-karma` (only when backend seam touched): `./abuild.py -c -d <karma-build-dir>`, `./scripts/test-engine-backends.sh <karma-build-dir>`
 
@@ -14,7 +14,7 @@ Deliver a playable localhost loop where these six outcomes work with default run
 
 ```bash
 # server
-bz3-server --port <port>
+bz3-server --listen-port <port>
 
 # client
 bz3 --server <host:port>
@@ -29,7 +29,6 @@ Target outcomes:
 5. tanks can jump and land on buildings
 
 ## Foundation References
-- `m-overseer/agent/projects/archive/gameplay-retired-2026-02-21.md`
 - `m-bz3/src/server/runtime/server_game.cpp`
 - `m-bz3/src/server/runtime/shot_pilot_step.cpp`
 - `m-bz3/src/server/domain/shot_system.cpp`
@@ -60,7 +59,7 @@ This track is a focused playable product loop bring-up across gameplay/runtime s
 - `m-bz3/src/server/domain/actor_system.cpp:126` continuously drains health.
 
 2. `m-karma` backend is largely sufficient for baseline gameplay integration:
-- backend already exposes raycast, gravity toggle, force/impulse, and velocity APIs: `m-karma/include/karma/physics/backend.hpp:95`.
+- backend already exposes gravity toggle, force/impulse, velocity, and raycast APIs: `m-karma/include/karma/physics/backend.hpp:110`, `m-karma/include/karma/physics/backend.hpp:129`, `m-karma/include/karma/physics/backend.hpp:136`, `m-karma/include/karma/physics/backend.hpp:182`.
 
 3. `m-karma` seams still likely needed for full-quality parity:
 - `RaycastHit` currently has no surface normal field (`body`, `position`, `distance`, `fraction` only): `m-karma/include/karma/physics/backend.hpp:79`.
@@ -103,8 +102,8 @@ This track is a focused playable product loop bring-up across gameplay/runtime s
 - Goal: default into playable join flow and remove non-parity actor tick drift.
 - Scope:
   - ensure client join path can rely on server-side auto name assignment when explicit name is absent.
-  - align fallback auto-name format to target style (`playerNN`).
-  - default local flow to play mode/tank-enabled for network play launch.
+  - make fallback auto-name prefix server-configurable and mandatory from `data/server/config.json`; derive fallback as `<prefix><client_id>` with no hardcoded fallback.
+  - default local flow to tank-ready gameplay for network play launch while keeping spawn as explicit user input (no automatic spawn on join).
   - remove synthetic server actor tick drift/health drain behavior from gameplay runtime.
   - keep spawn authority model deterministic.
 - Intended files:
@@ -117,7 +116,9 @@ This track is a focused playable product loop bring-up across gameplay/runtime s
   - `m-bz3/src/tests/client_runtime_cli_contract_test.cpp`
 - Acceptance:
   - default `bz3 --server <host:port>` joins reliably without manual username override.
-  - default post-join state enters play-mode path (not observer-only default).
+  - when join name is omitted, server uses required configured prefix + `client_id` and does not use hardcoded fallback naming.
+  - spawn remains explicit (`spawn` action required) after join; no automatic spawn side effect.
+  - default launch is tank-ready/playable once explicit spawn occurs (not a permanent observer-only path).
   - no synthetic health drain or sinusoidal drift in authoritative actor tick.
 
 ### `GP-S2`
@@ -205,7 +206,7 @@ export ABUILD_AGENT_NAME=specialist-gameplay-loop
 ### Manual Localhost Exit Criteria (required before retirement)
 1. Start server:
 ```bash
-./<build-dir>/bz3-server --port 11899
+./<build-dir>/bz3-server --listen-port 11899
 ```
 2. Start two clients:
 ```bash
@@ -218,11 +219,13 @@ export ABUILD_AGENT_NAME=specialist-gameplay-loop
 - `2026-02-21`: New active project doc created for playable localhost loop bring-up after migration-track retirement.
 - `2026-02-21`: Baseline findings captured: join/name fallback mismatch, observer-by-default startup, shot send vector gap, score display seam missing, ricochet/jump not implemented, and residual non-parity actor tick behavior.
 - `2026-02-21`: Backend readiness clarified: `m-karma` largely sufficient for baseline gameplay, with likely raycast-normal seam needed for robust ricochet.
+- `2026-02-22`: Policy decisions locked for GP execution:
+  - fallback auto-name policy: deterministic by `client_id`, with mandatory configurable server-side prefix from `data/server/config.json` and no hardcoded fallback prefix,
+  - spawn behavior policy: explicit user-triggered spawn only (no automatic spawn on join),
+  - ricochet packet policy: implement physically-correct normal reflection first.
 
 ## Open Questions
-- Should fallback auto-name be deterministic by `client_id` (`player14`) or pseudo-random unique (`player83`)?
-- Should spawn become automatic on successful join, or remain explicit input with immediate UX guidance?
-- For ricochet, do we require physically-correct normal reflection first packet, or accept a temporary simplified bounce model?
+- none (policy decisions above are locked; raise new questions only if blocking conflicts are discovered during implementation).
 
 ## Handoff Checklist
 - [x] Comprehensive findings documented with concrete code evidence.

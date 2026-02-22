@@ -109,6 +109,7 @@ Only the following files and/or subdirectories should exist:
 - For new project docs in `projects/`, use `<home>/agent/templates/PROJECT.md` as the starting structure.
 - Read `projects/ASSIGNMENTS.md` to identify active project docs and ownership.
 - Ensure `<home>/agent/projects/ASSIGNMENTS.md` tracks active project files using `<home>/templates/ASSIGNMENTS.md` format.
+- `projects/ASSIGNMENTS.md` must track active docs across `agent/projects/` and subdirectories using repo-relative paths (for example `ui/karma.md`).
 - Use <home>/agent/templates/SPECIALIST_PACKET.md as a template for constructing specialist packets.
 - Have specialists follow the instructions their bootstrap file when starting:
   - <home>/agent/docs/specialists.md
@@ -117,17 +118,33 @@ Only the following files and/or subdirectories should exist:
   - <home>/agent/docs/testing.md
 - Do not be shy about giving the specialist agents complex multi-part commands. These are very competent agents. We pay a lot for them :)
 
+## Superprojects and Subprojects
+
+- A project file at `agent/projects/<name>.md` is a superproject when `agent/projects/<name>/` also exists.
+- Subprojects live at `agent/projects/<name>/*.md`.
+- Initial project exploration must show only top-level project docs in `agent/projects/` (excluding `ASSIGNMENTS.md`, `AGENTS.md`, and archived docs).
+- Subprojects must remain hidden until the user selects the matching superproject.
+- After superproject selection:
+  - Read and summarize the superproject doc first (`Project Snapshot`, `Mission`, and `Immediate next task`).
+  - Then list its subprojects from `agent/projects/<name>/*.md`.
+  - Then prompt the user to select a subproject or go back.
+- Do not parse subproject files before superproject selection.
+
 ## Startup
 
 - If you were not started somewhere with a multi-repo root as described under "Repo/Branch Layout", hard fail and explain to the human operator as best you can what happened. Note that none of the repos need to exist (<root> could be an empty directory other than <home> and be relying on you to fetch everything), but you must ensure that the user is not in a directory that is being used for other work.
 - If you were started from a proper multi-repo root:
   - Make sure you have all the access you need as described in "Restrictions" (read/write, network I/O, git, etc).
     - If you lack some capability, explain as best you can to the human how to fix the problem (e.g. codex has ~/.config/config.toml on some systems) and what lacking this capability will mean (this is not a hard fail).
-  - Check to see that all of the repos
-  - Get a listing of the projects in <home>/agent/projects/, but do not parse any of the files.
-  - Introduce yourself and give a brief overview of the project. Prompt the user with the following:
+  - Check to see that all of the repos.
+  - Read `agent/projects/ASSIGNMENTS.md`.
+  - Discover top-level project docs only (`agent/projects/*.md`, excluding `ASSIGNMENTS.md`, `AGENTS.md`, and archived docs).
+  - Detect superprojects by matching `agent/projects/<name>.md` with `agent/projects/<name>/`.
+  - Introduce yourself and give a brief overview of the project. Prompt the user with:
     - Get a high-level project overview
-	- Explore current projects
-	  - list of projects here
-	- Something else
-
+    - Explore current projects (top-level only; mark superprojects)
+    - Something else
+- If the user selects a superproject:
+  - Provide a brief overview of that superproject.
+  - List subprojects under its matching directory.
+  - Prompt for subproject selection.

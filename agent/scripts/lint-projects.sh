@@ -48,6 +48,14 @@ check_contains() {
   fi
 }
 
+list_project_docs() {
+  find "${PROJECT_DIR}" -type f -name '*.md' \
+    ! -name 'README.md' \
+    ! -name 'AGENTS.md' \
+    ! -name 'ASSIGNMENTS.md' \
+    ! -path "${PROJECT_DIR}/ARCHIVE/*" | sort
+}
+
 echo "[lint] Checking required project sections"
 while IFS= read -r file; do
   check_contains "${file}" '^## Project Snapshot$' 'section `## Project Snapshot`'
@@ -55,18 +63,10 @@ while IFS= read -r file; do
   check_contains "${file}" '^- Status:' 'field `Status`'
   check_contains "${file}" '^- Immediate next task:' 'field `Immediate next task`'
   check_contains "${file}" '^- Validation gate:' 'field `Validation gate`'
-done < <(find "${PROJECT_DIR}" -maxdepth 1 -type f -name '*.md' \
-  ! -name 'README.md' \
-  ! -name 'AGENTS.md' \
-  ! -name 'ASSIGNMENTS.md' | sort)
+done < <(list_project_docs)
 
 echo "[lint] Checking assignment board coverage"
-project_count="$(
-  find "${PROJECT_DIR}" -maxdepth 1 -type f -name '*.md' \
-    ! -name 'README.md' \
-    ! -name 'AGENTS.md' \
-    ! -name 'ASSIGNMENTS.md' | wc -l
-)"
+project_count="$(list_project_docs | wc -l | tr -d '[:space:]')"
 assignment_rows="$(rg -c '^\| `[^`]+\.md` \|' "${ASSIGNMENTS_FILE}" || true)"
 
 if [[ "${assignment_rows}" -ne "${project_count}" ]]; then
