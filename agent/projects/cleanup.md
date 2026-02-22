@@ -100,6 +100,10 @@ cd m-overseer
 - `2026-02-21`: deep-dive analysis completed and `CLN-S1..CLN-S10` backlog defined.
 - `2026-02-21`: source-tree CMake ownership anti-pattern removed (`src/game` and `src/engine` build wiring relocation).
 - `2026-02-22`: cleanup program converted into parent/child superproject architecture.
+- `2026-02-22`: `CLN-S3` advanced from extraction to placement decision; `path_utils` remains internal and `S3-3` contract-test slice is next.
+- `2026-02-22`: `CLN-S3` `S3-3` contract tests landed (`data_path_contract_test`) and validated; next `CLN-S3` action is `S3-4` canonicalization dedupe follow-on.
+- `2026-02-22`: `CLN-S3` `S3-4` targeted canonicalization dedupe landed (`audio/*`, `root_policy`, `cli/server/runtime_options`) and validated; next `CLN-S3` action is `S3-5` closeout decision for `directory_override`.
+- `2026-02-22`: `CLN-S3` `S3-5` decision landed by migrating `src/common/data/directory_override.cpp` canonicalization to shared `path_utils::Canonicalize`; validated via `./abuild.py -c -d build-cln-s3`, `ctest --test-dir build-cln-s3 -R "data_path_contract_test" --output-on-failure`, and `./scripts/test-engine-backends.sh build-cln-s3`. CLN-S3 implementation slices are now closed.
 
 ## Open Questions
 - Which two lanes should be executed concurrently after `CLN-S2` to maximize throughput without merge contention?

@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-demo-s1`
-- Status: `in progress (DEMO-S2/S3/S4/S5/S6/S7 complete)`
-- Immediate next task: monitor stability-run and CI retry telemetry; trigger `DEMO-S8` only if sustained transport flake persists after S7 hardening.
+- Status: `in progress (DEMO-S2/S3/S4/S5/S6/S7/S8A complete)`
+- Immediate next task: collect Linux CI telemetry trend and trigger `DEMO-S8` only when escalation criteria match telemetry fields.
 - Validation gate:
   - `m-overseer`: `./agent/scripts/lint-projects.sh`
   - `m-karma`: `./abuild.py -c -d <build-dir>` and demo smoke command packet defined in this doc
@@ -213,6 +213,7 @@ ctest --test-dir <build-dir> -R "client_transport_contract_test|server_transport
 - [x] `DEMO-S5`: trace-first matrix harness + keep/retire decision mapping with no test removal.
 - [x] `DEMO-S6`: Linux CI-required wiring for trace matrix gate with bounded retry and diagnostics retention.
 - [x] `DEMO-S7`: timeout-race hardening + phase/timestamp diagnostics + repeat stability gate.
+- [x] `DEMO-S8A`: post-S7 telemetry automation for evidence-based DEMO-S8 escalation decisions.
 
 ### DEMO-S5: Test Strategy Convergence
 - Add trace-first scenario harness and map overlap with existing integration tests.
@@ -235,6 +236,18 @@ ctest --test-dir <build-dir> -R "client_transport_contract_test|server_transport
   - repeatable stability script (`scripts/test-demo-transport-stability.sh`) runs contract set multiple times with fail-fast matrix summary,
   - DEMO-S6 trace-matrix behavior remains intact.
 
+### DEMO-S8A: Telemetry Automation (Post-S7 Monitoring)
+- Add deterministic CI telemetry summarization for Linux demo trace-matrix runs.
+- Acceptance:
+  - `scripts/test-demo-telemetry-summary.sh <ci-log-root> <matrix-artifact-root>` emits:
+    - `ci-logs/demo-trace-matrix-telemetry.json`,
+    - `ci-logs/demo-trace-matrix-telemetry.log`,
+  - telemetry records `attempt_count`, `retry_used`, `final_matrix_status`,
+    `wait_drop_seen_in_failure_output`, `wait_terminal_seen_in_failure_output`,
+    and `recommendation` (`monitor` vs `escalate_demo_s8`),
+  - Linux `sdk-desktop` workflow runs telemetry summary after trace matrix execution and uploads telemetry artifacts,
+  - demo trace-matrix pass/fail semantics remain unchanged.
+
 ## Owned Paths
 - `m-overseer/agent/projects/demo.md`
 - `m-overseer/agent/projects/ASSIGNMENTS.md`
@@ -245,6 +258,7 @@ ctest --test-dir <build-dir> -R "client_transport_contract_test|server_transport
 - `m-karma/scripts/test-sdk-demo-consumer.sh` (new)
 - `m-karma/scripts/test-demo-trace-matrix.sh` (new)
 - `m-karma/scripts/test-demo-transport-stability.sh` (new)
+- `m-karma/scripts/test-demo-telemetry-summary.sh` (new)
 
 ## Interface Boundaries
 - Inputs consumed:
@@ -311,9 +325,11 @@ cd m-karma
 - `2026-02-22`: `DEMO-S6` wired Linux `sdk-desktop` CI in `.github/workflows/core-test-suite.yml` to run `./scripts/test-demo-trace-matrix.sh build-sdk out/karma-sdk` after existing SDK packaging/consumer/runtime gates, preserving non-Linux behavior.
 - `2026-02-22`: `DEMO-S6` added bounded retry policy for Linux CI demo matrix step (maximum one retry) with transparent diagnostics: `ci-logs/demo-trace-matrix-attempt1.log`, `ci-logs/demo-trace-matrix-attempt2.log`, `ci-logs/demo-trace-matrix-summary.log`, and preserved first-attempt artifacts under `ci-logs/demo-trace-matrix-attempt1-artifacts/` when retry is triggered.
 - `2026-02-22`: `DEMO-S6` extended diagnostics upload paths to include `build-sdk/demo-trace-matrix-artifacts/**` so final matrix artifacts are retained in CI artifact uploads.
-- `2026-02-22`: `DEMO-S7` root-cause identified in `client_transport_contract_test`: fixed 80ms server-restart timing could predate deterministic client-side drop detection, causing reconnect readiness gating to miss `Connected` transitions under timeout-race stress.
-- `2026-02-22`: `DEMO-S7` hardened timeout-race phase by replacing fixed restart sleep with bounded drop-detection synchronization (wait for deterministic client send-failure signal before restart), preserving reconnect/terminal assertions and coverage.
-- `2026-02-22`: `DEMO-S7` added explicit phase/timestamp markers in `client_transport_contract_test` and introduced repeat stability gate `scripts/test-demo-transport-stability.sh <build-dir> [runs]` (default 10, fail-fast, per-run matrix + final summary).
+- `2026-02-22`: `DEMO-S7` sustained flake root-cause confirmed in `client_transport_contract_test` phase2 timeout-race path: terminal wait could time out before `Disconnected` when probe sends continued during offline reconnect-exhaustion polling.
+- `2026-02-22`: `DEMO-S7` hardened phase2 with deterministic synchronization: split into explicit `wait-drop` then `wait-terminal` subphases, require offline drop signal before terminal gate, and stop probe sends during terminal wait to avoid timing interference while preserving strict assertions.
+- `2026-02-22`: `DEMO-S7` diagnostics now emit stage/timestamp evidence for `timeout-race.phase2.wait-drop` and `timeout-race.phase2.wait-terminal`; stability gate evidence passed at `15/15` using `scripts/test-demo-transport-stability.sh build-demo 15`.
+- `2026-02-22`: `DEMO-S8A` added telemetry summarizer `scripts/test-demo-telemetry-summary.sh` that emits JSON + concise log under `ci-logs/` with fields for attempt count/retry usage/final status/timeout-race marker detection/recommendation.
+- `2026-02-22`: `DEMO-S8A` wired Linux `sdk-desktop` CI to run telemetry summary after matrix execution with `if: always()`, preserving matrix failure semantics while guaranteeing telemetry artifact generation for both pass and fail outcomes.
 
 ## DEMO-S1 Handoff Notes
 - Slice owner: `specialist-demo-s1`.
@@ -391,9 +407,10 @@ Retention policy now:
 
 ## DEMO-S7 Handoff Notes
 - Reliability hardening in `src/network/tests/contracts/client_transport_contract_test.cpp`:
-  - replaced fixed `80ms` restart delay with deterministic client-drop detection phase before server restart,
+  - root-cause fixed in phase2 timeout-race path by splitting terminal handling into deterministic `wait-drop` and `wait-terminal` subphases,
+  - wait-terminal now polls reconnect exhaustion without continuing probe sends, preventing probe-induced timeout masking while server is intentionally offline,
   - preserved strict reconnect/delivery/terminal assertions (no skip/xfail/weakened checks),
-  - improved diagnostics with explicit `phase=` markers and monotonic timestamp tags (`[t+...ms]`) for each phase and failure.
+  - improved diagnostics with explicit `phase=` markers and monotonic timestamp tags (`[t+...ms]`) for each phase/failure, including phase2 substage markers.
 - Added repeat stability gate script:
   - `scripts/test-demo-transport-stability.sh <build-dir> [runs]`
   - default runs: `10`,
@@ -401,6 +418,36 @@ Retention policy now:
   - prints per-run matrix lines and final overall summary.
 - Trace-matrix policy intact:
   - no behavior changes to `scripts/test-demo-trace-matrix.sh` orchestration semantics.
+
+## DEMO-S8A Handoff Notes
+- New telemetry helper:
+  - `scripts/test-demo-telemetry-summary.sh <ci-log-root> <matrix-artifact-root>`
+  - outputs:
+    - `ci-logs/demo-trace-matrix-telemetry.json`
+    - `ci-logs/demo-trace-matrix-telemetry.log`
+  - emits telemetry fields:
+    - `attempt_count` (`1|2`)
+    - `retry_used` (`true|false`)
+    - `final_matrix_status` (`PASS|FAIL|UNKNOWN`)
+    - `wait_drop_seen_in_failure_output`
+    - `wait_terminal_seen_in_failure_output`
+    - `recommendation` (`monitor|escalate_demo_s8`)
+- Linux workflow wiring:
+  - `.github/workflows/core-test-suite.yml` runs telemetry step after demo trace matrix using:
+    - `./scripts/test-demo-telemetry-summary.sh ci-logs build-sdk/demo-trace-matrix-artifacts`
+  - step uses `if: always() && runner.os == 'Linux'`, so telemetry is captured even after matrix failure.
+  - telemetry files are uploaded through diagnostics artifact paths.
+
+### DEMO-S8 Escalation Criteria (Telemetry-Driven)
+- Trigger `DEMO-S8` immediately when:
+  - `final_matrix_status == FAIL` and
+  - (`wait_drop_seen_in_failure_output == true` or `wait_terminal_seen_in_failure_output == true`) and
+  - `recommendation == escalate_demo_s8`.
+- Keep `monitor` when:
+  - matrix final status is `PASS`, even if retry was used, unless repeated telemetry trends indicate sustained recurrence.
+- Treat sustained recurrence as:
+  - two consecutive required Linux CI runs with `recommendation == escalate_demo_s8`, or
+  - three `retry_used == true` runs within the latest ten required Linux CI runs with timeout-race markers observed.
 
 ## Open Questions
 - Should `client` default to full graphics runtime, `--net-smoke`, or auto-fallback based on environment?
@@ -416,3 +463,4 @@ Retention policy now:
 - [x] Test overlap keep/retire decisions documented (retain-now policy; no removals).
 - [x] CI gate plan updated with Linux-required trace-first matrix wiring and retry/diagnostics policy.
 - [x] Post-S6 transport timeout-race hardening validated with repeated stability gate runs.
+- [x] Post-S7 telemetry automation landed with explicit DEMO-S8 escalation criteria and CI artifact capture.
