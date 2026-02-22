@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-demo-s1`
-- Status: `in progress (DEMO-S2 + DEMO-S3 complete; DEMO-S4 bootstrap scaffold landed)`
-- Immediate next task: execute full `DEMO-S4` consumer gate by adding scripted installed-SDK consumer smoke (`scripts/test-sdk-demo-consumer.sh`) and validating `--help` runtime against package targets.
+- Status: `in progress (DEMO-S2/S3 complete; DEMO-S4 full gate complete)`
+- Immediate next task: execute `DEMO-S5` test-strategy convergence by documenting keep/retire mapping between low-level contract tests and process-level demo scenario gates.
 - Validation gate:
   - `m-overseer`: `./agent/scripts/lint-projects.sh`
   - `m-karma`: `./abuild.py -c -d <build-dir>` and demo smoke command packet defined in this doc
@@ -158,7 +158,7 @@ ctest --test-dir <build-dir> -R "client_transport_contract_test|server_transport
 # demo process smoke
 ./scripts/test-demo-client-server-smoke.sh <build-dir>
 
-# sdk consumer smoke (new gate to add)
+# sdk consumer smoke
 ./scripts/test-sdk-demo-consumer.sh <build-dir> <sdk-prefix>
 
 ./abuild.py --release-lock -d <build-dir>
@@ -206,7 +206,7 @@ ctest --test-dir <build-dir> -R "client_transport_contract_test|server_transport
 - [x] `DEMO-S2`: deterministic runtime interaction loop (connect/join/ping-pong/leave/disconnect).
 - [x] `DEMO-S3`: fixture-backed deterministic smoke integration under `demo/`.
 - [x] `DEMO-S4` bootstrap scaffold: in-tree package-based consumer skeleton under `examples/demo-sdk-consumer/`.
-- [ ] `DEMO-S4` full gate: scripted installed-SDK consumer smoke + validation evidence.
+- [x] `DEMO-S4` full gate: scripted installed-SDK consumer smoke + validation evidence.
 
 ### DEMO-S5: Test Strategy Convergence
 - Add trace-first scenario harness and map overlap with existing integration tests.
@@ -284,6 +284,8 @@ cd m-karma
 - `2026-02-22`: `DEMO-S3` landed private demo wire protocol (`src/demo/net/protocol.*`), deterministic protocol contract test (`demo_protocol_contract_test`), fixture overlay (`demo/worlds/demo-runtime-smoke/config.json`), and process smoke gate script (`scripts/test-demo-client-server-smoke.sh`).
 - `2026-02-22`: required validation packet passed in `build-demo`: `./abuild.py -c`, `./scripts/test-server-net.sh build-demo`, regex `ctest` including `demo_.*`, and positive/negative smoke cases.
 - `2026-02-22`: `DEMO-S4` bootstrap scaffold landed under `examples/demo-sdk-consumer/` with package-based `find_package(KarmaSDK CONFIG REQUIRED)` consumer targets and `--help` runner entry points.
+- `2026-02-22`: `DEMO-S4` full gate landed via `scripts/test-sdk-demo-consumer.sh <build-dir> <sdk-prefix>` with deterministic SDK install (`abuild`), consumer configure/build in `build-demo/demo-sdk-consumer`, explicit `demo_sdk_client --help` + `demo_sdk_server --help` smoke, and Linux runtime audit chaining through `scripts/test-sdk-runtime-linux.sh`.
+- `2026-02-22`: full DEMO validation packet passed after S4 completion: `./abuild.py -c -d build-demo`, `./scripts/test-demo-client-server-smoke.sh build-demo`, `./scripts/test-sdk-demo-consumer.sh build-demo out/karma-sdk`, `ctest --test-dir build-demo -R "demo_protocol_contract_test" --output-on-failure`, and `m-overseer` project lint.
 
 ## DEMO-S1 Handoff Notes
 - Slice owner: `specialist-demo-s1`.
@@ -306,13 +308,16 @@ cd m-karma
 - Smoke evidence is now scriptable and deterministic via `scripts/test-demo-client-server-smoke.sh` using fixture overlay `demo/worlds/demo-runtime-smoke/config.json`.
 - Boundary compliance maintained: demo code remains private to demo targets; no additions to SDK library source sets or public headers.
 
-## DEMO-S4 Bootstrap Notes
+## DEMO-S4 Handoff Notes
 - Added minimal in-tree package-based consumer skeleton:
   - `examples/demo-sdk-consumer/CMakeLists.txt`
   - `examples/demo-sdk-consumer/src/client_help_main.cpp`
   - `examples/demo-sdk-consumer/src/server_help_main.cpp`
   - `examples/demo-sdk-consumer/README.md`
-- Remaining for full `DEMO-S4`: add scripted install+configure+build+`--help` consumer smoke gate and capture validation evidence.
+- Added full scripted gate:
+  - `scripts/test-sdk-demo-consumer.sh <build-dir> <sdk-prefix>`
+  - validates inputs/artifacts, performs `abuild` SDK install, configures/builds consumer with repo-local dependency resolution (`build-demo/vcpkg_installed/<triplet>`), runs `--help` smoke, and executes Linux runtime dependency audit.
+- `DEMO-S4` acceptance achieved: installed-SDK consumer configure/build/`--help` now passes deterministically on this host.
 
 ## Open Questions
 - Should `client` default to full graphics runtime, `--net-smoke`, or auto-fallback based on environment?
@@ -324,6 +329,6 @@ cd m-karma
 - [x] Runtime targets (`client`, `server`) build in `m-karma`.
 - [x] Minimal end-to-end interaction scenario passes locally.
 - [x] Data/config layering behavior verified through bootstrap path.
-- [x] SDK consumer in-tree bootstrap path implemented.
+- [x] SDK consumer in-tree full gate implemented and passing.
 - [ ] Test overlap keep/retire decisions documented.
 - [ ] CI gate plan updated with clear required-vs-optional classification.
