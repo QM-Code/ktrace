@@ -1,9 +1,9 @@
 # Cleanup S5 (`CLN-S5`): Physics Parity Suite Decomposition
 
 ## Project Snapshot
-- Current owner: `overseer`
-- Status: `in progress (split scaffold landed; `common.cpp` still monolithic)`
-- Immediate next task: move one large check family out of `src/physics/tests/parity/common.cpp` into dedicated domain implementation files with local helpers.
+- Current owner: `specialist-cln-s5`
+- Status: `in progress (bootstrap packet prepared; S5-1 domain migration pending)`
+- Immediate next task: execute `S5-1` by migrating the `RunEcsSyncSystemPolicyChecks` domain family from `src/physics/tests/parity/common.cpp` into `src/physics/tests/parity/ecs_sync_checks.cpp` with local helpers and no parity-behavior drift.
 - Validation gate: `cd m-karma && ctest --test-dir <karma-build-dir> -R "physics_backend_parity_.*" --output-on-failure`.
 
 ## Mission

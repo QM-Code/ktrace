@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-demo-s1`
-- Status: `in progress (DEMO-S2/S3 complete; DEMO-S4 full gate complete)`
-- Immediate next task: execute `DEMO-S5` test-strategy convergence by documenting keep/retire mapping between low-level contract tests and process-level demo scenario gates.
+- Status: `in progress (DEMO-S2/S3/S4/S5/S6/S7 complete)`
+- Immediate next task: monitor stability-run and CI retry telemetry; trigger `DEMO-S8` only if sustained transport flake persists after S7 hardening.
 - Validation gate:
   - `m-overseer`: `./agent/scripts/lint-projects.sh`
   - `m-karma`: `./abuild.py -c -d <build-dir>` and demo smoke command packet defined in this doc
@@ -161,6 +161,9 @@ ctest --test-dir <build-dir> -R "client_transport_contract_test|server_transport
 # sdk consumer smoke
 ./scripts/test-sdk-demo-consumer.sh <build-dir> <sdk-prefix>
 
+# trace-first matrix (DEMO-S5 primary gate)
+./scripts/test-demo-trace-matrix.sh <build-dir> <sdk-prefix>
+
 ./abuild.py --release-lock -d <build-dir>
 ```
 
@@ -207,16 +210,30 @@ ctest --test-dir <build-dir> -R "client_transport_contract_test|server_transport
 - [x] `DEMO-S3`: fixture-backed deterministic smoke integration under `demo/`.
 - [x] `DEMO-S4` bootstrap scaffold: in-tree package-based consumer skeleton under `examples/demo-sdk-consumer/`.
 - [x] `DEMO-S4` full gate: scripted installed-SDK consumer smoke + validation evidence.
+- [x] `DEMO-S5`: trace-first matrix harness + keep/retire decision mapping with no test removal.
+- [x] `DEMO-S6`: Linux CI-required wiring for trace matrix gate with bounded retry and diagnostics retention.
+- [x] `DEMO-S7`: timeout-race hardening + phase/timestamp diagnostics + repeat stability gate.
 
 ### DEMO-S5: Test Strategy Convergence
 - Add trace-first scenario harness and map overlap with existing integration tests.
 - Acceptance:
   - documented keep/retire decision list with no contract coverage regression.
 
-### DEMO-S6: Structural Consolidation
-- Complete migration to `src/demo/{client,server,net,shared}` shape.
+### DEMO-S6: CI Required Gate Integration
+- Wire trace-first demo matrix into required Linux SDK desktop CI validation.
 - Acceptance:
-  - directory structure, ownership boundaries, and docs stabilized.
+  - `sdk-desktop` Linux job runs `./scripts/test-demo-trace-matrix.sh build-sdk out/karma-sdk`,
+  - one bounded retry is applied for transient client transport timeout-race,
+  - first-attempt logs are retained and uploaded,
+  - matrix artifacts are uploaded from `build-sdk/demo-trace-matrix-artifacts/**`.
+
+### DEMO-S7: Post-S6 Reliability Hardening
+- Root-cause and harden sustained timeout-race reconnect flake path without reducing coverage.
+- Acceptance:
+  - deterministic synchronization replaces fixed restart timing in timeout-race test path,
+  - contract failures include explicit phase/timestamp diagnostics,
+  - repeatable stability script (`scripts/test-demo-transport-stability.sh`) runs contract set multiple times with fail-fast matrix summary,
+  - DEMO-S6 trace-matrix behavior remains intact.
 
 ## Owned Paths
 - `m-overseer/agent/projects/demo.md`
@@ -226,6 +243,8 @@ ctest --test-dir <build-dir> -R "client_transport_contract_test|server_transport
 - `m-karma/scripts/test-demo-client-server-smoke.sh` (new)
 - `m-karma/examples/demo-sdk-consumer/*` (new)
 - `m-karma/scripts/test-sdk-demo-consumer.sh` (new)
+- `m-karma/scripts/test-demo-trace-matrix.sh` (new)
+- `m-karma/scripts/test-demo-transport-stability.sh` (new)
 
 ## Interface Boundaries
 - Inputs consumed:
@@ -286,6 +305,15 @@ cd m-karma
 - `2026-02-22`: `DEMO-S4` bootstrap scaffold landed under `examples/demo-sdk-consumer/` with package-based `find_package(KarmaSDK CONFIG REQUIRED)` consumer targets and `--help` runner entry points.
 - `2026-02-22`: `DEMO-S4` full gate landed via `scripts/test-sdk-demo-consumer.sh <build-dir> <sdk-prefix>` with deterministic SDK install (`abuild`), consumer configure/build in `build-demo/demo-sdk-consumer`, explicit `demo_sdk_client --help` + `demo_sdk_server --help` smoke, and Linux runtime audit chaining through `scripts/test-sdk-runtime-linux.sh`.
 - `2026-02-22`: full DEMO validation packet passed after S4 completion: `./abuild.py -c -d build-demo`, `./scripts/test-demo-client-server-smoke.sh build-demo`, `./scripts/test-sdk-demo-consumer.sh build-demo out/karma-sdk`, `ctest --test-dir build-demo -R "demo_protocol_contract_test" --output-on-failure`, and `m-overseer` project lint.
+- `2026-02-22`: `DEMO-S5` landed `scripts/test-demo-trace-matrix.sh <build-dir> <sdk-prefix>` to orchestrate smoke + SDK consumer gate + transport/protocol contract tests and print deterministic pass/fail matrix summary lines per gate plus overall status.
+- `2026-02-22`: `DEMO-S5` added optional artifact retention to `scripts/test-demo-client-server-smoke.sh` (`--keep-artifacts`, `--artifacts-dir`) for trace-first evidence while preserving default behavior.
+- `2026-02-22`: `DEMO-S5` keep/retire strategy documented as retain-now with candidate-only retirements and explicit preconditions; no test/gate removals performed.
+- `2026-02-22`: `DEMO-S6` wired Linux `sdk-desktop` CI in `.github/workflows/core-test-suite.yml` to run `./scripts/test-demo-trace-matrix.sh build-sdk out/karma-sdk` after existing SDK packaging/consumer/runtime gates, preserving non-Linux behavior.
+- `2026-02-22`: `DEMO-S6` added bounded retry policy for Linux CI demo matrix step (maximum one retry) with transparent diagnostics: `ci-logs/demo-trace-matrix-attempt1.log`, `ci-logs/demo-trace-matrix-attempt2.log`, `ci-logs/demo-trace-matrix-summary.log`, and preserved first-attempt artifacts under `ci-logs/demo-trace-matrix-attempt1-artifacts/` when retry is triggered.
+- `2026-02-22`: `DEMO-S6` extended diagnostics upload paths to include `build-sdk/demo-trace-matrix-artifacts/**` so final matrix artifacts are retained in CI artifact uploads.
+- `2026-02-22`: `DEMO-S7` root-cause identified in `client_transport_contract_test`: fixed 80ms server-restart timing could predate deterministic client-side drop detection, causing reconnect readiness gating to miss `Connected` transitions under timeout-race stress.
+- `2026-02-22`: `DEMO-S7` hardened timeout-race phase by replacing fixed restart sleep with bounded drop-detection synchronization (wait for deterministic client send-failure signal before restart), preserving reconnect/terminal assertions and coverage.
+- `2026-02-22`: `DEMO-S7` added explicit phase/timestamp markers in `client_transport_contract_test` and introduced repeat stability gate `scripts/test-demo-transport-stability.sh <build-dir> [runs]` (default 10, fail-fast, per-run matrix + final summary).
 
 ## DEMO-S1 Handoff Notes
 - Slice owner: `specialist-demo-s1`.
@@ -319,6 +347,61 @@ cd m-karma
   - validates inputs/artifacts, performs `abuild` SDK install, configures/builds consumer with repo-local dependency resolution (`build-demo/vcpkg_installed/<triplet>`), runs `--help` smoke, and executes Linux runtime dependency audit.
 - `DEMO-S4` acceptance achieved: installed-SDK consumer configure/build/`--help` now passes deterministically on this host.
 
+## DEMO-S5 Handoff Notes
+- Added trace-first orchestrator:
+  - `scripts/test-demo-trace-matrix.sh <build-dir> <sdk-prefix>`
+  - Gate order: `test-demo-client-server-smoke.sh`, `test-sdk-demo-consumer.sh`, then contract regex `ctest` for `client_transport_contract_test|server_transport_contract_test|demo_protocol_contract_test`.
+  - Emits per-gate summary lines and final overall PASS/FAIL.
+- Extended smoke gate with backward-compatible trace artifact options:
+  - `--keep-artifacts`
+  - `--artifacts-dir <dir>`
+  - default behavior unchanged (temporary artifacts auto-cleaned).
+- Boundary compliance preserved:
+  - no demo/runtime source movement into `karma_sdk_core` or `karma_sdk_client`,
+  - no public SDK surface expansion,
+  - no `m-bz3` runtime/domain/protocol imports.
+
+## DEMO-S5 Keep/Retire Mapping (Current)
+Retention policy now:
+- All existing demo/runtime gates and contract tests remain active.
+- Candidate retirements below are planning-only; no removals are authorized in this slice.
+
+| Gate/Test | Behavior Covered | Decision | Rationale | Retire Preconditions |
+|---|---|---|---|---|
+| `scripts/test-demo-trace-matrix.sh` | Trace-first end-to-end orchestration across smoke + SDK consumer + transport/protocol contracts | `Keep (primary wrapper)` | Gives one deterministic top-level pass/fail matrix and artifact path for triage | `N/A` |
+| `scripts/test-demo-client-server-smoke.sh` | Runtime bind/connect/pre-auth+join/roundtrip/leave/disconnect including reject path traces | `Keep` | Primary process-level runtime behavior evidence for DEMO-S2/S3 | Replace only after an equivalent trace-asserted scenario gate proves parity for positive+negative flows across hosts |
+| `scripts/test-sdk-demo-consumer.sh` | Installed-SDK consumer configure/build/help + Linux runtime dependency audit | `Keep` | Protects DEMO-S4 package-based consumer contract and transitive dependency resolution | Replace only with an equivalent package-based gate that preserves abuild install and runtime audit semantics |
+| `client_transport_contract_test` | Deterministic low-level client transport contract behavior | `Keep` | Guards narrow transport invariants that process smoke does not exhaustively isolate | Candidate retire only after equivalent low-level assertions are proven in replacement harness with stable multi-run history |
+| `server_transport_contract_test` | Deterministic low-level server transport contract behavior | `Keep` | Isolates server transport invariants independent of broader runtime flow | Candidate retire only after replacement coverage proves parity for error and lifecycle edges with no regression |
+| `demo_protocol_contract_test` | Private demo protocol encode/decode validation and rejection semantics | `Keep` | Guarantees wire-format correctness and robust parser validation | Candidate retire only if protocol layer is removed/replaced and equivalent deterministic parser validation exists |
+| Standalone manual packet invocation of smoke/SDK gates outside matrix | Duplicate command-level invocation coverage | `Candidate retire (packet duplication only)` | Matrix already invokes both gates deterministically with summary output | Retire duplicates only after CI and runbook adopt matrix gate as canonical required path |
+
+## DEMO-S6 Handoff Notes
+- CI wiring added in `m-karma/.github/workflows/core-test-suite.yml` (`sdk-desktop` job):
+  - new Linux-only step `Demo trace matrix gate (Linux)` runs:
+    - `./scripts/test-demo-trace-matrix.sh build-sdk out/karma-sdk`
+  - runs after existing SDK runtime packaging gate and before diagnostics upload.
+- Retry policy (bounded/transparent):
+  - if attempt 1 fails, preserve first-attempt matrix artifacts into `ci-logs/demo-trace-matrix-attempt1-artifacts/`,
+  - rerun exactly once (attempt 2),
+  - fail job if attempt 2 also fails.
+- Diagnostics retention:
+  - logs: `ci-logs/demo-trace-matrix-attempt1.log`, `ci-logs/demo-trace-matrix-attempt2.log`, `ci-logs/demo-trace-matrix-summary.log`,
+  - matrix artifacts: `build-sdk/demo-trace-matrix-artifacts/**` uploaded by existing diagnostics artifact step.
+
+## DEMO-S7 Handoff Notes
+- Reliability hardening in `src/network/tests/contracts/client_transport_contract_test.cpp`:
+  - replaced fixed `80ms` restart delay with deterministic client-drop detection phase before server restart,
+  - preserved strict reconnect/delivery/terminal assertions (no skip/xfail/weakened checks),
+  - improved diagnostics with explicit `phase=` markers and monotonic timestamp tags (`[t+...ms]`) for each phase and failure.
+- Added repeat stability gate script:
+  - `scripts/test-demo-transport-stability.sh <build-dir> [runs]`
+  - default runs: `10`,
+  - fail-fast on first failing run,
+  - prints per-run matrix lines and final overall summary.
+- Trace-matrix policy intact:
+  - no behavior changes to `scripts/test-demo-trace-matrix.sh` orchestration semantics.
+
 ## Open Questions
 - Should `client` default to full graphics runtime, `--net-smoke`, or auto-fallback based on environment?
 - Should demo runtime binaries be installed with SDK artifacts or remain build-tree-only reference apps?
@@ -330,5 +413,6 @@ cd m-karma
 - [x] Minimal end-to-end interaction scenario passes locally.
 - [x] Data/config layering behavior verified through bootstrap path.
 - [x] SDK consumer in-tree full gate implemented and passing.
-- [ ] Test overlap keep/retire decisions documented.
-- [ ] CI gate plan updated with clear required-vs-optional classification.
+- [x] Test overlap keep/retire decisions documented (retain-now policy; no removals).
+- [x] CI gate plan updated with Linux-required trace-first matrix wiring and retry/diagnostics policy.
+- [x] Post-S6 transport timeout-race hardening validated with repeated stability gate runs.
