@@ -1,48 +1,51 @@
 # Testing Policy
 
-Purpose:
-- provide one concise workflow for community webserver + auth validation using demo fixtures.
+This document mostly contains an overview of where testing data lies and how to use it.
+Individual sessions will use thier own specific test criteria.
 
-Use this runbook when touching:
-- community auth handshake,
-- webserver API/router/auth logic,
-- client/server community integration behavior,
-- demo community/user/world fixture flows.
+## Tested branches
 
-##
-Do not try to use "real-user" home config directoies (e.g. ~/.config/xyz).
-Always use "virtual users" under demo/users/*
+- Only two branches get built and tested, m-karma and m-bz3.
+- These will be referred to generically as <branch> throught this document.
 
-## Demo Fixture Policy
-Reusable local test/demo state must live under tracked `demo/` roots:
-- `demo/communities/*`
-- `demo/users/*`
-- `demo/worlds/*`
+## Constratints
 
+- Never attempt to read data outside the project root.
+- Never attempt to use system home config directoies (e.g. ~/.config/xyz) for data.
 
-## Fixture Roots (Canonical)
-- communities: `demo/communities/*`
-- users: `demo/users/*`
-- worlds: `demo/worlds/*`
+## Testing Data
 
-Baseline triad:
-- `demo/communities/r55man`
-- `demo/worlds/r55man-1/config.json`
-- `demo/users/r55man/.config/bz3/config.json`
+- Always use "virtual users" under <root>/<branch>/demo/users/* 
 
-## Precondition
-From target repo root:
-- `./abuild.py -c -d <build-dir>`
+- Testing data is stored in the the <branch>/demo/ directory.
+- Each of m-karma and m-bz3 have their own demo directories.
+- Demo directories may be used to create reusable sample data.
+- The following demo directories are defined:
+  - `<branch>/demo/communities/*`
+  - `<branch>/demo/users/*`
+  - `<branch>/demo/worlds/*`
+- Each subdirectory of `demo` will have its own set of subdirectories, each of which represent one community, user, or world.
 
-## Canonical End-to-End Auth Flow (3 terminals)
+## Canonical End-to-End Testing
+
+- This should never need to be run during normal sessions
+- It is here as a sort of 'proof that the basics work' kind of thing, since it touches most subsystem.
+- It is not a guarantee that everything is actually working correctly, as game logic and rendering could be a mess and it would not be detected by this testing.
+- Nevertheless, the option to perform a full clean test build and perform the following "end-to-end test" should be presented to the user during the inital greeting prompt.
+
+### End-to-End Testing Procedure:
+
 1. Community webserver:
-- `./src/webserver/bin/start.py demo/communities/r55man`
+- m-karma: `./src/webserver/bin/start.py demo/communities/<community>`
+- m-bz3: `../m-karma/src/webserver/bin/start.py demo/communities/<community>`
 
 2. Game server:
-- `./<build-dir>/bz3-server --server-config demo/worlds/r55man-1/config.json --trace net.server,engine.server`
+- m-karma: `./<build-dir>/server --server-config demo/worlds/<world>/config.json --trace net.server,engine.server`
+- m-bz3: `./<build-dir>/bz3-server --server-config demo/worlds/<world>/config.json --trace net.server,engine.server`
 
 3. Client connect:
-- `timeout 15s ./<build-dir>/bz3 --user-config demo/users/r55man/.config/bz3/config.json --server 192.168.1.6:11899 --trace net.client,engine.app`
+- m-karma: `timeout 15s ./<build-dir>/client --user-config demo/users/<user>/.config/bz3/config.json --server <host>:<port> --trace net.client,engine.app`
+- m-bz3: `timeout 15s ./<build-dir>/bz3 --user-config demo/users/<user>/.config/bz3/config.json --server <host>:<port> --trace net.client,engine.app`
 
 Expected evidence:
 - server heartbeat trace lines,
@@ -63,11 +66,3 @@ Expected evidence:
 - Credential key selection depends on exact `--server` endpoint key in user config.
 - Rejected auth often indicates wrong credential form or endpoint mismatch.
 
-## Negative Test (Optional)
-Force wrong credentials and verify reject path + evidence logging.
-
-## Handoff Evidence Minimum
-- commands used,
-- pass/fail result per command,
-- relevant trace/log snippets summarized,
-- failures + rerun outcomes.
