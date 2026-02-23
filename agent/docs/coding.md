@@ -44,6 +44,12 @@ The trace logging system allows you to use complex output logging with minimal r
   - ReadRequired*Config(<key>) makes it mandatory for a key to be specified in some config.json.
   - Missing keys cause fail on startup that alert the user that the key is missing.
   - No further error reporting code is required.
+- config.json standards:
+  - Use lowercase for paths and MixedCase for keys.
+  - Use nesting instead of long variable names.
+  - Examples:
+    - server.network.Port
+	- client.network.reconnect.MaxAttempts
 - Testing note:
   - Passing `--config '<key>:<value>'` allows command-line override of specific config keys
   - Command-line config options override config.json files.
