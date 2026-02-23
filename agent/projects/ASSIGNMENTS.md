@@ -3,7 +3,7 @@
 Use this board for active overseer-only delegation and orchestration tracking.
 
 Update rules:
-- One row per active project file under `projects/` (including subdirectories; exclude `ASSIGNMENTS.md`, `PROJECTS.md` and archived docs under `ARCHIVE/`).
+- One row per active project file under `projects/` (including subdirectories; exclude `ASSIGNMENTS.md`, `PROJECT.md` and archived docs under `ARCHIVE/`).
 - Update `Owner`, `Status`, `Next Task`, and `Last Update` in every handoff.
 - Keep each `Next Task` as one concrete action.
 
@@ -18,7 +18,7 @@ Update rules:
 | `fix-gameplay.md` | `overseer` | `in progress (new post-GP stabilization track)` | Dispatch `FG-S1`: reproduce stutter/shot-visibility/HUD issues with traces and bounded root-cause map. | `2026-02-22` |
 | `client-refactor.md` | `unassigned` | `queued (specialist-ready)` | Dispatch `CR-A1` to produce concrete move map removing `src/client/game/*` in behavior-neutral slices. | `2026-02-23` |
 | `demo-enhance.md` | `specialist-demo-s1` | `in progress (ENH-S0 extraction/archive complete; enhancement slices pending)` | Execute `ENH-S1`: define and land first additive `--test-*` mode contract without changing default client behavior yet. | `2026-02-22` |
-| `cleanup.md` | `overseer` | `in progress (cleanup parent superproject active across runtime/renderer/naming lanes)` | Keep `cleanup/server-actor-session-runtime.md` active while sequencing remaining cleanup child tracks. | `2026-02-23` |
+| `cleanup.md` | `overseer` | `in progress (cleanup parent superproject active across runtime/renderer lanes)` | Keep `cleanup/server-actor-session-runtime.md` active while sequencing remaining cleanup child tracks. | `2026-02-23` |
 | `cleanup/server-actor-session-runtime.md` | `overseer` | `in progress (highest-value active lane)` | Remove non-parity actor tick drift/health decay and add session->actor O(1) indexing with server runtime contract validation. | `2026-02-22` |
 | `cleanup/renderer-backend-core-decomposition.md` | `unassigned` | `queued` | Propose first bounded BGFX/Diligent core split preserving backend parity contracts. | `2026-02-22` |
-| `cleanup/naming-directory-rationalization.md` | `overseer` | `in progress (major ownership cleanup landed; follow-ons pending)` | Continue behavior-neutral naming/path cleanup using small, validated rename slices. | `2026-02-22` |
+| `hardcoded-fallback-audit-2026-02-23.md` | `overseer` | `in progress (9 alias fallbacks migrated to canonical required keys)` | Execute full hardcoded-runtime-value sweep and migrate behavior constants to JSON contracts (track `kMaxClients` first). | `2026-02-23` |

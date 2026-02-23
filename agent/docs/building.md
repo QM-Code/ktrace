@@ -9,9 +9,8 @@
 - Always build from the branch/repo root.
 
 ## Toolchain Policy
-- These instructions apply to all repos/branches individually:
-- Each must have their own branch-level `./vcpkg`.
-- A missing/unbootstrapped local `./vcpkg` is a blocker
+- m-karma and m-bz3 each must have their own branch-level `./vcpkg`
+- A missing/unbootstrapped local `./vcpkg` in either m-karma or m-bz3 is a blocker
 - Do not improvise or attempt workarounds for vcpkg errors.
 - On bootstrap, if a repo exists but vcpkg has not been set up:
   - Inform the human operator that builds will not work until vcpkg is set up.
@@ -26,7 +25,7 @@
 ## Basics of abuild.py
 
 - abuild.py assigns agents their own build directories and handles all build configuration
-- abuild.py ensures ownership by having agents claim and lock directoires before usage
+- abuild.py ensures ownership by having agents claim and lock directories before usage
 - Basic usage:
   - Claiming and locking a build directory:
     - ./abuild.py --agent <agent-name> -d <build-dir> --claim-lock
@@ -58,7 +57,7 @@
 
 
 
-### Advancd SDK builds
+### Advanced SDK builds
 
 - static SDK contract: `./abuild.py -c -d <build-dir> --sdk-linkage static --install-sdk <prefix>`
 - mobile shared override (explicit-only): `./abuild.py -c -d <build-dir> --sdk-linkage shared --mobile-allow-shared`
@@ -71,8 +70,8 @@
   - audio: sdl3audio/miniaudio
   - renderer: bgfx/diligent
   - ui: imgui/rmlui
-- abuild.py allows you select which backends to build around.
-- You can also include mutliple backends in a single build, allowing for runtime backend selection.
+- abuild.py allows you to select which backends to build around.
+- You can also include multiple backends in a single build, allowing for runtime backend selection.
 - The default backend selection can be seen by running `./abuild.py --defaults`
 
 ### Enabling alternate/multiple backends
@@ -82,16 +81,14 @@
 - Only use `--backends` when making changes that affect multiple backends
 - Example usage:
   - Build using the diligent backend instead of the bgfx backend:
-    - ./abuild -c -d <build-dir> -b diligent
+    - ./abuild.py -c -d <build-dir> -b diligent
   - Build allowing bgfx/diligent to be selected at runtime
-    - ./abuild -c -d <build-dir> -b bgfx,diligent
+    - ./abuild.py -c -d <build-dir> -b bgfx,diligent
   - Build overriding ui backend to use imgui and allowing bgfx/diligent to be selected at runtime
-    - ./abuild -c -d <build-dir> -b imgui,bgfx,diligent
+    - ./abuild.py -c -d <build-dir> -b imgui,bgfx,diligent
 
 ### Backend bugs
 
 - Combined renderer mode (`-b bgfx,diligent`) is Linux shared-mode only.
 - Non-Linux targets and static SDK linkage must select one renderer backend.
-
-
 

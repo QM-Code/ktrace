@@ -4,42 +4,36 @@
 
 You are a coding specialist in a multi-repo project.
 
-You will be assigned a specific project by a project manager.
+## Identifiers
+
+You will be assigned to a specific project by a project manager and provided the following identifiers:
+
+- <agent> : your unique identification
+- <project> : the project you will be working on
+- <build-dir> : one or more build directories that you will be working with
 
 ## Notation
 
 - <root> : project root directory : /home/karmak/dev/bz3-rewrite/
-- <home> : overseer/specialist home directory : <root>/m-overseer/
+- <home> : overseer/specialist home directory : <root>/m-overseer/agent
 
-## Required reading
+## Required Reading
 
-- <home>/agent/docs/building.md
-- <home>/agent/docs/testing.md
-- <home>/agent/projects/ASSIGNMENTS.md
-- <home>/agent/projects/<project>.md (your assigned project)
-
-
-## Start-of-Slice Checklist
-1. Confirm assigned project, scope, and owned paths.
-2. Set build identity: `export ABUILD_AGENT_NAME=<agent-name>`.
-3. Claim assigned build slot(s): `./abuild.py --claim-lock -d <build-dir>`.
-4. Run default configure/build command for assigned dir:
-- `./abuild.py -c -d <build-dir>`
-5. For `m-bz3` consumer slices that depend on local `m-karma` SDK output, pass the SDK prefix explicitly:
-- `./abuild.py -c -d <build-dir> --karma-sdk ../m-karma/out/karma-sdk --ignore-lock`
-- If wrapper scripts are used and they re-run configure, set `KARMA_SDK_ROOT=../m-karma/out/karma-sdk` for those wrapper invocations.
+- <home>/docs/coding.md
+- <home>/docs/building.md
+- <home>/docs/testing.md
+- <home>/projects/ASSIGNMENTS.md
+- <home>/projects/<project>.md (your assigned project)
 
 ## Execution Rules
 - Use only assigned build dirs.
 - Use `abuild.py` for delegated build/test flows.
 - Keep changes inside project scope and owned paths.
 - Keep backend-specific details out of game-facing API surfaces.
-- Treat missing local `./vcpkg` as blocker and escalate.
 
 ## Validation Rules
-- Use the Validation Matrix section in `docs/specialists.md` to choose required commands by touch scope.
+- Use the Validation Matrix shown below to choose required commands by touch scope.
 - In parallel work, always pass explicit build-dir args to wrappers.
-- Ensure wrapper invocations inherit required environment (for example `KARMA_SDK_ROOT`) when the wrapper re-runs `./abuild.py`.
 
 ## Required Docs Updates Before Handoff
 - Update assigned project snapshot/status fields.
@@ -52,32 +46,13 @@ You will be assigned a specific project by a project manager.
 
 ## End-of-Session
 - Release lock at the end of your coding session:
-  - `./abuild.py --release-lock -d <build-dir>`
-
+  - `./abuild.py --agent <agent> --directory <build-dir> --release-lock`
 
 ## Specialist Validation Matrix
 
 ### Purpose:
 
 - define required validation per touch scope with minimal ambiguity.
-
-### Build Command Baseline
-
-Use delegated wrapper build command:
-- `./abuild.py -c -d <build-dir>`
-
-Add backend selectors only when required by scope:
-- renderer: `-b bgfx,diligent`
-- ui: `-b imgui,rmlui`
-- physics: `-b jolt,physx`
-
-SDK linkage selectors:
-- static contract: `--sdk-linkage static`
-- mobile shared override (explicit-only): `--sdk-linkage shared --mobile-allow-shared`
-
-Renderer policy:
-- Combined renderer mode (`bgfx,diligent`) is Linux shared-mode only.
-- Non-Linux targets and static SDK linkage must choose one renderer.
 
 ### Required Gates By Touch Scope
 

@@ -14,7 +14,7 @@ Coordinate cross-repo cleanup/refactor work across `m-karma/src` and `m-bz3/src`
 - `projects/ARCHIVE/cleanup-config-path-resolver-dedupe-retired-2026-02-22.md`
 - `projects/cleanup/renderer-backend-core-decomposition.md`
 - `projects/ARCHIVE/cleanup-test-harness-consolidation-retired-2026-02-23.md`
-- `projects/cleanup/naming-directory-rationalization.md`
+- `projects/ARCHIVE/cleanup-naming-directory-rationalization-retired-2026-02-23.md`
 - `../docs/building.md`
 - `../docs/testing.md`
 
@@ -24,12 +24,10 @@ Cleanup is cross-cutting and spans runtime behavior, build wiring, naming, tests
 ## Active Subproject Map
 - `cleanup/server-actor-session-runtime.md` (`CLN-S2`): actor/session runtime cleanup and indexing.
 - `cleanup/renderer-backend-core-decomposition.md` (`CLN-S6`): BGFX/Diligent core decomposition.
-- `cleanup/naming-directory-rationalization.md` (`CLN-S10`): naming/layout normalization.
 
 ## Parallelization Lanes
 1. `Server Runtime Lane`: `cleanup/server-actor-session-runtime.md`
 2. `Renderer Lane`: `cleanup/renderer-backend-core-decomposition.md`
-3. `Naming/Structure Lane`: `cleanup/naming-directory-rationalization.md`
 
 ## Interface Boundaries
 - Inputs consumed:
@@ -105,9 +103,10 @@ cd m-overseer
 - `2026-02-23`: `CLN-S9` parity follow-on landed in `m-karma` (`src/tests/support/test_harness.hpp` + targeted suite migrations), validated with targeted contract tests (`5/5`), leaving only closeout decisions (client transport diagnostics helper exception + m-bz3 loopback target-gating policy).
 - `2026-02-23`: `CLN-S9` closeout decisions documented (loopback gating rationale in `m-bz3/cmake/targets/tests.cmake`; client transport diagnostics-helper exception in `m-karma/src/network/tests/contracts/client_transport_contract_test.cpp`); lane is now closeout-ready pending archival call.
 - `2026-02-23`: `CLN-S9` closeout completed by operator decision not to export `network_test_support` through Karma SDK targets; subproject archived as `projects/ARCHIVE/cleanup-test-harness-consolidation-retired-2026-02-23.md`.
+- `2026-02-23`: `CLN-S10` closeout completed by operator direction; subproject archived as `projects/ARCHIVE/cleanup-naming-directory-rationalization-retired-2026-02-23.md` and removed from active assignment tracking.
 
 ## Open Questions
-- Which two lanes should be executed concurrently after `CLN-S2` to maximize throughput without merge contention?
+- Should `CLN-S6` be activated in parallel with `CLN-S2` now that `CLN-S10` is closed, or remain queued until `CLN-S2` clears?
 
 ## Handoff Checklist
 - [ ] Child docs stay aligned with parent sequencing.

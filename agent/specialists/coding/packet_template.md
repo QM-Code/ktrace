@@ -16,7 +16,7 @@ Placeholder legend:
 - `<track-label>`: strategic track label used by your project.
 
 Bootstrap cadence policy:
-- Use a `bootstrap packet` when any of these are true:
+
   - first packet for a specialist in the current session,
   - ownership moved to a different specialist,
   - human explicitly says `refresh bootstrap`,

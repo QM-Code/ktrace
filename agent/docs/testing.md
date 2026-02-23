@@ -1,23 +1,23 @@
 # Testing Policy
 
 This document mostly contains an overview of where testing data lies and how to use it.
-Individual sessions will use thier own specific test criteria.
+Individual sessions will use their own specific test criteria.
 
 ## Tested branches
 
 - Only two branches get built and tested, m-karma and m-bz3.
-- These will be referred to generically as <branch> throught this document.
+- These will be referred to generically as <branch> throughout this document.
 
-## Constratints
+## Constraints
 
 - Never attempt to read data outside the project root.
-- Never attempt to use system home config directoies (e.g. ~/.config/xyz) for data.
+- Never attempt to use system home config directories (e.g. ~/.config/xyz) for data.
 
 ## Testing Data
 
 - Always use "virtual users" under <root>/<branch>/demo/users/* 
 
-- Testing data is stored in the the <branch>/demo/ directory.
+- Testing data is stored in the <branch>/demo/ directory.
 - Each of m-karma and m-bz3 have their own demo directories.
 - Demo directories may be used to create reusable sample data.
 - The following demo directories are defined:
@@ -29,9 +29,9 @@ Individual sessions will use thier own specific test criteria.
 ## Canonical End-to-End Testing
 
 - This should never need to be run during normal sessions
-- It is here as a sort of 'proof that the basics work' kind of thing, since it touches most subsystem.
+- It is here as a sort of 'proof that the basics work' kind of thing, since it touches most subsystems.
 - It is not a guarantee that everything is actually working correctly, as game logic and rendering could be a mess and it would not be detected by this testing.
-- Nevertheless, the option to perform a full clean test build and perform the following "end-to-end test" should be presented to the user during the inital greeting prompt.
+- Nevertheless, the option to perform a full clean test build and perform the following "end-to-end test" should be presented to the user during the initial greeting prompt.
 
 ### End-to-End Testing Procedure:
 
@@ -65,4 +65,3 @@ Expected evidence:
 - Heartbeat endpoint may be absent from API log depending on logging config; verify via server trace + DB timestamps.
 - Credential key selection depends on exact `--server` endpoint key in user config.
 - Rejected auth often indicates wrong credential form or endpoint mismatch.
-

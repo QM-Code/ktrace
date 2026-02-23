@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `overseer`
-- Status: `in progress (major source/build ownership cleanup landed; follow-on naming still pending)`
-- Immediate next task: continue cleanup of remaining legacy naming tokens and file naming drift now that `src/game`/`src/engine` build wiring ownership has been removed.
+- Status: `done (closeout completed by operator decision; no additional naming slices queued)`
+- Immediate next task: none; reopen only if new cross-repo naming/path debt is explicitly prioritized.
 - Validation gate: `cd m-bz3 && ./abuild.py -c -d <bz3-build-dir>` and `cd m-karma && ./abuild.py -c -d <karma-build-dir>`.
 
 ## Mission
@@ -23,7 +23,7 @@ Naming/layout normalization is cross-cutting and often mechanical; isolating it 
 - `m-bz3/cmake/*`
 - `m-bz3/src/client/*` (naming/layout only)
 - `m-karma/cmake/*`
-- `m-overseer/agent/projects/cleanup/naming-directory-rationalization.md`
+- `m-overseer/agent/projects/ARCHIVE/cleanup-naming-directory-rationalization-retired-2026-02-23.md`
 
 ## Interface Boundaries
 - Inputs consumed:
@@ -60,12 +60,12 @@ cd m-bz3
 ## Current Status
 - `2026-02-21`: major ownership normalization landed (`src/game` and `src/engine` CMake ownership removed).
 - `2026-02-22`: follow-on naming cleanup tracked as dedicated child lane under superproject.
+- `2026-02-23`: closeout completed by operator direction; no additional naming/path normalization slices scheduled in cleanup scope.
 
 ## Open Questions
-- With `CLN-S8` archived, should any remaining backend naming canonicalization (`sdl3audio` style) be tracked as `CLN-S10` naming debt?
-- Which remaining path tokens should be treated as archival-only and left unchanged?
+- none at closeout.
 
 ## Handoff Checklist
-- [ ] Remaining high-friction naming drift identified and prioritized.
-- [ ] Renames applied in behavior-neutral slices.
-- [ ] Build wiring and scripts updated for each rename wave.
+- [x] Remaining high-friction naming drift identified and prioritized.
+- [x] Renames applied in behavior-neutral slices.
+- [x] Build wiring and scripts updated for each rename wave.
