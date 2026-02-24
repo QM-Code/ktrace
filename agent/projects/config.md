@@ -6,6 +6,10 @@
 - Immediate next task: produce a callsite inventory for `Defaults/User/Merged` and `ReplaceUserConfig` usage, then draft a compatibility-preserving API sketch for named layers/views.
 - Validation gate: `cd m-overseer && ./agent/scripts/lint-projects.sh`
 
+## Files to read in preparation:
+
+- m-karma/src/common/config/*
+
 ## Project Overview
 This project exists because the current public config API still thinks in a fixed three-layer world: defaults, user, and merged. That shape was useful for a long time, but the ongoing JSON/config refactor is pushing us toward more explicit, composable configuration graphs.
 
@@ -132,3 +136,47 @@ The private section in `store.hpp` has not been fully classified yet. This remai
 ## Validation Notes
 - `lint-projects.sh` must pass for documentation tracking.
 - Every migration slice should include trace evidence showing same effective runtime values before/after for a chosen test path.
+
+## Migration Notes (Working, Preserve Ideas)
+This section is intentionally informal. We are writing down ideas as we go so we do not lose context if we go down a rabbit hole.
+
+1. Lock a namespace contract
+- Decide canonical names, e.g. `client-core`, `client-user`, `client-cli`, `client-effective`, and server equivalents.
+- Decide which names are writable (`Set/Erase`) vs read-only merged views.
+
+2. Wire initialization flows to named entries
+- In bootstrap/runtime setup, replace implicit legacy layering with explicit `Load/Add/Merge` calls.
+- Set backing files and asset roots where needed (`SetBackingFile`, optional `SetAssetRoot`).
+
+3. Migrate callsites
+- Current direct legacy usage in `m-karma` + `m-bz3` is roughly:
+  - `Get("...")`: 15
+  - `Set("...")`: 53
+  - `Erase("...")`: 8
+  - `AddRuntimeLayer`: 4
+  - `LayerByLabel`: 2
+  - `Merged/Defaults/User/ReplaceUserConfig/SaveUser`: 8 combined
+- `Set/Erase` callsites need per-callsite target name decisions (`Set(name, path, ...)`), so this is the main effort.
+- `Get` migration also changes usage style because new `Get(name, path)` returns `optional<Value>` copy.
+
+## Journal
+### Entry #1 (`2026-02-24`)
+What has already been implemented:
+
+- New named API declarations landed in both internal and SDK headers:
+  - `Add`, `Load`, `Merge`, `Remove`
+  - `Get(name, path)` copy-return API (`""` or `"."` means root)
+  - `Set(name, path, value)` / `Erase(name, path)`
+  - `SetAssetRoot`, `SetBackingFile`, `RemoveBackingFile`, `Path`, `Save`
+- Backing implementation landed in `m-karma/src/common/config/store.cpp`:
+  - Named config/view state maps
+  - Write/mutate/read logic for named entries
+  - Backing-file persistence support and asset-root precedence (`SetAssetRoot` overrides backing-file parent)
+  - Legacy bridge behavior retained so old APIs still compile and work during transition
+- New focused test added:
+  - `src/common/tests/config_store_named_api_test.cpp`
+  - Wired in `cmake/sdk/tests.cmake`
+- Validation already run:
+  - `./abuild.py -a mike -c -d build-test/ -k out/karma-sdk` passed
+  - `./build-test/config_store_named_api_test` passed
+  - `ctest --test-dir build-test -R config_store_named_api_test --output-on-failure` passed

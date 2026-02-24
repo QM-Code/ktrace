@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-client-refactor-a1`
-- Status: `in progress (CR-A2.1 landed with direct path convergence and no compatibility artifacts; CR-A2.2 pending)`
-- Immediate next task: execute `CR-A2.2` (move runtime tank orchestration units + runtime query-context files into `src/client/runtime/*` with direct include/CMake convergence and no compatibility layer) in `m-bz3` using build dir `build-client-refactor-a1`.
+- Status: `in progress (CR-A3.1 landed with direct path convergence and no compatibility artifacts; CR-A3.2 pending)`
+- Immediate next task: execute `CR-A3.2` (move collision mechanics units to `src/client/domain/*` with direct include/CMake convergence and no compatibility layer) in `m-bz3` using build dir `build-client-refactor-a1`.
 - Validation gate:
   - `m-overseer`: `./agent/scripts/lint-projects.sh`
   - `m-bz3`: `./abuild.py --agent specialist-client-refactor-a1 --claim-lock -d build-client-refactor-a1 && ./abuild.py --agent specialist-client-refactor-a1 -c -d build-client-refactor-a1 --karma-sdk ../m-karma/out/karma-sdk && ./abuild.py --agent specialist-client-refactor-a1 --release-lock -d build-client-refactor-a1`
@@ -205,10 +205,35 @@ This is a broad structural migration across CMake paths, include paths, tests, a
   - no pre-existing forwarding headers/shims/dual-path include logic found for these files
   - no compatibility shims/forwarders introduced
   - no bridge files retained under `src/client/game/` for moved files
+- `CR-A2.2` completed with direct convergence (no compatibility layer):
+  - moved `src/client/game/tank_entity.cpp` -> `src/client/runtime/tank_entity.cpp`
+  - moved `src/client/game/tank_motion.cpp` -> `src/client/runtime/tank_motion.cpp`
+  - moved `src/client/game/tank_collision.cpp` -> `src/client/runtime/tank_collision.cpp`
+  - moved `src/client/game/tank_camera.cpp` -> `src/client/runtime/tank_camera.cpp`
+  - moved `src/client/game/tank_collision_runtime_query_context.hpp` -> `src/client/runtime/tank_collision_runtime_query_context.hpp`
+  - moved `src/client/game/tank_collision_runtime_query_context.cpp` -> `src/client/runtime/tank_collision_runtime_query_context.cpp`
+  - updated all `#include "client/game/tank_collision_runtime_query_context.hpp"` callsites to `#include "client/runtime/tank_collision_runtime_query_context.hpp"`
+  - updated `cmake/targets/sources.cmake` to source the five moved runtime `.cpp` files from `src/client/runtime/*` and remove old `src/client/game/*` paths for these units
+- Compatibility-artifact audit result for `CR-A2.2`:
+  - no pre-existing forwarding headers/shims/dual-path include logic found for the six moved units
+  - no compatibility shims/forwarders introduced
+  - no bridge files retained under `src/client/game/` for moved units
 
 ### `CR-A3` Domain/Mechanics Relocation
 - Execute slices `CR-A3.1` -> `CR-A3.3` after `CR-A2` builds green.
 - Keep `bz3::client::game::*` namespaces unchanged in this phase.
+
+#### `CR-A3` Progress (`2026-02-24`)
+- `CR-A3.1` completed with direct convergence (no compatibility layer):
+  - moved `src/client/game/math.hpp` -> `src/client/domain/math.hpp`
+  - moved `src/client/game/score_state.hpp` -> `src/client/domain/score_state.hpp`
+  - moved `src/client/game/shot_spawn.hpp` -> `src/client/domain/shot_spawn.hpp`
+  - updated all include callsites from `client/game/{math,score_state,shot_spawn}.hpp` to `client/domain/{math,score_state,shot_spawn}.hpp` (runtime + tests)
+  - no CMake source-list changes required (header-only relocation)
+- Compatibility-artifact audit result for `CR-A3.1`:
+  - no pre-existing forwarding headers/shims/dual-path include logic found for these three headers
+  - no compatibility shims/forwarders introduced
+  - no bridge files retained under `src/client/game/`
 
 ### `CR-A4` CMake/Test/Doc Convergence
 - Execute slices `CR-A4.1` -> `CR-A4.3` after `CR-A3` builds green.
@@ -257,6 +282,22 @@ cd m-bz3
   - old-path file checks for moved files: pass
   - `#include "client/game/game.hpp"` scan in `src`: no matches
   - build lock released successfully
+- `2026-02-24`: `CR-A2.2` landed with direct runtime tank-orchestration/query-context relocation and no compatibility artifacts.
+- `2026-02-24`: CR-A2.2 validation results:
+  - `m-overseer` lint before + after: pass
+  - `m-bz3` lock claim + `abuild.py -c` + lock release: pass
+  - `ctest --test-dir build-client-refactor-a1 -R "tank_.*|client_.*|server_.*runtime.*" --output-on-failure`: `18/19` pass, only known baseline fail (`server_join_runtime_contract_test`: missing key `feedback.server.runtime.joinRejectReasons.Default`)
+  - moved-path existence/absence checks for six `CR-A2.2` units: pass
+  - `#include "client/game/tank_collision_runtime_query_context.hpp"` scan in `src`: no matches
+  - `src/client/game/(tank_entity|tank_motion|tank_collision|tank_camera|tank_collision_runtime_query_context).(cpp|hpp)` scan in `cmake` + `src`: no matches
+- `2026-02-24`: `CR-A3.1` landed with direct utility/state header relocation and no compatibility artifacts.
+- `2026-02-24`: CR-A3.1 validation results:
+  - `m-overseer` lint before + after: pass
+  - `m-bz3` lock claim + `abuild.py -c` + lock release: pass
+  - `ctest --test-dir build-client-refactor-a1 -R "tank_.*|client_.*|server_.*runtime.*" --output-on-failure`: `18/19` pass, only known baseline fail (`server_join_runtime_contract_test`: missing key `feedback.server.runtime.joinRejectReasons.Default`)
+  - moved-path existence/absence checks for `math.hpp`, `score_state.hpp`, `shot_spawn.hpp`: pass
+  - `#include "client/game/(math|score_state|shot_spawn).hpp"` scan in `src` + `cmake`: no matches
+  - `#include "client/domain/(math|score_state|shot_spawn).hpp"` scan in runtime + tests: expected matches present
 
 ## Open Questions
 - Should namespace migration (`bz3::client::game::*`) be mandatory in this track, or deferred until path migration is complete?
@@ -270,7 +311,11 @@ cd m-bz3
 - [ ] CMake/test wiring updated
 - [x] `CR-A2.1` runtime entrypoint relocation landed (`game.hpp`, `lifecycle.cpp`, `audio.cpp`)
 - [x] No compatibility artifacts introduced or retained for CR-A2.1
+- [x] `CR-A2.2` runtime tank-orchestration/query-context relocation landed
+- [x] No compatibility artifacts introduced or retained for CR-A2.2
 - [ ] `CR-A2` runtime relocation landed
+- [x] `CR-A3.1` utility/state header relocation landed (`math.hpp`, `score_state.hpp`, `shot_spawn.hpp`)
+- [x] No compatibility artifacts introduced or retained for CR-A3.1
 - [ ] `CR-A3` domain relocation landed
 - [ ] `CR-A4` convergence + legacy path purge landed
 - [x] Validation commands run and summarized
