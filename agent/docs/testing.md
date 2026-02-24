@@ -12,10 +12,14 @@ Individual sessions will use their own specific test criteria.
 
 - Never attempt to read data outside the project root.
 - Never attempt to use system home config directories (e.g. ~/.config/xyz) for data.
+- Do not place ad-hoc testing data anywhere except under <branch>/demo/
+- Do not use ad-hoc testing data pulled from anywhere except <branch>/demo/
 
 ## Testing Data
 
-- Always use "virtual users" under <root>/<branch>/demo/users/* 
+- Do not place ad-hoc testing data *anywhere* except under <branch>/demo/
+
+- Always use "virtual users" under <branch>/demo/users/* 
 
 - Testing data is stored in the <branch>/demo/ directory.
 - Each of m-karma and m-bz3 have their own demo directories.
@@ -25,6 +29,16 @@ Individual sessions will use their own specific test criteria.
   - `<branch>/demo/users/*`
   - `<branch>/demo/worlds/*`
 - Each subdirectory of `demo` will have its own set of subdirectories, each of which represent one community, user, or world.
+
+## Virtual User Testing Requirements
+
+- MANDATORY: Always use "--user-config <file>" when testing the client so as not to pick up the human operator's default home config.
+  - The default virtual user config file can be found at <branch>/demo/users/default/config.json
+    - RESTRICTION: Do not make any changes to virtual users that you did not create without explicit permission.
+  - There are several pre-existing virtual users. If you find one that suits your needs you may use it, but do not make any changes to any existing virtual users.
+  - If you need a custom configuration, create a new virtual user.
+  - Do not use an existing virtual user at random, as you never know what may be in the config.json file (it may even be broken)
+  - Do not create virtual users outside the demo/ directory.
 
 ## Canonical End-to-End Testing
 
@@ -44,8 +58,8 @@ Individual sessions will use their own specific test criteria.
 - m-bz3: `./<build-dir>/bz3-server --server-config demo/worlds/<world>/config.json --trace net.server,engine.server`
 
 3. Client connect:
-- m-karma: `timeout 15s ./<build-dir>/client --user-config demo/users/<user>/.config/bz3/config.json --server <host>:<port> --trace net.client,engine.app`
-- m-bz3: `timeout 15s ./<build-dir>/bz3 --user-config demo/users/<user>/.config/bz3/config.json --server <host>:<port> --trace net.client,engine.app`
+- m-karma: `timeout 15s ./<build-dir>/client --user-config demo/users/<user>/config.json --server <host>:<port> --trace net.client,engine.app`
+- m-bz3: `timeout 15s ./<build-dir>/bz3 --user-config demo/users/<user>/config.json --server <host>:<port> --trace net.client,engine.app`
 
 Expected evidence:
 - server heartbeat trace lines,
