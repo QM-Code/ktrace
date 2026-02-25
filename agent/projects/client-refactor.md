@@ -2,8 +2,8 @@
 
 ## Project Snapshot
 - Current owner: `specialist-client-refactor-a1`
-- Status: `in progress (CR-A4.2 landed with direct docs/reference convergence and no compatibility artifacts; CR-A4.3 pending)`
-- Immediate next task: execute `CR-A4.3` (legacy-path purge closeout: remove empty `src/client/game/` directory and run final zero-reference verification) in `m-bz3` using build dir `build-client-refactor-a1`.
+- Status: `completed (CR-A5 namespace convergence landed; client topology refactor migration work closed)`
+- Immediate next task: project closeout only (no remaining `client-topology-refactor-a` migration tasks in `m-bz3`).
 - Validation gate:
   - `m-overseer`: `./agent/scripts/lint-projects.sh`
   - `m-bz3`: `./abuild.py --agent specialist-client-refactor-a1 --claim-lock -d build-client-refactor-a1 && ./abuild.py --agent specialist-client-refactor-a1 -c -d build-client-refactor-a1 --karma-sdk ../m-karma/out/karma-sdk && ./abuild.py --agent specialist-client-refactor-a1 --release-lock -d build-client-refactor-a1`
@@ -278,10 +278,31 @@ This is a broad structural migration across CMake paths, include paths, tests, a
 - Compatibility-artifact audit result for `CR-A4.2`:
   - no compatibility shims/forwarders introduced
   - no dual-path include/target fallback logic introduced
+- `CR-A4.3` completed with direct convergence (no compatibility layer):
+  - removed legacy empty directory `src/client/game/` via `rmdir src/client/game`
+  - `test ! -d src/client/game` confirms directory no longer exists
+  - final scoped audits in `src`, `cmake`, and `CMakeLists.txt` confirm zero `#include "client/game/*"` and zero `src/client/game/*` path references
+- Compatibility-artifact audit result for `CR-A4.3`:
+  - no compatibility shims/forwarders introduced
+  - no dual-path include/path fallback logic introduced
+- `CR-A4` completion statement:
+  - `CR-A4.1` + `CR-A4.2` + `CR-A4.3` are fully landed; legacy client game-layer path migration is closed.
 
 ### `CR-A5` Optional Namespace Convergence
 - If approved by operator, migrate `bz3::client::game::*` namespaces to topology-aligned names.
 - Keep this as a separate pass after path migration is green.
+
+#### `CR-A5` Progress (`2026-02-24`)
+- `CR-A5` completed with direct convergence (no compatibility layer):
+  - converged `bz3::client::game::detail` -> `bz3::client::domain::detail`
+  - converged `bz3::client::game::collision` -> `bz3::client::domain::collision`
+  - converged `bz3::client::game::pilot` -> `bz3::client::domain::pilot`
+  - converged all `client::game::*` callsites to `client::domain::*` across `src/client/domain/*`, `src/client/runtime/*`, and `src/tests/*`
+  - scoped audit confirms no residual `client::game::*` namespace/callsite references in `src`, `cmake`, or `CMakeLists.txt`
+- Compatibility-artifact audit result for `CR-A5`:
+  - no compatibility aliases/shims/forwarders introduced
+  - no dual-namespace support introduced
+  - no fallback logic introduced
 
 ## Validation
 ```bash
@@ -374,13 +395,28 @@ cd m-bz3
   - `src/client/game/` path scan in `src` + `cmake` + `CMakeLists.txt`: no matches
   - `src/ui/architecture.md` stale path scan: no matches
   - `find src/client/game -maxdepth 1 -type f`: no output (directory empty; ready for `CR-A4.3` purge)
+- `2026-02-24`: `CR-A4.3` landed with legacy directory purge and no compatibility artifacts.
+- `2026-02-24`: CR-A4.3 validation results:
+  - `m-overseer` lint before + after: pass
+  - `m-bz3` lock claim + `abuild.py -c` + lock release: pass
+  - `rmdir src/client/game`: pass
+  - `test ! -d src/client/game`: pass
+  - `ctest --test-dir build-client-refactor-a1 -R "tank_.*|client_.*|server_.*runtime.*" --output-on-failure`: `18/19` pass, only known baseline fail (`server_join_runtime_contract_test`: missing key `feedback.server.runtime.joinRejectReasons.Default`)
+  - `#include "client/game/` scan in `src` + `cmake` + `CMakeLists.txt`: no matches
+  - `src/client/game/` path scan in `src` + `cmake` + `CMakeLists.txt`: no matches
+  - `src/client/game/` directory existence check: directory absent
+- `2026-02-24`: `CR-A5` landed with namespace convergence and no compatibility artifacts.
+- `2026-02-24`: CR-A5 validation results:
+  - `m-overseer` lint before + after: pass
+  - `m-bz3` lock claim + `abuild.py -c` + lock release: pass
+  - `ctest --test-dir build-client-refactor-a1 -R "tank_.*|client_.*|server_.*runtime.*" --output-on-failure`: `18/19` pass, only known baseline fail (`server_join_runtime_contract_test`: missing key `feedback.server.runtime.joinRejectReasons.Default`)
+  - `client::game::|namespace bz3::client::game` scan in `src` + `cmake` + `CMakeLists.txt`: no matches
+  - `client::domain::|namespace bz3::client::domain` scan in domain/runtime/tests: expected matches present
+  - `#include "client/game/` scan in `src` + `cmake` + `CMakeLists.txt`: no matches
+  - `src/client/game/` path scan in `src` + `cmake` + `CMakeLists.txt`: no matches
 
 ## Open Questions
-- Should namespace migration (`bz3::client::game::*`) be mandatory in this track, or deferred until path migration is complete?
-- Should runtime orchestration keep a `Game` type name or adopt a more topology-neutral name once paths are stabilized?
-- Should `CR-A5` namespace convergence be executed immediately after `CR-A4`, or deferred until at least one full gameplay stabilization packet validates the post-move topology?
-- Does the `server_join_runtime_contract_test` i18n-key failure represent unrelated pre-existing data drift, or should CR-A2 lanes pause until string-key contract baseline is restored?
-- Is the strict no-shim/no-forwarder policy intended to remain mandatory through `CR-A3.3` and `CR-A4` even if cross-track cherry-picks temporarily lag?
+- Baseline test debt remains external to topology migration: `server_join_runtime_contract_test` still fails on missing key `feedback.server.runtime.joinRejectReasons.Default`.
 
 ## Handoff Checklist
 - [x] `CR-A1` inventory + move map + staged slice map documented
@@ -390,7 +426,7 @@ cd m-bz3
 - [x] No compatibility artifacts introduced or retained for CR-A2.1
 - [x] `CR-A2.2` runtime tank-orchestration/query-context relocation landed
 - [x] No compatibility artifacts introduced or retained for CR-A2.2
-- [ ] `CR-A2` runtime relocation landed
+- [x] `CR-A2` runtime relocation landed
 - [x] `CR-A3.1` utility/state header relocation landed (`math.hpp`, `score_state.hpp`, `shot_spawn.hpp`)
 - [x] No compatibility artifacts introduced or retained for CR-A3.1
 - [x] `CR-A3.2` collision mechanics relocation landed (`tank_collision_guardrails.*`, `tank_collision_query.*`, `tank_collision_probe_shape.*`, `tank_collision_resolution.*`, `tank_collision_step_stats.*`, `tank_camera_collision.*`)
@@ -402,6 +438,11 @@ cd m-bz3
 - [x] No compatibility artifacts introduced or retained for CR-A4.1
 - [x] `CR-A4.2` test/docs path convergence landed (stale non-CMake `src/client/game/*` references removed)
 - [x] No compatibility artifacts introduced or retained for CR-A4.2
-- [ ] `CR-A4` convergence + legacy path purge landed
+- [x] `CR-A4.3` legacy directory purge landed (`src/client/game/` removed)
+- [x] No compatibility artifacts introduced or retained for CR-A4.3
+- [x] `CR-A4` convergence + legacy path purge landed
+- [x] `CR-A5` namespace convergence landed (`client::game::*` -> `client::domain::*`)
+- [x] No compatibility artifacts introduced or retained for CR-A5
+- [x] `client-topology-refactor-a` migration work closed in `m-bz3`
 - [x] Validation commands run and summarized
 - [x] Remaining naming debt and risks documented
