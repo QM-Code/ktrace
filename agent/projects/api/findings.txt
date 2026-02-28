@@ -656,44 +656,45 @@ Method notes:
 
 ## Phase 2 - KarmaSDK headers not used (exact include-based)
 
-- karma/app/client/bootstrap.hpp
-- karma/app/client/options.hpp
-- karma/app/server/bootstrap.hpp
-- karma/app/server/options.hpp
-- karma/app/shared/bootstrap_spec.hpp
-- karma/app/shared/config_overrides.hpp
-- karma/app/shared/logging_setup.hpp
-- karma/app/shared/simulation_clock.hpp
-- karma/cli/client/backend_options.hpp
-- karma/cli/server/backend_options.hpp
-- karma/cli/server/parser.hpp
-- karma/cli/shared/argv_utils.hpp
-- karma/cli/shared/common_options.hpp
-- karma/cli/shared/option_registry.hpp
-- karma/cli/shared/value_parsing.hpp
-- karma/common/content/catalog.hpp
-- karma/common/content/types.hpp
-- karma/common/data/directory_override.hpp
-- karma/ecs/component_storage.hpp
-- karma/ecs/entity_registry.hpp
-- karma/log/colors.hpp
-- karma/network/content/transfer_integrity.hpp
-- karma/network/http/curl_global.hpp
-- karma/physics/player_controller.hpp
-- karma/physics/rigid_body.hpp
-- karma/physics/static_body.hpp
-- karma/physics/types.hpp
-- karma/physics/world.hpp
-- karma/renderer/assets/mesh_loader.hpp
-- karma/renderer/backend.hpp
-- karma/renderer/device.hpp
-- karma/scene/physics_components.hpp
-- karma/scene/roaming_camera.hpp
-- karma/scene/scene_bootstrap.hpp
-- karma/scene/scene.hpp
-- karma/ui/backend.hpp
-- karma/ui/ui_system.hpp
-- karma/window/backend.hpp
+- karma/app/client/bootstrap.hpp [DONE]
+- karma/app/client/options.hpp [DONE]
+- karma/app/server/bootstrap.hpp [DONE]
+- karma/app/server/options.hpp [DONE]
+- karma/app/shared/bootstrap_spec.hpp [DONE]
+- karma/app/shared/config_overrides.hpp [DONE]
+- karma/app/shared/logging_setup.hpp [DONE]
+- karma/app/shared/simulation_clock.hpp [DONE]
+- karma/cli/client/backend_options.hpp [DONE]
+- karma/cli/server/backend_options.hpp [DONE]
+- karma/cli/server/parser.hpp [DONE]
+- karma/cli/shared/argv_utils.hpp [DONE]
+- karma/cli/shared/consume_result.hpp [DONE]
+- karma/cli/shared/common_options.hpp [DONE]
+- karma/cli/shared/option_registry.hpp [DONE]
+- karma/cli/shared/value_parsing.hpp [DONE]
+- karma/common/content/catalog.hpp [DONE]
+- karma/common/content/types.hpp [DONE]
+- karma/common/data/directory_override.hpp [DONE]
+- karma/ecs/component_storage.hpp [DONE]
+- karma/ecs/entity_registry.hpp [DONE]
+- karma/log/colors.hpp [DONE]
+- karma/network/content/transfer_integrity.hpp [DONE]
+- karma/network/http/curl_global.hpp [DONE]
+- karma/physics/player_controller.hpp [DONE]
+- karma/physics/rigid_body.hpp [DONE]
+- karma/physics/static_body.hpp [DONE]
+- karma/physics/types.hpp [DONE]
+- karma/physics/world.hpp [DONE]
+- karma/renderer/assets/mesh_loader.hpp [DONE]
+- karma/renderer/backend.hpp [DONE]
+- karma/renderer/device.hpp [DONE]
+- karma/scene/physics_components.hpp [DONE]
+- karma/scene/roaming_camera.hpp [DONE]
+- karma/scene/scene_bootstrap.hpp [DONE]
+- karma/scene/scene.hpp [DONE]
+- karma/ui/backend.hpp [DONE]
+- karma/ui/ui_system.hpp [DONE]
+- karma/window/backend.hpp [DONE]
 
 ## Phase 2 - KarmaSDK functions not used in otherwise-used headers (heuristic)
 
@@ -748,56 +749,75 @@ Method notes:
   - karma::cli::server::ConsumeRuntimeOption
 
 - karma/common/config/helpers.hpp
-  - karma::common::config::ReadBoolConfig
-  - karma::common::config::ReadFloatConfig
-  - karma::common::config::ReadRequiredObjectConfig
-  - karma::common::config::ReadRequiredStringArrayConfig
-  - karma::common::config::ReadStringConfig
-  - karma::common::config::ReadUInt16Config
+  - karma::common::config::ReadBoolConfig [DONE]
+  - karma::common::config::ReadFloatConfig [DONE]
+  - karma::common::config::ReadRequiredObjectConfig [DONE]
+  - karma::common::config::ReadRequiredStringArrayConfig [DONE]
+  - karma::common::config::ReadStringConfig [DONE]
+  - karma::common::config::ReadUInt16Config [DONE]
 
 - karma/common/config/store.hpp
+  - ConfigStore::Add (named config API) [DONE]
+  - ConfigStore::Load (named config API) [DONE]
+  - ConfigStore::Merge (named config API) [DONE]
+  - ConfigStore::Remove (named config API) [DONE]
+  - ConfigStore::Get(name, path) [DONE]
+  - ConfigStore::Set(name, path, value) [DONE]
+  - ConfigStore::Erase(name, path) [DONE]
+  - ConfigStore::SetAssetRoot [DONE]
+  - ConfigStore::SetBackingFile [DONE]
+  - ConfigStore::RemoveBackingFile [DONE]
+  - ConfigStore::Path [DONE]
+  - ConfigStore::Save [DONE]
+  - ConfigStore::Defaults [DONE]
+  - ConfigStore::User [DONE]
+  - ConfigStore::ReplaceUserConfig [DONE]
+  - ConfigStore::SaveUser [DONE]
+  - ConfigStore::Tick [DONE]
+  - ConfigStore::UserConfigPath [DONE]
+  - ConfigStore::LayerByLabel [DONE]
   - ConfigStore::AddRuntimeLayer
-  - ConfigStore::Defaults
+  - ConfigStore::Defaults [DONE]
   - ConfigStore::Erase
-  - ConfigStore::eraseValueAtPath
-  - ConfigStore::findMutableNamedValueLocked
-  - ConfigStore::findNamedValueLocked
+  - ConfigStore::eraseValueAtPath [DONE]
+  - ConfigStore::findMutableNamedValueLocked [DONE]
+  - ConfigStore::findNamedValueLocked [DONE]
   - ConfigStore::Get
   - ConfigStore::GetCopy
   - ConfigStore::Initialize
   - ConfigStore::Initialized
-  - ConfigStore::LayerByLabel
-  - ConfigStore::Load
-  - ConfigStore::Merge
+  - ConfigStore::LayerByLabel [DONE]
+  - ConfigStore::Load [DONE]
+  - ConfigStore::Merge [DONE]
   - ConfigStore::Merged
-  - ConfigStore::Path
-  - ConfigStore::rebuildMergedLocked
-  - ConfigStore::Remove
-  - ConfigStore::RemoveBackingFile
+  - ConfigStore::Path [DONE]
+  - ConfigStore::rebuildMergedLocked [DONE]
+  - ConfigStore::Remove [DONE]
+  - ConfigStore::RemoveBackingFile [DONE]
   - ConfigStore::RemoveRuntimeLayer
-  - ConfigStore::ReplaceUserConfig
+  - ConfigStore::ReplaceUserConfig [DONE]
   - ConfigStore::ResolveAssetPath
   - ConfigStore::Revision
-  - ConfigStore::Save
-  - ConfigStore::SaveUser
-  - ConfigStore::saveUserUnlocked
-  - ConfigStore::SetAssetRoot
-  - ConfigStore::SetBackingFile
-  - ConfigStore::setValueAtPath
-  - ConfigStore::syncLegacyNamedStateLocked
-  - ConfigStore::Tick
-  - ConfigStore::User
-  - ConfigStore::UserConfigPath
-  - ConfigStore::writeJsonFileUnlocked
+  - ConfigStore::Save [DONE]
+  - ConfigStore::SaveUser [DONE]
+  - ConfigStore::saveUserUnlocked [DONE]
+  - ConfigStore::SetAssetRoot [DONE]
+  - ConfigStore::SetBackingFile [DONE]
+  - ConfigStore::setValueAtPath [DONE]
+  - ConfigStore::syncLegacyNamedStateLocked [DONE]
+  - ConfigStore::Tick [DONE]
+  - ConfigStore::User [DONE]
+  - ConfigStore::UserConfigPath [DONE]
+  - ConfigStore::writeJsonFileUnlocked [DONE]
 
 - karma/common/config/validation.hpp
-  - ClientRequiredKeys
+  - ClientRequiredKeys [DONE]
 
 - karma/common/content/archive.hpp
-  - karma::common::content::ExtractWorldArchive
+  - karma::common::content::ExtractWorldArchive [DONE]
 
 - karma/common/content/package_apply.hpp
-  - karma::common::content::ExtractArchiveAtomically
+  - karma::common::content::ExtractArchiveAtomically [DONE]
 
 - karma/common/data/path_resolver.hpp
   - CollectAssetEntries
@@ -812,7 +832,7 @@ Method notes:
 
 - karma/common/i18n/i18n.hpp
   - karma::common::i18n::I18n::formatText
-  - ReadRequiredLocalizedConfig
+  - ReadRequiredLocalizedConfig [DONE]
 
 - karma/common/serialization/json.hpp
   - Dump

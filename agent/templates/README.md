@@ -11,6 +11,6 @@ Passing AGENTS.md as a command line parameter may also initiate bootstrap depend
 If all else fails, send the following prompt:
 
 ```text
-Follow the instructions in agents/BOOTSTRAP.md.
+Follow the instructions in <bootstrap-root>/BOOTSTRAP.md.
 ```
 

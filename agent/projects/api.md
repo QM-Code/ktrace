@@ -49,4 +49,9 @@ Summary from findings:
 
 ### Phase 3
 
-Not started.
+Completed for the header-level migration set (no compatibility shims added).
+
+Result:
+- All headers listed under `Phase 2 - KarmaSDK headers not used (exact include-based)` in `api/findings.txt` are now marked `[DONE]`.
+- The previously coupled set was collapsed into still-used public headers where needed, then moved to `m-karma/src/karma/...`.
+- `m-karma/include/karma` now contains 56 public headers, and all 56 are directly used by `m-bz3/src` or `m-karma/demo/**/src`.
