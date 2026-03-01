@@ -26,12 +26,15 @@ struct OutputOptions {
 ColorId Color(std::string_view color_name);
 void SetOutputOptions(const OutputOptions& options);
 void EnableInternalTrace();
-void ProcessCLI(int argc, char** argv, std::string_view trace_root = "--trace");
+// Processes and consumes all argv entries that begin with trace_root (for example "--trace*").
+void ProcessCLI(int& argc, char** argv, std::string_view trace_root = "--trace");
 std::vector<std::string> GetNamespaces();
 std::vector<std::string> GetChannels(std::string_view trace_namespace);
 void EnableChannel(std::string_view qualified_channel,
                    std::string_view trace_namespace = KTRACE_NAMESPACE);
 void EnableChannels(std::string_view selectors_csv);
+bool ShouldTraceChannel(std::string_view qualified_channel,
+                        std::string_view trace_namespace = KTRACE_NAMESPACE);
 void DisableChannel(std::string_view qualified_channel,
                     std::string_view trace_namespace = KTRACE_NAMESPACE);
 void DisableChannels(std::string_view selectors_csv);

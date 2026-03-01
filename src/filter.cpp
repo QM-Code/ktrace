@@ -176,6 +176,26 @@ void EnableChannels(std::string_view selectors_csv) {
            selector_text);
 }
 
+bool ShouldTraceChannel(std::string_view qualified_channel, std::string_view trace_namespace) {
+    try {
+        detail::ensureInternalTraceChannelsRegistered();
+        const detail::Selector selector =
+            parseQualifiedChannelSelectorOrThrow(qualified_channel, trace_namespace);
+
+        std::string channel;
+        channel.reserve(64);
+        for (int i = 0; i < selector.channel_depth; ++i) {
+            if (i > 0) {
+                channel.push_back('.');
+            }
+            channel.append(selector.channel_tokens[static_cast<std::size_t>(i)]);
+        }
+        return detail::isTraceChannelEnabled(selector.trace_namespace, channel);
+    } catch (...) {
+        return false;
+    }
+}
+
 void DisableChannel(std::string_view qualified_channel, std::string_view trace_namespace) {
     detail::ensureInternalTraceChannelsRegistered();
     const detail::Selector selector =
