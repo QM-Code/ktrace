@@ -12,8 +12,8 @@ namespace beta {
 
 void InitializeTraceLogging() {
     if (!g_beta_trace_initialized) {
-        ktrace::RegisterChannel("io", ktrace::ResolveColor("MediumSpringGreen"));
-        ktrace::RegisterChannel("scheduler", ktrace::ResolveColor("Orange3"));
+        ktrace::RegisterChannel("io", ktrace::Color("MediumSpringGreen"));
+        ktrace::RegisterChannel("scheduler", ktrace::Color("Orange3"));
         g_beta_trace_initialized = true;
     }
 }

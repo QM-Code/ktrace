@@ -74,6 +74,7 @@ bool matchesSelector(const Selector& selector,
                      std::string_view trace_namespace,
                      std::string_view category);
 bool isTraceChannelEnabled(std::string_view trace_namespace, std::string_view channel);
+void ensureInternalTraceChannelsRegistered();
 
 std::optional<colors::Id> resolveChannelColor(std::string_view trace_namespace,
                                               std::string_view category);

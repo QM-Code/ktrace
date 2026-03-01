@@ -23,14 +23,17 @@ struct OutputOptions {
     bool timestamps = false;
 };
 
-ColorId ResolveColor(std::string_view color_name);
+ColorId Color(std::string_view color_name);
 void SetOutputOptions(const OutputOptions& options);
+void EnableInternalTrace();
 void ProcessCLI(int argc, char** argv, std::string_view trace_root = "--trace");
 std::vector<std::string> GetNamespaces();
 std::vector<std::string> GetChannels(std::string_view trace_namespace);
-void EnableChannel(std::string_view qualified_channel);
+void EnableChannel(std::string_view qualified_channel,
+                   std::string_view trace_namespace = KTRACE_NAMESPACE);
 void EnableChannels(std::string_view selectors_csv);
-void DisableChannel(std::string_view qualified_channel);
+void DisableChannel(std::string_view qualified_channel,
+                    std::string_view trace_namespace = KTRACE_NAMESPACE);
 void DisableChannels(std::string_view selectors_csv);
 void ClearEnabledChannels();
 

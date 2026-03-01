@@ -34,6 +34,7 @@ std::optional<colors::Id> resolveChannelColor(std::string_view trace_namespace,
 namespace ktrace {
 
 std::vector<std::string> GetNamespaces() {
+    detail::ensureInternalTraceChannelsRegistered();
     std::vector<std::string> namespaces;
     {
         auto& state = detail::getTraceState();
@@ -47,10 +48,14 @@ std::vector<std::string> GetNamespaces() {
     }
     std::sort(namespaces.begin(), namespaces.end());
     namespaces.erase(std::unique(namespaces.begin(), namespaces.end()), namespaces.end());
+    KTRACE("registry",
+           "querying registry (enable registry.query for details): {} namespace(s)",
+           namespaces.size());
     return namespaces;
 }
 
 std::vector<std::string> GetChannels(std::string_view trace_namespace) {
+    detail::ensureInternalTraceChannelsRegistered();
     const std::string trace_namespace_name = detail::trimWhitespace(std::string(trace_namespace));
     if (!detail::isSelectorIdentifier(trace_namespace_name)) {
         throw std::invalid_argument("invalid trace namespace '" + trace_namespace_name + "'");
@@ -68,6 +73,10 @@ std::vector<std::string> GetChannels(std::string_view trace_namespace) {
     }
     std::sort(channels.begin(), channels.end());
     channels.erase(std::unique(channels.begin(), channels.end()), channels.end());
+    KTRACE("registry.query",
+           "returned {} channel(s) for namespace '{}'",
+           channels.size(),
+           trace_namespace_name);
     return channels;
 }
 

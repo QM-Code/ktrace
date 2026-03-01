@@ -3,10 +3,28 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <stdexcept>
 
 namespace {
+
+constexpr std::string_view kInternalTraceNamespace = "ktrace";
+struct InternalChannelConfig {
+    std::string_view channel;
+    ktrace::ColorId color;
+};
+
+constexpr std::array<InternalChannelConfig, 8> kInternalChannels = {{
+    {"api", 6u}, // cyan
+    {"api.channels", ktrace::kDefaultColor},
+    {"api.cli", ktrace::kDefaultColor},
+    {"api.output", ktrace::kDefaultColor},
+    {"selector", 3u}, // yellow
+    {"selector.parse", ktrace::kDefaultColor},
+    {"registry", 5u}, // magenta
+    {"registry.query", ktrace::kDefaultColor},
+}};
 
 spdlog::logger* getLogger(const std::string& name) {
     if (name.empty()) {
@@ -66,11 +84,18 @@ void registerChannelImpl(std::string_view trace_namespace, std::string_view chan
     }
 }
 
+void registerInternalChannels() {
+    for (const InternalChannelConfig& config : kInternalChannels) {
+        ktrace::detail::RegisterChannelBridge(
+            kInternalTraceNamespace, config.channel, config.color);
+    }
+}
+
 } // namespace
 
 namespace ktrace {
 
-ColorId ResolveColor(std::string_view color_name) {
+ColorId Color(std::string_view color_name) {
     const std::string token = detail::trimWhitespace(std::string(color_name));
     if (token.empty()) {
         throw std::invalid_argument("trace color name must not be empty");
@@ -90,9 +115,20 @@ ColorId ResolveColor(std::string_view color_name) {
     throw std::invalid_argument("unknown trace color '" + token + "'");
 }
 
+void EnableInternalTrace() {
+    detail::ensureInternalTraceChannelsRegistered();
+}
+
 } // namespace ktrace
 
 namespace ktrace::detail {
+
+void ensureInternalTraceChannelsRegistered() {
+    static std::once_flag init_once;
+    std::call_once(init_once, []() {
+        registerInternalChannels();
+    });
+}
 
 void RegisterChannelBridge(std::string_view trace_namespace,
                            std::string_view channel,

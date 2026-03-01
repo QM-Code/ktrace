@@ -4,39 +4,34 @@
 #include "ktrace/trace.hpp"
 
 int main(int argc, char** argv) {
-    ktrace::RegisterChannel("app", ktrace::ResolveColor("BrightCyan"));
-    ktrace::RegisterChannel("orchestrator", ktrace::ResolveColor("BrightYellow"));
-    ktrace::EnableChannel("executable.app");
-    ktrace::EnableChannel("executable.orchestrator");
 
+	// Register channels
+    ktrace::RegisterChannel("app", ktrace::Color("BrightCyan"));
+    ktrace::RegisterChannel("orchestrator", ktrace::Color("BrightYellow"));
+
+	// Enable and test a channel
+    ktrace::EnableChannel(".app");
     KTRACE("app", "executable initialized local trace channels");
 
-    alpha::InitializeTraceLogging();
+	// Enabling external library tracing
+	ktrace::EnableInternalTrace();
+    alpha::Init();
     beta::InitializeTraceLogging();
-    delta::InitializeTraceLogging();
- 
+    delta::SystemStartup();
+
+	// Process the CLI
+	// Must happen after enabling external library tracing
 	ktrace::ProcessCLI(argc,argv,"--trace");
-	
-	/*
-    ktrace::EnableChannel("alpha.net");
-    ktrace::EnableChannel("alpha.cache");
-    ktrace::EnableChannel("beta.io");
-    ktrace::EnableChannel("beta.scheduler");
-    ktrace::EnableChannel("delta.physics");
-    ktrace::EnableChannel("delta.metrics");
-	*/
-	ktrace::SetOutputOptions({
-	    .filenames = true,
-	    .line_numbers = true,
-	    .function_names = true,
-	    .timestamps = true,
-	});
-    ktrace::EnableChannels("*.*");
-	
+    KTRACE("app", "cli processing enabled, use --trace for options");
+
+	// Test external trace logging.
+    KTRACE("app", "testing external tracing, use --trace '*.*' to view top-level channels");
     alpha::TestTraceLoggingChannels();
     beta::TestTraceLoggingChannels();
     delta::TestTraceLoggingChannels();
 
-//    KTRACE("orchestrator", "executable completed imported SDK trace checks");
+	// Random shutdown note from internal logging.
+    KTRACE("orchestrator", "executable completed imported SDK trace checks");
+
     return 0;
 }

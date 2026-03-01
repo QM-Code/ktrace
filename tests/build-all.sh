@@ -2,10 +2,11 @@
 set -euo pipefail
 
 usage() {
-    echo "Usage: ./tests/full-test.sh --version <slot>"
+    echo "Usage: ./tests/$(basename "$0") [--version <slot>]"
+    echo "Defaults to: --version latest"
 }
 
-version=""
+version="latest"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -29,11 +30,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-if [[ -z "${version}" ]]; then
-    echo "Error: --version is required" >&2
-    exit 1
-fi
 
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 

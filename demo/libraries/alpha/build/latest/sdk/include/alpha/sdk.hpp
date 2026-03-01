@@ -2,7 +2,7 @@
 
 namespace alpha {
 
-void InitializeTraceLogging();
+void Init();
 void TestTraceLoggingChannels();
 
 } // namespace alpha

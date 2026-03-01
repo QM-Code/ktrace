@@ -85,14 +85,22 @@ std::vector<ktrace::detail::Selector> parseSelectorListOrThrow(const std::string
     return selectors;
 }
 
-ktrace::detail::Selector parseQualifiedChannelSelectorOrThrow(const std::string_view qualified_channel) {
+ktrace::detail::Selector parseQualifiedChannelSelectorOrThrow(
+    const std::string_view qualified_channel,
+    const std::string_view self_namespace) {
     const std::string qualified = ktrace::detail::trimWhitespace(std::string(qualified_channel));
     const std::size_t dot = qualified.find('.');
     if (dot == std::string::npos) {
         throw std::invalid_argument(
-            "invalid channel selector '" + qualified + "' (expected namespace.channel)");
+            "invalid channel selector '" + qualified + "' (expected namespace.channel or .channel)");
     }
-    const std::string trace_namespace = qualified.substr(0, dot);
+
+    std::string trace_namespace;
+    if (dot == 0) {
+        trace_namespace = ktrace::detail::trimWhitespace(std::string(self_namespace));
+    } else {
+        trace_namespace = qualified.substr(0, dot);
+    }
     const std::string channel = qualified.substr(dot + 1);
     if (!ktrace::detail::isSelectorIdentifier(trace_namespace)) {
         throw std::invalid_argument("invalid trace namespace '" + trace_namespace + "'");
@@ -123,8 +131,11 @@ ktrace::detail::Selector parseQualifiedChannelSelectorOrThrow(const std::string_
 
 namespace ktrace {
 
-void EnableChannel(std::string_view qualified_channel) {
-    const detail::Selector selector = parseQualifiedChannelSelectorOrThrow(qualified_channel);
+void EnableChannel(std::string_view qualified_channel, std::string_view trace_namespace) {
+    detail::ensureInternalTraceChannelsRegistered();
+    const detail::Selector selector =
+        parseQualifiedChannelSelectorOrThrow(qualified_channel, trace_namespace);
+    const std::string qualified = detail::trimWhitespace(std::string(qualified_channel));
 
     auto& state = detail::getTraceState();
     {
@@ -133,11 +144,14 @@ void EnableChannel(std::string_view qualified_channel) {
         removeSelectorsIfPresent(state.disabled_selectors, {selector});
         state.selector_enabled.store(!state.enabled_selectors.empty(), std::memory_order_relaxed);
     }
+    KTRACE("api.channels", "enabled selector '{}'", qualified);
 }
 
 void EnableChannels(std::string_view selectors_csv) {
+    detail::ensureInternalTraceChannelsRegistered();
     const std::vector<detail::Selector> selectors =
         parseSelectorListOrThrow(std::string(selectors_csv));
+    const std::string selector_text = detail::trimWhitespace(std::string(selectors_csv));
     auto& state = detail::getTraceState();
     {
         std::lock_guard<std::mutex> lock(state.selector_mutex);
@@ -145,28 +159,49 @@ void EnableChannels(std::string_view selectors_csv) {
         removeSelectorsIfPresent(state.disabled_selectors, selectors);
         state.selector_enabled.store(!state.enabled_selectors.empty(), std::memory_order_relaxed);
     }
+    KTRACE("api",
+           "processing channels (enable api.channels for details): enabled {} selector(s)",
+           selectors.size());
+    KTRACE("api.channels",
+           "enabled {} selector(s) from '{}'",
+           selectors.size(),
+           selector_text);
 }
 
-void DisableChannel(std::string_view qualified_channel) {
-    const detail::Selector selector = parseQualifiedChannelSelectorOrThrow(qualified_channel);
+void DisableChannel(std::string_view qualified_channel, std::string_view trace_namespace) {
+    detail::ensureInternalTraceChannelsRegistered();
+    const detail::Selector selector =
+        parseQualifiedChannelSelectorOrThrow(qualified_channel, trace_namespace);
+    const std::string qualified = detail::trimWhitespace(std::string(qualified_channel));
     auto& state = detail::getTraceState();
     {
         std::lock_guard<std::mutex> lock(state.selector_mutex);
         addSelectorsIfMissing(state.disabled_selectors, {selector});
     }
+    KTRACE("api.channels", "disabled selector '{}'", qualified);
 }
 
 void DisableChannels(std::string_view selectors_csv) {
+    detail::ensureInternalTraceChannelsRegistered();
     const std::vector<detail::Selector> selectors =
         parseSelectorListOrThrow(std::string(selectors_csv));
+    const std::string selector_text = detail::trimWhitespace(std::string(selectors_csv));
     auto& state = detail::getTraceState();
     {
         std::lock_guard<std::mutex> lock(state.selector_mutex);
         addSelectorsIfMissing(state.disabled_selectors, selectors);
     }
+    KTRACE("api",
+           "processing channels (enable api.channels for details): disabled {} selector(s)",
+           selectors.size());
+    KTRACE("api.channels",
+           "disabled {} selector(s) from '{}'",
+           selectors.size(),
+           selector_text);
 }
 
 void ClearEnabledChannels() {
+    detail::ensureInternalTraceChannelsRegistered();
     auto& state = detail::getTraceState();
     {
         std::lock_guard<std::mutex> lock(state.selector_mutex);
@@ -174,6 +209,9 @@ void ClearEnabledChannels() {
         state.disabled_selectors.clear();
         state.selector_enabled.store(false, std::memory_order_relaxed);
     }
+    KTRACE("api",
+           "processing channels (enable api.channels for details): cleared selectors");
+    KTRACE("api.channels", "cleared all enabled and disabled selectors");
 }
 
 } // namespace ktrace

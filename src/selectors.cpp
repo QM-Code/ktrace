@@ -62,8 +62,8 @@ bool splitBraceAlternatives(std::string_view value,
 }
 
 bool expandBraceExpression(const std::string& value,
-                          std::vector<std::string>& expanded,
-                          std::string& error) {
+                           std::vector<std::string>& expanded,
+                           std::string& error) {
     const std::size_t open = value.find('{');
     if (open == std::string::npos) {
         expanded.push_back(value);
@@ -181,6 +181,7 @@ bool parseSelectorExpression(const std::string_view raw_token,
 
 std::vector<Selector> parseSelectorList(const std::string& list,
                                         std::vector<std::string>& invalid_tokens) {
+    ensureInternalTraceChannelsRegistered();
     std::vector<Selector> selectors;
     std::unordered_set<std::string> invalid_seen;
 
@@ -188,6 +189,8 @@ std::vector<Selector> parseSelectorList(const std::string& list,
     std::string split_error;
     if (!splitByTopLevelCommas(list, selector_tokens, split_error)) {
         invalid_tokens.push_back(split_error);
+        KTRACE("selector", "parsing selectors failed (enable selector.parse for details)");
+        KTRACE("selector.parse", "failed to parse selector list '{}' ({})", list, split_error);
         return selectors;
     }
 
@@ -226,6 +229,15 @@ std::vector<Selector> parseSelectorList(const std::string& list,
         }
     }
 
+    KTRACE("selector",
+           "parsed selectors (enable selector.parse for details): {} selector(s), {} invalid token(s)",
+           selectors.size(),
+           invalid_tokens.size());
+    KTRACE("selector.parse",
+           "parsed selector list '{}' -> {} selector(s), {} invalid token(s)",
+           list,
+           selectors.size(),
+           invalid_tokens.size());
     return selectors;
 }
 

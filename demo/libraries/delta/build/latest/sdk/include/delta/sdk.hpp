@@ -2,7 +2,7 @@
 
 namespace delta {
 
-void InitializeTraceLogging();
+void SystemStartup();
 void TestTraceLoggingChannels();
 
 } // namespace delta
