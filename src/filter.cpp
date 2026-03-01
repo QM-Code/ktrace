@@ -68,6 +68,14 @@ std::vector<ktrace::detail::Selector> parseSelectorListOrThrow(const std::string
     const std::vector<ktrace::detail::Selector> selectors =
         ktrace::detail::parseSelectorList(list, invalid_tokens);
     if (!invalid_tokens.empty()) {
+        const auto formatInvalidToken = [](const std::string& token) -> std::string {
+            const std::size_t reason_pos = token.find(" (");
+            if (reason_pos != std::string::npos) {
+                return "'" + token.substr(0, reason_pos) + "'" + token.substr(reason_pos);
+            }
+            return "'" + token + "'";
+        };
+
         std::ostringstream message;
         message << "Invalid trace selector";
         if (invalid_tokens.size() > 1) {
@@ -78,7 +86,7 @@ std::vector<ktrace::detail::Selector> parseSelectorListOrThrow(const std::string
             if (i > 0) {
                 message << ", ";
             }
-            message << "'" << invalid_tokens[i] << "'";
+            message << formatInvalidToken(invalid_tokens[i]);
         }
         throw std::runtime_error(message.str());
     }

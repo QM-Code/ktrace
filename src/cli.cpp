@@ -1,5 +1,7 @@
 #include "trace.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <cstddef>
 #include <iostream>
 #include <sstream>
@@ -86,18 +88,26 @@ void printTraceHelp(const std::string& root) {
 
 void printTraceExamples(const std::string& root) {
     std::cout
+        << "\nGeneral trace selector pattern:\n"
+        << "  " << root << " <namespace>.<channel>[.<subchannel>[.<subchannel>]]\n\n"
         << "Trace selector examples:\n"
-        << "  " << root << " demo.cli\n"
-        << "  " << root << " demo.cli.trace\n"
-        << "  " << root << " demo.cli,demo.cli.trace\n"
-        << "  " << root << " demo.renderer.*\n"
-        << "  " << root << " demo.renderer.*.*\n"
-        << "  " << root << " demo.{net,io}\n"
-        << "  " << root << " demo.{net,io}.packet\n"
-        << "  " << root << " '{lib1,lib2}.net'\n"
-        << "  " << root << " '*.*'\n"
-        << "  " << root << " '*.*.*' " << root << "-filenames\n"
-        << "  " << root << " <namespace>.<channel>[.<sub>[.<sub>]]\n\n";
+        << "  " << root << " '*.*'            Select all <namespace>.<channel> channels\n"
+        << "  " << root << " '*.*.*'          Select all channels up to 3 levels\n"
+        << "  " << root << " 'alpha.*'        Select all top-level channels in alpha\n"
+        << "  " << root << " 'alpha.*.*'      Select all channels in alpha (up to 3 levels)\n"
+        << "  " << root << " '*.net'          Select 'net' across all namespaces\n"
+        << "  " << root << " '*.scheduler.tick' Select 'scheduler.tick' across all namespaces\n"
+        << "  " << root << " '*.net.*'        Select subchannels under 'net' across namespaces\n"
+        << "  " << root << " '*.{net,io}'     Select 'net' and 'io' across all namespaces\n"
+        << "  " << root << " '{alpha,beta}.*' Select all top-level channels in alpha and beta\n"
+        << "  " << root << " alpha.net\n"
+        << "  " << root << " beta.scheduler.tick\n"
+        << "  " << root << " alpha.net,beta.io\n"
+        << "  " << root << " delta.physics.*\n"
+        << "  " << root << " delta.physics.*.*\n"
+        << "  " << root << " alpha.{net,cache}\n"
+        << "  " << root << " beta.{io,scheduler}.packet\n"
+        << "  " << root << " '{alpha,beta}.net'\n\n";
 }
 
 void printTraceNamespaces() {
@@ -227,7 +237,17 @@ void processCliArgs(const std::vector<std::string_view>& argv, std::string_view 
 namespace ktrace {
 
 void ProcessCLI(int argc, char** argv, std::string_view trace_root) {
-    processCliArgs(collectArgv(argc, argv), trace_root);
+    try {
+        processCliArgs(collectArgv(argc, argv), trace_root);
+    } catch (const std::exception& ex) {
+        std::string root = "--trace";
+        try {
+            root = normalizeTraceRoot(trace_root);
+        } catch (...) {
+        }
+        spdlog::error("\nTrace option error: {}", ex.what());
+        printTraceExamples(root);
+    }
 }
 
 } // namespace ktrace

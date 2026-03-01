@@ -153,7 +153,7 @@ bool parseSelectorExpression(const std::string_view raw_token,
                              std::string& error) {
     const std::size_t dot = raw_token.find('.');
     if (dot == std::string_view::npos) {
-        error = "expected <namespace>.<channel>";
+        error = "did you mean '*.*'?";
         return false;
     }
 
