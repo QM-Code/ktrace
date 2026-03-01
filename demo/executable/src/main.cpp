@@ -23,6 +23,12 @@ int main() {
     ktrace::EnableChannel("delta.physics");
     ktrace::EnableChannel("delta.metrics");
 	*/
+	ktrace::SetOutputOptions({
+	    .filenames = true,
+	    .line_numbers = true,
+	    .function_names = true,
+	    .timestamps = true,
+	});
     ktrace::EnableChannels("*.*");
 	
     alpha::TestTraceLoggingChannels();

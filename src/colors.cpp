@@ -296,22 +296,3 @@ const char* AnsiColorCode(colors::Id color) {
 }
 
 } // namespace ktrace::detail
-
-namespace ktrace::colors {
-
-const std::vector<std::string>& GetColors() {
-    return detail::ColorNames();
-}
-
-std::string_view Name(Id color) {
-    if (color == Default) {
-        return "Default";
-    }
-    const auto& names = detail::ColorNames();
-    if (color <= 255u) {
-        return names[static_cast<size_t>(color)];
-    }
-    return "Unknown";
-}
-
-} // namespace ktrace::colors

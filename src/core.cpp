@@ -1,7 +1,6 @@
-#include "internal.hpp"
-#include "private.hpp"
+#include "ktrace/trace.hpp"
 
-#include <spdlog/spdlog.h>
+#include "private.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -68,21 +67,9 @@ void RemoveSelectors(std::vector<ktrace::detail::Selector>& target,
         target.end());
 }
 
-std::vector<ktrace::detail::Selector> ParseSelectorsOrThrow(const std::string& list,
-                                                            const bool allowLocalSelectors) {
+std::vector<ktrace::detail::Selector> ParseSelectorsOrThrow(const std::string& list) {
     if (list.empty()) {
         return {};
-    }
-
-    if (!allowLocalSelectors) {
-        std::stringstream ss(list);
-        std::string token;
-        while (std::getline(ss, token, ',')) {
-            const std::string trimmed = ktrace::detail::TrimCopy(token);
-            if (trimmed.rfind(ktrace::detail::kLocalSelectorPrefix, 0) == 0) {
-                throw std::invalid_argument("local selectors are not supported in this API");
-            }
-        }
     }
 
     std::vector<std::string> invalidTokens;
@@ -101,8 +88,6 @@ std::vector<ktrace::detail::Selector> ParseSelectorsOrThrow(const std::string& l
             }
             message << "'" << invalidTokens[i] << "'";
         }
-        message << "\n\n" << ktrace::detail::SelectorUsage();
-        message << "\nAvailable trace channels:\n" << ktrace::GetDefaultTraceChannelsHelp();
         throw std::runtime_error(message.str());
     }
     return selectors;
@@ -278,37 +263,22 @@ std::string BuildMessagePrefix(std::string_view traceNamespace,
     }
     out.push_back(']');
 
-    if (filenamesEnabled || lineNumbersEnabled) {
+    if (filenamesEnabled) {
         const std::string_view sourceLabel = SourceLabel(sourceFile);
         out.push_back(' ');
         if (state.colorEnabled) {
             out.append("\x1b[38;5;245m");
         }
         out.push_back('[');
-        if (filenamesEnabled) {
-            out.append(sourceLabel.begin(), sourceLabel.end());
-        }
+        out.append(sourceLabel.begin(), sourceLabel.end());
         if (lineNumbersEnabled && sourceLine > 0) {
-            if (filenamesEnabled) {
-                out.push_back(':');
-            } else {
-                out.push_back('L');
-            }
+            out.push_back(':');
             out.append(std::to_string(sourceLine));
         }
-        out.push_back(']');
-        if (state.colorEnabled) {
-            out.append("\x1b[0m");
+        if (functionNamesEnabled && !functionName.empty()) {
+            out.push_back(':');
+            out.append(functionName.begin(), functionName.end());
         }
-    }
-
-    if (functionNamesEnabled && !functionName.empty()) {
-        out.push_back(' ');
-        if (state.colorEnabled) {
-            out.append("\x1b[38;5;245m");
-        }
-        out.push_back('[');
-        out.append(functionName.begin(), functionName.end());
         out.push_back(']');
         if (state.colorEnabled) {
             out.append("\x1b[0m");
@@ -321,106 +291,16 @@ std::string BuildMessagePrefix(std::string_view traceNamespace,
 
 namespace ktrace {
 
-void ConfigureLogPatterns(bool timestampLogging) {
-    detail::EnsureColorSupportInitialized();
-
-    const char* base = "[%^%l%$] %v";
-    const char* named = "[%^%l%$][%n] %v";
-    const char* message = "%v";
-    const char* baseTs = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v";
-    const char* namedTs = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$][%n] %v";
-
+void SetOutputOptions(const OutputOptions& options) {
     auto& state = detail::GetState();
-    {
-        std::lock_guard<std::mutex> lock(state.patternMutex);
-        state.defaultPattern = timestampLogging ? baseTs : base;
-        state.namedPattern = timestampLogging ? namedTs : named;
-        state.messagePattern = message;
-    }
-    state.timestampsEnabled.store(timestampLogging, std::memory_order_relaxed);
-
-    spdlog::set_pattern(state.defaultPattern);
-    if (auto baseLogger = spdlog::default_logger()) {
-        baseLogger->set_pattern(state.defaultPattern);
-    }
-
-    for (const std::string& channel : detail::LoggerChannelSnapshot()) {
-        if (auto logger = spdlog::get(channel)) {
-            logger->set_pattern(state.messagePattern);
-        }
-    }
-}
-
-void ConfigureOutput(bool filenames, bool lineNumbers, bool functionNames) {
-    auto& state = detail::GetState();
-    state.filenamesEnabled.store(filenames, std::memory_order_relaxed);
-    state.lineNumbersEnabled.store(lineNumbers, std::memory_order_relaxed);
-    state.functionNamesEnabled.store(functionNames, std::memory_order_relaxed);
-}
-
-void EnableTraceChannels(const std::string& list) {
-    const std::vector<detail::Selector> validSelectors = ParseSelectorsOrThrow(list, true);
-    if (list.empty()) {
-        return;
-    }
-
-    auto& state = detail::GetState();
-    state.selectorEnabled.store(!validSelectors.empty(), std::memory_order_relaxed);
-
-    auto base = spdlog::default_logger();
-    if (!base) {
-        return;
-    }
-
-    std::string messagePatternCopy;
-    {
-        std::lock_guard<std::mutex> lock(state.patternMutex);
-        messagePatternCopy = state.messagePattern.empty() ? std::string("%v") : state.messagePattern;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(state.selectorMutex);
-        state.enabledSelectors = validSelectors;
-        state.disabledSelectors.clear();
-    }
-
-    for (const std::string& channel : detail::LoggerChannelSnapshot()) {
-        if (auto logger = spdlog::get(channel)) {
-            logger->set_level(spdlog::level::trace);
-            logger->set_pattern(messagePatternCopy);
-        }
-    }
+    state.filenamesEnabled.store(options.filenames, std::memory_order_relaxed);
+    state.lineNumbersEnabled.store(options.line_numbers, std::memory_order_relaxed);
+    state.functionNamesEnabled.store(options.function_names, std::memory_order_relaxed);
+    state.timestampsEnabled.store(options.timestamps, std::memory_order_relaxed);
 }
 
 void EnableChannel(std::string_view qualified_channel) {
-    const std::string selectorText = detail::TrimCopy(std::string(qualified_channel));
-    if (selectorText.empty()) {
-        spdlog::warn(
-            "EnableChannel called with an empty selector. "
-            "EnableChannel requires <namespace>.<channel>[.<sub>[.<sub>]] syntax or is effectively a no-op.");
-        return;
-    }
-    if (selectorText.find('*') != std::string::npos ||
-        selectorText.rfind(detail::kLocalSelectorPrefix, 0) == 0) {
-        spdlog::warn(
-            "EnableChannel('{}') is not an exact namespace-qualified channel selector and is a no-op. "
-            "EnableChannel requires <namespace>.<channel>[.<sub>[.<sub>]] syntax; use EnableChannels(...) for "
-            "wildcard selectors.",
-            selectorText);
-        return;
-    }
-
-    detail::Selector selector{};
-    try {
-        selector = ParseQualifiedChannelOrThrow(selectorText);
-    } catch (const std::invalid_argument&) {
-        spdlog::warn(
-            "EnableChannel('{}') is not an exact namespace-qualified channel selector and is a no-op. "
-            "EnableChannel requires <namespace>.<channel>[.<sub>[.<sub>]] syntax; use EnableChannels(...) for "
-            "wildcard selectors.",
-            selectorText);
-        return;
-    }
+    const detail::Selector selector = ParseQualifiedChannelOrThrow(qualified_channel);
 
     auto& state = detail::GetState();
     {
@@ -433,7 +313,7 @@ void EnableChannel(std::string_view qualified_channel) {
 
 void EnableChannels(std::string_view selectors_csv) {
     const std::vector<detail::Selector> selectors =
-        ParseSelectorsOrThrow(std::string(selectors_csv), false);
+        ParseSelectorsOrThrow(std::string(selectors_csv));
     auto& state = detail::GetState();
     {
         std::lock_guard<std::mutex> lock(state.selectorMutex);
@@ -443,20 +323,8 @@ void EnableChannels(std::string_view selectors_csv) {
     }
 }
 
-void DisableChannels(std::string_view selectors_csv);
-
 void DisableChannel(std::string_view qualified_channel) {
-    const std::string selectorText = detail::TrimCopy(std::string(qualified_channel));
-    if (selectorText.empty() || selectorText == "*") {
-        return;
-    }
-    if (selectorText.find('*') != std::string::npos ||
-        selectorText.rfind(detail::kLocalSelectorPrefix, 0) == 0) {
-        DisableChannels(selectorText);
-        return;
-    }
-
-    const detail::Selector selector = ParseQualifiedChannelOrThrow(selectorText);
+    const detail::Selector selector = ParseQualifiedChannelOrThrow(qualified_channel);
     auto& state = detail::GetState();
     {
         std::lock_guard<std::mutex> lock(state.selectorMutex);
@@ -466,7 +334,7 @@ void DisableChannel(std::string_view qualified_channel) {
 
 void DisableChannels(std::string_view selectors_csv) {
     const std::vector<detail::Selector> selectors =
-        ParseSelectorsOrThrow(std::string(selectors_csv), false);
+        ParseSelectorsOrThrow(std::string(selectors_csv));
     auto& state = detail::GetState();
     {
         std::lock_guard<std::mutex> lock(state.selectorMutex);

@@ -100,19 +100,4 @@ bool SegmentMatches(const std::string& pattern, const std::string_view value) {
     return pattern == "*" || pattern == value;
 }
 
-void RememberLoggerChannel(std::string_view channel) {
-    if (channel.empty()) {
-        return;
-    }
-    auto& state = GetState();
-    std::lock_guard<std::mutex> lock(state.loggerMutex);
-    state.loggerChannels.emplace(channel);
-}
-
-std::vector<std::string> LoggerChannelSnapshot() {
-    auto& state = GetState();
-    std::lock_guard<std::mutex> lock(state.loggerMutex);
-    return {state.loggerChannels.begin(), state.loggerChannels.end()};
-}
-
 } // namespace ktrace::detail

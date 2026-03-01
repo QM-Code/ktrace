@@ -16,10 +16,15 @@ namespace ktrace {
 using ColorId = std::uint16_t;
 inline constexpr ColorId kDefaultColor = 0xFFFFu;
 
+struct OutputOptions {
+    bool filenames = false;
+    bool line_numbers = false;
+    bool function_names = false;
+    bool timestamps = false;
+};
+
 ColorId ResolveColor(std::string_view color_name);
-void ConfigureOutput(bool filenames,
-                     bool line_numbers = false,
-                     bool function_names = false);
+void SetOutputOptions(const OutputOptions& options);
 std::vector<std::string> GetNamespaces();
 std::vector<std::string> GetChannels(std::string_view trace_namespace);
 void EnableChannel(std::string_view qualified_channel);

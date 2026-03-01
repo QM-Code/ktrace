@@ -1,6 +1,5 @@
 #include "ktrace/trace.hpp"
 
-#include "internal.hpp"
 #include "private.hpp"
 
 #include <spdlog/spdlog.h>
@@ -29,17 +28,10 @@ spdlog::logger* GetLogger(const std::string& name) {
     }
 
     const auto& sinks = base->sinks();
-    std::string messagePatternCopy;
-    {
-        std::lock_guard<std::mutex> patternLock(state.patternMutex);
-        messagePatternCopy = state.messagePattern.empty() ? std::string("%v") : state.messagePattern;
-    }
-
     auto created = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
     created->set_level(spdlog::level::trace);
-    created->set_pattern(messagePatternCopy);
+    created->set_pattern("%v");
     spdlog::register_logger(created);
-    state.loggerChannels.emplace(name);
     return created.get();
 }
 
@@ -74,8 +66,6 @@ void RegisterChannelImpl(std::string_view traceNamespace, std::string_view chann
         registeredChannels.end()) {
         registeredChannels.push_back(channelName);
     }
-
-    ktrace::detail::RememberLoggerChannel(channelName);
 }
 
 } // namespace

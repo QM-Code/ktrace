@@ -49,16 +49,6 @@ bool ParseChannelPattern(const std::string_view expression,
 bool ParseSelectorToken(const std::string_view rawToken,
                         Selector& selector,
                         std::string& error) {
-    if (rawToken.rfind(kLocalSelectorPrefix, 0) == 0) {
-        selector.anyNamespace = true;
-        const std::string_view localPattern = rawToken.substr(kLocalSelectorPrefix.size());
-        if (!ParseChannelPattern(localPattern, selector, error)) {
-            error = "local selector " + error;
-            return false;
-        }
-        return true;
-    }
-
     const std::size_t dot = rawToken.find('.');
     if (dot == std::string_view::npos) {
         error = "expected <namespace>.<channel>";
@@ -162,22 +152,6 @@ bool SelectorMatches(const Selector& selector,
     }
 
     return false;
-}
-
-std::string SelectorUsage() {
-    std::ostringstream out;
-    out << "Trace selector format:\n";
-    out << "  --trace <namespace>.<channel>[.<sub>[.<sub>]]\n";
-    out << "  --trace-local <channel>[.<sub>[.<sub>]]\n";
-    out << "  --trace-channels            List known channels\n";
-    out << "  --trace-channels <ns>       List known channels under a namespace\n";
-    out << "Wildcard examples:\n";
-    out << "  --trace '<namespace>.*'\n";
-    out << "  --trace '<namespace>.*.*'\n";
-    out << "  --trace '<namespace>.*.<channel>'\n";
-    out << "  --trace '<namespace>.*.*.*'\n";
-    out << "  --trace '*.*'\n";
-    return out.str();
 }
 
 } // namespace ktrace::detail

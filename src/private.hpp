@@ -12,6 +12,12 @@
 #include <unordered_set>
 #include <vector>
 
+namespace ktrace {
+
+bool ShouldTraceChannel(std::string_view trace_namespace, const std::string& name);
+
+} // namespace ktrace
+
 namespace ktrace::detail {
 
 struct Selector {
@@ -28,11 +34,6 @@ struct State {
     std::vector<Selector> disabledSelectors;
     std::atomic<bool> selectorEnabled{false};
 
-    std::mutex patternMutex;
-    std::string defaultPattern;
-    std::string namedPattern;
-    std::string messagePattern;
-
     std::atomic<bool> filenamesEnabled{false};
     std::atomic<bool> lineNumbersEnabled{false};
     std::atomic<bool> functionNamesEnabled{false};
@@ -48,12 +49,9 @@ struct State {
         channelColorsByNamespace;
 
     std::mutex loggerMutex;
-    std::unordered_set<std::string> loggerChannels;
 };
 
 State& GetState();
-
-constexpr std::string_view kLocalSelectorPrefix = "@local:";
 
 std::string TrimCopy(const std::string& value);
 bool IsIdentifierChar(char c);
@@ -61,9 +59,6 @@ bool IsIdentifierToken(std::string_view token);
 bool IsValidRegisteredChannel(std::string_view channel);
 int SplitCategory(std::string_view category, std::array<std::string_view, 3>& out);
 bool SegmentMatches(const std::string& pattern, std::string_view value);
-
-void RememberLoggerChannel(std::string_view channel);
-std::vector<std::string> LoggerChannelSnapshot();
 
 const std::vector<std::string>& ColorNames();
 const char* AnsiColorCode(colors::Id color);
@@ -76,15 +71,9 @@ std::vector<Selector> ParseAndValidateSelectors(const std::string& list,
 bool SelectorMatches(const Selector& selector,
                      std::string_view trace_namespace,
                      std::string_view category);
-std::string SelectorUsage();
 
 std::optional<colors::Id> ResolveRegisteredColor(std::string_view traceNamespace,
                                                   std::string_view category);
-const char* BuildChannelsHelpForNamespace(std::string_view traceNamespace,
-                                          bool includeNamespacePrefix);
-const char* BuildAllChannelsHelp();
-const char* BuildNamespacesHelp();
-
 void AppendTimestamp(std::string& out);
 std::string_view SourceLabel(std::string_view source);
 std::string BuildMessagePrefix(std::string_view trace_namespace,

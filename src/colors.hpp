@@ -273,7 +273,4 @@ inline constexpr Id Grey93 = 255u;
 inline constexpr Id Orange = Orange1;
 inline constexpr Id Pink = Pink1;
 
-const std::vector<std::string>& GetColors();
-std::string_view Name(Id color);
-
 } // namespace ktrace::colors
