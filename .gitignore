@@ -1,1 +1,18 @@
-#/config/
+__pycache__/
+*.pyc
+
+# build outputs
+build/*
+!build/.gitkeep
+
+# local vcpkg working tree and caches
+vcpkg/src/
+vcpkg/build/
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+build.ninja
+compile_commands.json

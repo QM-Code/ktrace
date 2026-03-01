@@ -1,0 +1,41 @@
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    if(DEFINED VCPKG_ROOT)
+        set(_VCPKG_TOOLCHAIN "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+    else()
+        set(_VCPKG_TOOLCHAIN "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/src/scripts/buildsystems/vcpkg.cmake")
+    endif()
+    if(EXISTS "${_VCPKG_TOOLCHAIN}")
+        set(CMAKE_TOOLCHAIN_FILE "${_VCPKG_TOOLCHAIN}" CACHE FILEPATH "vcpkg toolchain" FORCE)
+    else()
+        message(STATUS "vcpkg toolchain not found at ${_VCPKG_TOOLCHAIN}; configuring without vcpkg")
+    endif()
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/vcpkg.json")
+    set(_KTRACE_VCPKG_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/build")
+    set(VCPKG_MANIFEST_MODE ON CACHE BOOL "Use vcpkg manifest mode" FORCE)
+    set(VCPKG_MANIFEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg" CACHE STRING "vcpkg manifest dir" FORCE)
+    set(VCPKG_FEATURE_FLAGS "manifests" CACHE STRING "vcpkg feature flags" FORCE)
+    set(VCPKG_INSTALLED_DIR "${CMAKE_BINARY_DIR}/installed" CACHE PATH "vcpkg installed tree" FORCE)
+
+    set(_KTRACE_VCPKG_INSTALL_OPTIONS "")
+    if(DEFINED VCPKG_INSTALL_OPTIONS AND NOT VCPKG_INSTALL_OPTIONS STREQUAL "")
+        set(_KTRACE_VCPKG_INSTALL_OPTIONS ${VCPKG_INSTALL_OPTIONS})
+    endif()
+
+    set(_KTRACE_VCPKG_INSTALL_BUILDTREES "--x-buildtrees-root=${_KTRACE_VCPKG_BUILD_DIR}/buildtrees")
+    set(_KTRACE_VCPKG_INSTALL_PACKAGES "--x-packages-root=${_KTRACE_VCPKG_BUILD_DIR}/packages")
+
+    list(FIND _KTRACE_VCPKG_INSTALL_OPTIONS "${_KTRACE_VCPKG_INSTALL_BUILDTREES}" _KTRACE_VCPKG_BUILDTREES_INDEX)
+    if(_KTRACE_VCPKG_BUILDTREES_INDEX EQUAL -1)
+        list(APPEND _KTRACE_VCPKG_INSTALL_OPTIONS "${_KTRACE_VCPKG_INSTALL_BUILDTREES}")
+    endif()
+
+    list(FIND _KTRACE_VCPKG_INSTALL_OPTIONS "${_KTRACE_VCPKG_INSTALL_PACKAGES}" _KTRACE_VCPKG_PACKAGES_INDEX)
+    if(_KTRACE_VCPKG_PACKAGES_INDEX EQUAL -1)
+        list(APPEND _KTRACE_VCPKG_INSTALL_OPTIONS "${_KTRACE_VCPKG_INSTALL_PACKAGES}")
+    endif()
+
+    set(VCPKG_INSTALL_OPTIONS "${_KTRACE_VCPKG_INSTALL_OPTIONS}" CACHE STRING
+        "Additional install options to pass to vcpkg" FORCE)
+endif()

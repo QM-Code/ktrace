@@ -1,16 +1,20 @@
-# NOTICE
+# m-ktrace
 
-This project is intended to be worked on using a CLI coding agent.
+Standalone trace logging library extracted as its own SDK module.
 
-Start your favorite CLI coding agent from this directory.
+`KTRACE_NAMESPACE` must be defined by consumers before using
+`ktrace/trace.hpp` (for example via target compile definitions).
 
-If the agent does not automatically bootstrap, tell the agent to follow the instructions in AGENT.md.
+## Build
 
-Passing AGENTS.md as a command line parameter may also initiate bootstrap depending on CLI.
-
-If all else fails, send the following prompt:
-
-```text
-Follow the instructions in agents/BOOTSTRAP.md.
+```bash
+./abuild.py -a <name> -d build/test/
 ```
 
+The default SDK install output is:
+
+- `build/test/sdk/include`
+- `build/test/sdk/lib`
+- `build/test/sdk/lib/cmake/KTraceSDK`
+
+You can override the install prefix with `-k` / `--install-sdk`.

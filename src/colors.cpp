@@ -1,0 +1,317 @@
+#include "colors.hpp"
+
+#include "private.hpp"
+
+#include <cstdio>
+
+namespace ktrace::detail {
+const std::vector<std::string>& TraceColorNames() {
+    static const std::vector<std::string> names = []() {
+        std::vector<std::string> values(256);
+        values[0] = "Black";
+        values[1] = "Red";
+        values[2] = "Green";
+        values[3] = "Yellow";
+        values[4] = "Blue";
+        values[5] = "Magenta";
+        values[6] = "Cyan";
+        values[7] = "White";
+        values[8] = "BrightBlack";
+        values[9] = "BrightRed";
+        values[10] = "BrightGreen";
+        values[11] = "BrightYellow";
+        values[12] = "BrightBlue";
+        values[13] = "BrightMagenta";
+        values[14] = "BrightCyan";
+        values[15] = "BrightWhite";
+        values[16] = "Grey0";
+        values[17] = "NavyBlue";
+        values[18] = "DarkBlue";
+        values[19] = "Blue3";
+        values[20] = "Blue3B";
+        values[21] = "Blue1";
+        values[22] = "DarkGreen";
+        values[23] = "DeepSkyBlue4";
+        values[24] = "DeepSkyBlue4B";
+        values[25] = "DeepSkyBlue4C";
+        values[26] = "DodgerBlue3";
+        values[27] = "DodgerBlue2";
+        values[28] = "Green4";
+        values[29] = "SpringGreen4";
+        values[30] = "Turquoise4";
+        values[31] = "DeepSkyBlue3";
+        values[32] = "DeepSkyBlue3B";
+        values[33] = "DodgerBlue1";
+        values[34] = "Green3";
+        values[35] = "SpringGreen3";
+        values[36] = "DarkCyan";
+        values[37] = "LightSeaGreen";
+        values[38] = "DeepSkyBlue2";
+        values[39] = "DeepSkyBlue1";
+        values[40] = "Green3B";
+        values[41] = "SpringGreen3B";
+        values[42] = "SpringGreen2";
+        values[43] = "Cyan3";
+        values[44] = "DarkTurquoise";
+        values[45] = "Turquoise2";
+        values[46] = "Green1";
+        values[47] = "SpringGreen2B";
+        values[48] = "SpringGreen1";
+        values[49] = "MediumSpringGreen";
+        values[50] = "Cyan2";
+        values[51] = "Cyan1";
+        values[52] = "DarkRed";
+        values[53] = "DeepPink4";
+        values[54] = "Purple4";
+        values[55] = "Purple4B";
+        values[56] = "Purple3";
+        values[57] = "BlueViolet";
+        values[58] = "Orange4";
+        values[59] = "Grey37";
+        values[60] = "MediumPurple4";
+        values[61] = "SlateBlue3";
+        values[62] = "SlateBlue3B";
+        values[63] = "RoyalBlue1";
+        values[64] = "Chartreuse4";
+        values[65] = "DarkSeaGreen4";
+        values[66] = "PaleTurquoise4";
+        values[67] = "SteelBlue";
+        values[68] = "SteelBlue3";
+        values[69] = "CornflowerBlue";
+        values[70] = "Chartreuse3";
+        values[71] = "DarkSeaGreen4B";
+        values[72] = "CadetBlue";
+        values[73] = "CadetBlueB";
+        values[74] = "SkyBlue3";
+        values[75] = "SteelBlue1";
+        values[76] = "Chartreuse3B";
+        values[77] = "PaleGreen3";
+        values[78] = "SeaGreen3";
+        values[79] = "Aquamarine3";
+        values[80] = "MediumTurquoise";
+        values[81] = "SteelBlue1B";
+        values[82] = "Chartreuse2";
+        values[83] = "SeaGreen2";
+        values[84] = "SeaGreen1";
+        values[85] = "SeaGreen1B";
+        values[86] = "Aquamarine1";
+        values[87] = "DarkSlateGray2";
+        values[88] = "DarkRedB";
+        values[89] = "DeepPink4B";
+        values[90] = "DarkMagenta";
+        values[91] = "DarkMagentaB";
+        values[92] = "DarkViolet";
+        values[93] = "Purple";
+        values[94] = "Orange4B";
+        values[95] = "LightPink4";
+        values[96] = "Plum4";
+        values[97] = "MediumPurple3";
+        values[98] = "MediumPurple3B";
+        values[99] = "SlateBlue1";
+        values[100] = "Yellow4";
+        values[101] = "Wheat4";
+        values[102] = "Grey53";
+        values[103] = "LightSlateGrey";
+        values[104] = "MediumPurple";
+        values[105] = "LightSlateBlue";
+        values[106] = "Yellow4B";
+        values[107] = "DarkOliveGreen3";
+        values[108] = "DarkSeaGreen";
+        values[109] = "LightSkyBlue3";
+        values[110] = "LightSkyBlue3B";
+        values[111] = "SkyBlue2";
+        values[112] = "Chartreuse2B";
+        values[113] = "DarkOliveGreen3B";
+        values[114] = "PaleGreen3B";
+        values[115] = "DarkSeaGreen3";
+        values[116] = "DarkSlateGray3";
+        values[117] = "SkyBlue1";
+        values[118] = "Chartreuse1";
+        values[119] = "LightGreen";
+        values[120] = "LightGreenB";
+        values[121] = "PaleGreen1";
+        values[122] = "Aquamarine1B";
+        values[123] = "DarkSlateGray1";
+        values[124] = "Red3";
+        values[125] = "DeepPink4C";
+        values[126] = "MediumVioletRed";
+        values[127] = "Magenta3";
+        values[128] = "DarkVioletB";
+        values[129] = "PurpleB";
+        values[130] = "DarkOrange3";
+        values[131] = "IndianRed";
+        values[132] = "HotPink3";
+        values[133] = "MediumOrchid3";
+        values[134] = "MediumOrchid";
+        values[135] = "MediumPurple2";
+        values[136] = "DarkGoldenrod";
+        values[137] = "LightSalmon3";
+        values[138] = "RosyBrown";
+        values[139] = "Grey63";
+        values[140] = "MediumPurple2B";
+        values[141] = "MediumPurple1";
+        values[142] = "Gold3";
+        values[143] = "DarkKhaki";
+        values[144] = "NavajoWhite3";
+        values[145] = "Grey69";
+        values[146] = "LightSteelBlue3";
+        values[147] = "LightSteelBlue";
+        values[148] = "Yellow3";
+        values[149] = "DarkOliveGreen3C";
+        values[150] = "DarkSeaGreen3B";
+        values[151] = "DarkSeaGreen2";
+        values[152] = "LightCyan3";
+        values[153] = "LightSkyBlue1";
+        values[154] = "GreenYellow";
+        values[155] = "DarkOliveGreen2";
+        values[156] = "PaleGreen1B";
+        values[157] = "DarkSeaGreen2B";
+        values[158] = "DarkSeaGreen1";
+        values[159] = "PaleTurquoise1";
+        values[160] = "Red3B";
+        values[161] = "DeepPink3";
+        values[162] = "DeepPink3B";
+        values[163] = "Magenta3B";
+        values[164] = "Magenta3C";
+        values[165] = "Magenta2";
+        values[166] = "DarkOrange3B";
+        values[167] = "IndianRedB";
+        values[168] = "HotPink3B";
+        values[169] = "HotPink2";
+        values[170] = "Orchid";
+        values[171] = "MediumOrchid1";
+        values[172] = "Orange3";
+        values[173] = "LightSalmon3B";
+        values[174] = "LightPink3";
+        values[175] = "Pink3";
+        values[176] = "Plum3";
+        values[177] = "Violet";
+        values[178] = "Gold3B";
+        values[179] = "LightGoldenrod3";
+        values[180] = "Tan";
+        values[181] = "MistyRose3";
+        values[182] = "Thistle3";
+        values[183] = "Plum2";
+        values[184] = "Yellow3B";
+        values[185] = "Khaki3";
+        values[186] = "LightGoldenrod2";
+        values[187] = "LightYellow3";
+        values[188] = "Grey84";
+        values[189] = "LightSteelBlue1";
+        values[190] = "Yellow2";
+        values[191] = "DarkOliveGreen1";
+        values[192] = "DarkOliveGreen1B";
+        values[193] = "DarkSeaGreen1B";
+        values[194] = "Honeydew2";
+        values[195] = "LightCyan1";
+        values[196] = "Red1";
+        values[197] = "DeepPink2";
+        values[198] = "DeepPink1";
+        values[199] = "DeepPink1B";
+        values[200] = "Magenta2B";
+        values[201] = "Magenta1";
+        values[202] = "OrangeRed1";
+        values[203] = "IndianRed1";
+        values[204] = "IndianRed1B";
+        values[205] = "HotPink";
+        values[206] = "HotPinkB";
+        values[207] = "MediumOrchid1B";
+        values[208] = "DarkOrange";
+        values[209] = "Salmon1";
+        values[210] = "LightCoral";
+        values[211] = "PaleVioletRed1";
+        values[212] = "Orchid2";
+        values[213] = "Orchid1";
+        values[214] = "Orange1";
+        values[215] = "SandyBrown";
+        values[216] = "LightSalmon1";
+        values[217] = "LightPink1";
+        values[218] = "Pink1";
+        values[219] = "Plum1";
+        values[220] = "Gold1";
+        values[221] = "LightGoldenrod2B";
+        values[222] = "LightGoldenrod2C";
+        values[223] = "NavajoWhite1";
+        values[224] = "MistyRose1";
+        values[225] = "Thistle1";
+        values[226] = "Yellow1";
+        values[227] = "LightGoldenrod1";
+        values[228] = "Khaki1";
+        values[229] = "Wheat1";
+        values[230] = "Cornsilk1";
+        values[231] = "Grey100";
+        values[232] = "Grey3";
+        values[233] = "Grey7";
+        values[234] = "Grey11";
+        values[235] = "Grey15";
+        values[236] = "Grey19";
+        values[237] = "Grey23";
+        values[238] = "Grey27";
+        values[239] = "Grey30";
+        values[240] = "Grey35";
+        values[241] = "Grey39";
+        values[242] = "Grey42";
+        values[243] = "Grey46";
+        values[244] = "Grey50";
+        values[245] = "Grey54";
+        values[246] = "Grey58";
+        values[247] = "Grey62";
+        values[248] = "Grey66";
+        values[249] = "Grey70";
+        values[250] = "Grey74";
+        values[251] = "Grey78";
+        values[252] = "Grey82";
+        values[253] = "Grey85";
+        values[254] = "Grey89";
+        values[255] = "Grey93";
+        return values;
+    }();
+    return names;
+}
+
+const std::vector<std::string>& ColorNames() {
+    return TraceColorNames();
+}
+
+const char* AnsiColorCode(colors::Id color) {
+    if (color == colors::Default) {
+        return "";
+    }
+    if (color <= 7u) {
+        static thread_local char sgr[16];
+        std::snprintf(sgr, sizeof(sgr), "\x1b[%um", 30u + static_cast<unsigned>(color));
+        return sgr;
+    }
+    if (color <= 15u) {
+        static thread_local char sgr[16];
+        std::snprintf(sgr, sizeof(sgr), "\x1b[%um", 90u + (static_cast<unsigned>(color) - 8u));
+        return sgr;
+    }
+    if (color <= 255u) {
+        static thread_local char sgr[32];
+        std::snprintf(sgr, sizeof(sgr), "\x1b[38;5;%um", static_cast<unsigned>(color));
+        return sgr;
+    }
+    return "";
+}
+
+} // namespace ktrace::detail
+
+namespace ktrace::colors {
+
+const std::vector<std::string>& GetColors() {
+    return detail::ColorNames();
+}
+
+std::string_view Name(Id color) {
+    if (color == Default) {
+        return "Default";
+    }
+    const auto& names = detail::ColorNames();
+    if (color <= 255u) {
+        return names[static_cast<size_t>(color)];
+    }
+    return "Unknown";
+}
+
+} // namespace ktrace::colors
