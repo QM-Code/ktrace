@@ -1,13 +1,115 @@
-#include "private.hpp"
+#include "trace.hpp"
 
-#include <sstream>
 #include <unordered_set>
 
 namespace ktrace::detail {
 
-bool ParseChannelPattern(const std::string_view expression,
-                         Selector& selector,
-                         std::string& error) {
+namespace {
+
+bool splitByTopLevelCommas(std::string_view value,
+                           std::vector<std::string>& parts,
+                           std::string& error) {
+    std::size_t start = 0;
+    int brace_depth = 0;
+
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        const char c = value[i];
+        if (c == '{') {
+            ++brace_depth;
+            continue;
+        }
+        if (c == '}') {
+            if (brace_depth == 0) {
+                error = "unmatched '}'";
+                return false;
+            }
+            --brace_depth;
+            continue;
+        }
+        if (c == ',' && brace_depth == 0) {
+            parts.push_back(trimWhitespace(std::string(value.substr(start, i - start))));
+            start = i + 1;
+        }
+    }
+
+    if (brace_depth != 0) {
+        error = "unmatched '{'";
+        return false;
+    }
+
+    parts.push_back(trimWhitespace(std::string(value.substr(start))));
+    return true;
+}
+
+bool splitBraceAlternatives(std::string_view value,
+                            std::vector<std::string>& alternatives,
+                            std::string& error) {
+    if (value.empty()) {
+        error = "empty brace group";
+        return false;
+    }
+
+    if (!splitByTopLevelCommas(value, alternatives, error)) {
+        return false;
+    }
+    for (const std::string& alternative : alternatives) {
+        if (alternative.empty()) {
+            error = "empty brace alternative";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool expandBraceExpression(const std::string& value,
+                          std::vector<std::string>& expanded,
+                          std::string& error) {
+    const std::size_t open = value.find('{');
+    if (open == std::string::npos) {
+        expanded.push_back(value);
+        return true;
+    }
+
+    int depth = 0;
+    std::size_t close = std::string::npos;
+    for (std::size_t i = open; i < value.size(); ++i) {
+        if (value[i] == '{') {
+            ++depth;
+        } else if (value[i] == '}') {
+            --depth;
+            if (depth == 0) {
+                close = i;
+                break;
+            }
+        }
+    }
+    if (close == std::string::npos) {
+        error = "unmatched '{'";
+        return false;
+    }
+
+    const std::string prefix = value.substr(0, open);
+    const std::string suffix = value.substr(close + 1);
+    const std::string_view inside(value.data() + open + 1, close - open - 1);
+
+    std::vector<std::string> alternatives;
+    if (!splitBraceAlternatives(inside, alternatives, error)) {
+        return false;
+    }
+
+    for (const std::string& alternative : alternatives) {
+        if (!expandBraceExpression(prefix + alternative + suffix, expanded, error)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+bool parseSelectorChannelPattern(const std::string_view expression,
+                                 Selector& selector,
+                                 std::string& error) {
     if (expression.empty()) {
         error = "missing channel expression";
         return false;
@@ -29,126 +131,145 @@ bool ParseChannelPattern(const std::string_view expression,
             error = "empty channel token";
             return false;
         }
-        if (token != "*" && !IsIdentifierToken(token)) {
+        if (token != "*" && !isSelectorIdentifier(token)) {
             error = "invalid channel token '" + std::string(token) + "'";
             return false;
         }
-        selector.channelTokens[depth++] = std::string(token);
+        selector.channel_tokens[depth++] = std::string(token);
         if (dot == std::string_view::npos) {
             break;
         }
         start = dot + 1;
     }
 
-    selector.channelDepth = depth;
-    selector.includeTopLevel =
-        depth == 2 && selector.channelTokens[0] == "*" && selector.channelTokens[1] == "*";
+    selector.channel_depth = depth;
+    selector.include_top_level =
+        depth == 2 && selector.channel_tokens[0] == "*" && selector.channel_tokens[1] == "*";
     return true;
 }
 
-bool ParseSelectorToken(const std::string_view rawToken,
-                        Selector& selector,
-                        std::string& error) {
-    const std::size_t dot = rawToken.find('.');
+bool parseSelectorExpression(const std::string_view raw_token,
+                             Selector& selector,
+                             std::string& error) {
+    const std::size_t dot = raw_token.find('.');
     if (dot == std::string_view::npos) {
         error = "expected <namespace>.<channel>";
         return false;
     }
 
-    const std::string_view ns = rawToken.substr(0, dot);
-    const std::string_view channelPattern = rawToken.substr(dot + 1);
+    const std::string_view ns = raw_token.substr(0, dot);
+    const std::string_view channel_pattern = raw_token.substr(dot + 1);
     if (ns.empty()) {
         error = "missing namespace";
         return false;
     }
     if (ns == "*") {
-        selector.anyNamespace = true;
-    } else if (IsIdentifierToken(ns)) {
-        selector.anyNamespace = false;
-        selector.traceNamespace = std::string(ns);
+        selector.any_namespace = true;
+    } else if (isSelectorIdentifier(ns)) {
+        selector.any_namespace = false;
+        selector.trace_namespace = std::string(ns);
     } else {
         error = "invalid namespace '" + std::string(ns) + "'";
         return false;
     }
 
-    if (!ParseChannelPattern(channelPattern, selector, error)) {
+    if (!parseSelectorChannelPattern(channel_pattern, selector, error)) {
         return false;
     }
     return true;
 }
 
-std::vector<Selector> ParseAndValidateSelectors(const std::string& list,
-                                                std::vector<std::string>& invalidTokens) {
+std::vector<Selector> parseSelectorList(const std::string& list,
+                                        std::vector<std::string>& invalid_tokens) {
     std::vector<Selector> selectors;
-    std::unordered_set<std::string> invalidSeen;
+    std::unordered_set<std::string> invalid_seen;
 
-    std::stringstream ss(list);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        const std::string name = TrimCopy(token);
+    std::vector<std::string> selector_tokens;
+    std::string split_error;
+    if (!splitByTopLevelCommas(list, selector_tokens, split_error)) {
+        invalid_tokens.push_back(split_error);
+        return selectors;
+    }
+
+    for (const std::string& token : selector_tokens) {
+        const std::string name = trimWhitespace(token);
         if (name.empty()) {
-            if (invalidSeen.insert("<empty>").second) {
-                invalidTokens.emplace_back("<empty>");
+            if (invalid_seen.insert("<empty>").second) {
+                invalid_tokens.emplace_back("<empty>");
             }
             continue;
         }
 
-        Selector selector{};
-        std::string error;
-        if (!ParseSelectorToken(name, selector, error)) {
-            const std::string reason = error.empty() ? name : (name + " (" + error + ")");
-            if (invalidSeen.insert(reason).second) {
-                invalidTokens.push_back(reason);
+        std::vector<std::string> expanded_tokens;
+        std::string expand_error;
+        if (!expandBraceExpression(name, expanded_tokens, expand_error)) {
+            const std::string reason = name + " (" + expand_error + ")";
+            if (invalid_seen.insert(reason).second) {
+                invalid_tokens.push_back(reason);
             }
             continue;
         }
-        selectors.push_back(std::move(selector));
+
+        for (const std::string& expanded_token : expanded_tokens) {
+            Selector selector{};
+            std::string parse_error;
+            if (!parseSelectorExpression(expanded_token, selector, parse_error)) {
+                const std::string reason = parse_error.empty()
+                                               ? expanded_token
+                                               : (expanded_token + " (" + parse_error + ")");
+                if (invalid_seen.insert(reason).second) {
+                    invalid_tokens.push_back(reason);
+                }
+                continue;
+            }
+            selectors.push_back(std::move(selector));
+        }
     }
 
     return selectors;
 }
 
-bool SelectorMatches(const Selector& selector,
+bool matchesSelector(const Selector& selector,
                      const std::string_view trace_namespace,
                      const std::string_view category) {
-    if (!selector.anyNamespace && trace_namespace != selector.traceNamespace) {
+    if (!selector.any_namespace && trace_namespace != selector.trace_namespace) {
         return false;
     }
 
-    std::array<std::string_view, 3> channelParts{};
-    const int channelDepth = SplitCategory(category, channelParts);
-    if (channelDepth <= 0) {
+    std::array<std::string_view, 3> channel_parts{};
+    const int channel_depth = splitChannelPath(category, channel_parts);
+    if (channel_depth <= 0) {
         return false;
     }
 
-    if (selector.channelDepth == 1) {
-        return channelDepth == 1 && SegmentMatches(selector.channelTokens[0], channelParts[0]);
+    if (selector.channel_depth == 1) {
+        return channel_depth == 1 && matchesSelectorSegment(selector.channel_tokens[0], channel_parts[0]);
     }
 
-    if (selector.channelDepth == 2) {
-        if (channelDepth == 1 && selector.includeTopLevel) {
+    if (selector.channel_depth == 2) {
+        if (channel_depth == 1 && selector.include_top_level) {
             return true;
         }
-        if (channelDepth != 2) {
+        if (channel_depth != 2) {
             return false;
         }
-        return SegmentMatches(selector.channelTokens[0], channelParts[0]) &&
-               SegmentMatches(selector.channelTokens[1], channelParts[1]);
+        return matchesSelectorSegment(selector.channel_tokens[0], channel_parts[0]) &&
+               matchesSelectorSegment(selector.channel_tokens[1], channel_parts[1]);
     }
 
-    if (selector.channelDepth == 3) {
-        const bool wildcardAll = selector.channelTokens[0] == "*" &&
-                                 selector.channelTokens[1] == "*" &&
-                                 selector.channelTokens[2] == "*";
-        if (wildcardAll) {
-            return channelDepth >= 1 && channelDepth <= 3;
+    if (selector.channel_depth == 3) {
+        const bool wildcard_all = selector.channel_tokens[0] == "*" &&
+                                 selector.channel_tokens[1] == "*" &&
+                                 selector.channel_tokens[2] == "*";
+        if (wildcard_all) {
+            return channel_depth >= 1 && channel_depth <= 3;
         }
-        if (channelDepth != 3) {
+        if (channel_depth != 3) {
             return false;
         }
-        return SegmentMatches(selector.channelTokens[0], channelParts[0]) &&
-               SegmentMatches(selector.channelTokens[1], channelParts[1]) &&
-               SegmentMatches(selector.channelTokens[2], channelParts[2]);
+        return matchesSelectorSegment(selector.channel_tokens[0], channel_parts[0]) &&
+               matchesSelectorSegment(selector.channel_tokens[1], channel_parts[1]) &&
+               matchesSelectorSegment(selector.channel_tokens[2], channel_parts[2]);
     }
 
     return false;

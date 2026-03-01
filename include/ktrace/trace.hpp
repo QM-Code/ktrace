@@ -25,6 +25,7 @@ struct OutputOptions {
 
 ColorId ResolveColor(std::string_view color_name);
 void SetOutputOptions(const OutputOptions& options);
+void ProcessCLI(int argc, char** argv, std::string_view trace_root = "--trace");
 std::vector<std::string> GetNamespaces();
 std::vector<std::string> GetChannels(std::string_view trace_namespace);
 void EnableChannel(std::string_view qualified_channel);

@@ -1,23 +1,23 @@
-#include "private.hpp"
+#include "trace.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 
 namespace ktrace::detail {
 
-std::optional<colors::Id> ResolveRegisteredColor(std::string_view traceNamespace,
-                                                  std::string_view category) {
-    auto& state = GetState();
-    std::lock_guard<std::mutex> lock(state.registryMutex);
-    const auto nsIt = state.channelColorsByNamespace.find(std::string(traceNamespace));
-    if (nsIt == state.channelColorsByNamespace.end()) {
+std::optional<colors::Id> resolveChannelColor(std::string_view trace_namespace,
+                                              std::string_view category) {
+    auto& state = getTraceState();
+    std::lock_guard<std::mutex> lock(state.registry_mutex);
+    const auto ns_it = state.channel_colors_by_namespace.find(std::string(trace_namespace));
+    if (ns_it == state.channel_colors_by_namespace.end()) {
         return std::nullopt;
     }
 
     std::string key(category);
     while (!key.empty()) {
-        const auto it = nsIt->second.find(key);
-        if (it != nsIt->second.end()) {
+        const auto it = ns_it->second.find(key);
+        if (it != ns_it->second.end()) {
             return it->second;
         }
         const std::size_t dot = key.rfind('.');
@@ -36,12 +36,12 @@ namespace ktrace {
 std::vector<std::string> GetNamespaces() {
     std::vector<std::string> namespaces;
     {
-        auto& state = detail::GetState();
-        std::lock_guard<std::mutex> lock(state.registryMutex);
+        auto& state = detail::getTraceState();
+        std::lock_guard<std::mutex> lock(state.registry_mutex);
         namespaces.reserve(state.namespaces.size());
-        for (const std::string& traceNamespace : state.namespaces) {
-            if (!traceNamespace.empty()) {
-                namespaces.push_back(traceNamespace);
+        for (const std::string& trace_namespace : state.namespaces) {
+            if (!trace_namespace.empty()) {
+                namespaces.push_back(trace_namespace);
             }
         }
     }
@@ -50,18 +50,18 @@ std::vector<std::string> GetNamespaces() {
     return namespaces;
 }
 
-std::vector<std::string> GetChannels(std::string_view traceNamespace) {
-    const std::string traceNamespaceName = detail::TrimCopy(std::string(traceNamespace));
-    if (!detail::IsIdentifierToken(traceNamespaceName)) {
-        throw std::invalid_argument("invalid trace namespace '" + traceNamespaceName + "'");
+std::vector<std::string> GetChannels(std::string_view trace_namespace) {
+    const std::string trace_namespace_name = detail::trimWhitespace(std::string(trace_namespace));
+    if (!detail::isSelectorIdentifier(trace_namespace_name)) {
+        throw std::invalid_argument("invalid trace namespace '" + trace_namespace_name + "'");
     }
 
     std::vector<std::string> channels;
     {
-        auto& state = detail::GetState();
-        std::lock_guard<std::mutex> lock(state.registryMutex);
-        const auto it = state.channelsByNamespace.find(traceNamespaceName);
-        if (it == state.channelsByNamespace.end()) {
+        auto& state = detail::getTraceState();
+        std::lock_guard<std::mutex> lock(state.registry_mutex);
+        const auto it = state.channels_by_namespace.find(trace_namespace_name);
+        if (it == state.channels_by_namespace.end()) {
             return channels;
         }
         channels = it->second;

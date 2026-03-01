@@ -1,16 +1,15 @@
-#include "private.hpp"
+#include "trace.hpp"
 
-#include <algorithm>
 #include <cctype>
 
 namespace ktrace::detail {
 
-State& GetState() {
+State& getTraceState() {
     static State state;
     return state;
 }
 
-std::string TrimCopy(const std::string& value) {
+std::string trimWhitespace(const std::string& value) {
     size_t start = 0;
     while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0) {
         ++start;
@@ -25,24 +24,24 @@ std::string TrimCopy(const std::string& value) {
     return value.substr(start, end - start + 1);
 }
 
-bool IsIdentifierChar(const char c) {
+bool isSelectorIdentifierChar(const char c) {
     const auto uc = static_cast<unsigned char>(c);
     return std::isalnum(uc) != 0 || c == '_' || c == '-';
 }
 
-bool IsIdentifierToken(const std::string_view token) {
+bool isSelectorIdentifier(const std::string_view token) {
     if (token.empty()) {
         return false;
     }
     for (const char c : token) {
-        if (!IsIdentifierChar(c)) {
+        if (!isSelectorIdentifierChar(c)) {
             return false;
         }
     }
     return true;
 }
 
-bool IsValidRegisteredChannel(const std::string_view channel) {
+bool isValidChannelPath(const std::string_view channel) {
     if (channel.empty()) {
         return false;
     }
@@ -57,7 +56,7 @@ bool IsValidRegisteredChannel(const std::string_view channel) {
             (dot == std::string_view::npos)
                 ? channel.substr(start)
                 : channel.substr(start, dot - start);
-        if (token.empty() || !IsIdentifierToken(token)) {
+        if (token.empty() || !isSelectorIdentifier(token)) {
             return false;
         }
         ++depth;
@@ -69,7 +68,7 @@ bool IsValidRegisteredChannel(const std::string_view channel) {
     return true;
 }
 
-int SplitCategory(std::string_view category, std::array<std::string_view, 3>& out) {
+int splitChannelPath(std::string_view category, std::array<std::string_view, 3>& out) {
     if (category.empty()) {
         return 0;
     }
@@ -96,7 +95,7 @@ int SplitCategory(std::string_view category, std::array<std::string_view, 3>& ou
     return depth;
 }
 
-bool SegmentMatches(const std::string& pattern, const std::string_view value) {
+bool matchesSelectorSegment(const std::string& pattern, const std::string_view value) {
     return pattern == "*" || pattern == value;
 }
 

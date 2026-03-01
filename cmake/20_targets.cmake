@@ -1,6 +1,8 @@
 set(KTRACE_LOG_SOURCES
+    ${PROJECT_SOURCE_DIR}/src/cli.cpp
     ${PROJECT_SOURCE_DIR}/src/colors.cpp
-    ${PROJECT_SOURCE_DIR}/src/core.cpp
+    ${PROJECT_SOURCE_DIR}/src/filter.cpp
+    ${PROJECT_SOURCE_DIR}/src/format.cpp
     ${PROJECT_SOURCE_DIR}/src/registry.cpp
     ${PROJECT_SOURCE_DIR}/src/selectors.cpp
     ${PROJECT_SOURCE_DIR}/src/state.cpp
@@ -16,7 +18,7 @@ endif()
 add_library(ktrace_sdk ${_ktrace_library_type} ${KTRACE_LOG_SOURCES})
 add_library(ktrace::sdk ALIAS ktrace_sdk)
 
-# Internal log headers use ShouldTraceChannel(...) inline helpers that require this macro.
+# Internal trace macros require a compile-time namespace string.
 target_compile_definitions(ktrace_sdk PRIVATE KTRACE_NAMESPACE="ktrace")
 
 target_include_directories(ktrace_sdk

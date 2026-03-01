@@ -3,7 +3,7 @@
 #include "delta/sdk.hpp"
 #include "ktrace/trace.hpp"
 
-int main() {
+int main(int argc, char** argv) {
     ktrace::RegisterChannel("app", ktrace::ResolveColor("BrightCyan"));
     ktrace::RegisterChannel("orchestrator", ktrace::ResolveColor("BrightYellow"));
     ktrace::EnableChannel("executable.app");
@@ -14,7 +14,9 @@ int main() {
     alpha::InitializeTraceLogging();
     beta::InitializeTraceLogging();
     delta::InitializeTraceLogging();
-
+ 
+	ktrace::ProcessCLI(argc,argv,"--trace");
+	
 	/*
     ktrace::EnableChannel("alpha.net");
     ktrace::EnableChannel("alpha.cache");
