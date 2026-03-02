@@ -2,6 +2,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <iostream>
 #include <sstream>
@@ -81,9 +82,10 @@ void enableSelectorListOrThrow(const std::string_view option, const std::string_
 void printTraceHelp(const std::string& root) {
     std::cout
         << "\nTrace logging options:\n"
-        << "  " << root << " <selectors>        Enable selectors\n"
+        << "  " << root << " <selector>         Enable trace channel(s) (may pass more than once)\n"
         << "  " << root << "-examples           Show selector examples\n"
         << "  " << root << "-namespaces         Show initialized trace namespaces\n"
+        << "  " << root << "-channels           Show initialized trace channels\n"
         << "  " << root << "-colors             Show available trace colors\n"
         << "  " << root << "-filenames          Include source filename in trace output\n"
         << "  " << root << "-line-numbers       Include source line number (requires filenames)\n"
@@ -117,13 +119,14 @@ void printTraceExamples(const std::string& root) {
 }
 
 void printTraceNamespaces() {
-    const std::vector<std::string> namespaces = ktrace::GetNamespaces();
+    std::vector<std::string> namespaces = ktrace::GetNamespaces();
     if (namespaces.empty()) {
         std::cout << "No trace namespaces defined.\n\n";
         return;
     }
 
-    std::cout << "Available trace namespaces:\n";
+    std::sort(namespaces.begin(), namespaces.end());
+    std::cout << "\nAvailable trace namespaces:\n";
     for (const std::string& trace_namespace : namespaces) {
         if (trace_namespace.empty()) {
             continue;
@@ -133,9 +136,39 @@ void printTraceNamespaces() {
     std::cout << "\n";
 }
 
+void printTraceChannels() {
+    std::vector<std::string> namespaces = ktrace::GetNamespaces();
+    std::sort(namespaces.begin(), namespaces.end());
+
+    bool printed_any = false;
+    for (const std::string& trace_namespace : namespaces) {
+        if (trace_namespace.empty()) {
+            continue;
+        }
+        std::vector<std::string> channels = ktrace::GetChannels(trace_namespace);
+        std::sort(channels.begin(), channels.end());
+        for (const std::string& channel : channels) {
+            if (channel.empty()) {
+                continue;
+            }
+            if (!printed_any) {
+                std::cout << "\nAvailable trace channels:\n";
+                printed_any = true;
+            }
+            std::cout << "  " << trace_namespace << "." << channel << "\n";
+        }
+    }
+
+    if (!printed_any) {
+        std::cout << "No trace channels defined.\n\n";
+        return;
+    }
+    std::cout << "\n";
+}
+
 void printTraceColors() {
     const auto& names = ktrace::detail::colorNames();
-    std::cout << "Available trace colors:\n";
+    std::cout << "\nAvailable trace colors:\n";
     for (const std::string_view color_name : names) {
         if (color_name.empty()) {
             continue;
@@ -155,6 +188,7 @@ void processCliArgs(int& argc, char** argv, std::string_view trace_root) {
     const std::string root_help = root + "-help";
     const std::string root_examples = root + "-examples";
     const std::string root_namespaces = root + "-namespaces";
+    const std::string root_channels = root + "-channels";
     const std::string root_colors = root + "-colors";
     const std::string root_filenames = root + "-filenames";
     const std::string root_line_numbers = root + "-line-numbers";
@@ -196,6 +230,13 @@ void processCliArgs(int& argc, char** argv, std::string_view trace_root) {
             consumed[static_cast<std::size_t>(i)] = true;
             printTraceNamespaces();
             KTRACE("api.cli", "handled '{}'", root_namespaces);
+            continue;
+        }
+
+        if (arg == root_channels) {
+            consumed[static_cast<std::size_t>(i)] = true;
+            printTraceChannels();
+            KTRACE("api.cli", "handled '{}'", root_channels);
             continue;
         }
 
