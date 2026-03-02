@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ktrace/trace.hpp"
+#include <ktrace/trace.hpp>
 
 #include <array>
 #include <atomic>
