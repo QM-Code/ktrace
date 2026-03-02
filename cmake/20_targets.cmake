@@ -34,4 +34,5 @@ target_link_libraries(ktrace_sdk PUBLIC spdlog::spdlog)
 set_target_properties(ktrace_sdk PROPERTIES
     OUTPUT_NAME ktrace
     EXPORT_NAME sdk
+    POSITION_INDEPENDENT_CODE ON
 )
