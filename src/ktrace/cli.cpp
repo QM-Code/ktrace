@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -48,32 +47,10 @@ bool hasUsableValueToken(const int index, const int argc, char** argv) {
     return value[0] != '-';
 }
 
-std::string normalizeSelectorList(std::string_view raw_value) {
-    std::stringstream ss{std::string(raw_value)};
-    std::string token;
-    std::vector<std::string> tokens;
-
-    while (std::getline(ss, token, ',')) {
-        const std::string trimmed = ktrace::detail::trimWhitespace(token);
-        if (!trimmed.empty()) {
-            tokens.push_back(trimmed);
-        }
-    }
-
-    std::ostringstream out;
-    for (std::size_t i = 0; i < tokens.size(); ++i) {
-        if (i > 0) {
-            out << ",";
-        }
-        out << tokens[i];
-    }
-    return out.str();
-}
-
 void enableSelectorListOrThrow(const std::string_view option,
                                const std::string_view raw_value,
                                const std::string_view local_namespace) {
-    const std::string selectors = normalizeSelectorList(raw_value);
+    const std::string selectors = ktrace::detail::trimWhitespace(std::string(raw_value));
     if (selectors.empty()) {
         throw std::invalid_argument("option '" + std::string(option) + "' requires one or more selectors");
     }

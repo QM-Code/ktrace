@@ -7,6 +7,7 @@ usage() {
     echo "  unknown_option"
     echo "  blank_trace"
     echo "  bad_selector"
+    echo "  brace_selector"
 }
 
 if [[ $# -ne 2 ]]; then
@@ -69,6 +70,16 @@ case "$test_case" in
         require_contains "$output" "Trace option error: Invalid trace selector: '*' (did you mean '.*'?)"
         require_contains "$output" "Trace selector examples:"
         require_not_contains "$output" "Trace logging options:"
+        ;;
+    brace_selector)
+        output="$(run_case --trace "*.{net,io}")"
+        require_not_contains "$output" "Trace option error:"
+        require_contains "$output" "alpha trace test on channel 'net'"
+        require_contains "$output" "beta trace test on channel 'io'"
+        require_not_contains "$output" "alpha trace test on channel 'cache'"
+        require_not_contains "$output" "beta trace test on channel 'scheduler'"
+        require_not_contains "$output" "gamma trace test on channel 'physics'"
+        require_not_contains "$output" "gamma trace test on channel 'metrics'"
         ;;
     *)
         echo "Error: unknown case '$test_case'" >&2

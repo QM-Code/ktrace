@@ -50,4 +50,11 @@ if(BUILD_TESTING)
                 $<TARGET_FILE:ktrace_demo_executable>
                 bad_selector
     )
+
+    add_test(
+        NAME demo_cli_brace_selector_enables_expected_channels
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/trace_cli_cases.sh
+                $<TARGET_FILE:ktrace_demo_executable>
+                brace_selector
+    )
 endif()

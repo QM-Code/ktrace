@@ -35,9 +35,10 @@ Trace CLI examples:
 
 ```bash
 ./demo/executable/build/latest/test --trace
-./demo/executable/build/latest/test --trace '*'
+./demo/executable/build/latest/test --trace '.*'
 ./demo/executable/build/latest/test --trace '*.*'
 ./demo/executable/build/latest/test --trace '*.*.*'
+./demo/executable/build/latest/test --trace '*.{net,io}'
 ./demo/executable/build/latest/test --trace-namespaces
 ./demo/executable/build/latest/test --trace-channels
 ./demo/executable/build/latest/test --trace-colors
