@@ -55,6 +55,8 @@ void ClearEnabledChannels();
 
 namespace detail {
 
+bool ShouldTraceBridge(std::string_view trace_namespace,
+                       std::string_view category);
 void RegisterChannelBridge(std::string_view trace_namespace,
                            std::string_view channel,
                            ColorId color);
@@ -75,18 +77,23 @@ inline void RegisterChannel(std::string_view channel, ColorId color) {
     detail::RegisterChannelBridge(KTRACE_NAMESPACE, channel, color);
 }
 
-#define KTRACE(cat, format_text, ...)                                        \
+#define KTRACE(cat, format_text, ...)                                            \
     do {                                                                          \
-        ::ktrace::detail::WriteBridge(KTRACE_NAMESPACE,                          \
-                                      (cat),                                      \
-                                      __FILE__,                                   \
-                                      __LINE__,                                   \
-                                      __func__,                                   \
-                                      fmt::format((format_text), ##__VA_ARGS__)); \
+        auto&& ktrace_category_expr_ = (cat);                                     \
+        if (::ktrace::detail::ShouldTraceBridge(KTRACE_NAMESPACE,                 \
+                                                ktrace_category_expr_)) {         \
+            ::ktrace::detail::WriteBridge(KTRACE_NAMESPACE,                       \
+                                          ktrace_category_expr_,                   \
+                                          __FILE__,                                \
+                                          __LINE__,                                \
+                                          __func__,                                \
+                                          fmt::format((format_text), ##__VA_ARGS__)); \
+        }                                                                         \
     } while (0)
 
 #define KTRACE_CHANGED(cat, key_expr, format_text, ...)                      \
     do {                                                                          \
+        auto&& ktrace_category_expr_ = (cat);                                     \
         static std::string last_key;                                              \
         static std::mutex last_key_mutex;                                         \
         std::string next_key = (key_expr);                                        \
@@ -98,9 +105,11 @@ inline void RegisterChannel(std::string_view channel, ColorId color) {
                 key_changed = true;                                                \
             }                                                                     \
         }                                                                         \
-        if (key_changed) {                                                        \
+        if (key_changed &&                                                         \
+            ::ktrace::detail::ShouldTraceBridge(KTRACE_NAMESPACE,                 \
+                                                ktrace_category_expr_)) {         \
             ::ktrace::detail::WriteBridge(KTRACE_NAMESPACE,                       \
-                                          (cat),                                   \
+                                          ktrace_category_expr_,                   \
                                           __FILE__,                                \
                                           __LINE__,                                \
                                           __func__,                                \

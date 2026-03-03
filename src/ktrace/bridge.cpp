@@ -26,15 +26,31 @@ constexpr std::array<InternalChannelConfig, 8> kInternalChannels = {{
     {"registry.query", ktrace::kDefaultColor},
 }};
 
-spdlog::logger* getLogger(const std::string& name) {
-    if (name.empty()) {
+std::string makeLoggerKey(std::string_view trace_namespace, std::string_view category) {
+    const std::string namespace_name = ktrace::detail::trimWhitespace(std::string(trace_namespace));
+    const std::string category_name = ktrace::detail::trimWhitespace(std::string(category));
+    if (namespace_name.empty() || category_name.empty()) {
+        return {};
+    }
+
+    std::string key;
+    key.reserve(namespace_name.size() + category_name.size() + 8);
+    key.append("ktrace.");
+    key.append(namespace_name);
+    key.push_back('.');
+    key.append(category_name);
+    return key;
+}
+
+spdlog::logger* getLogger(const std::string& key) {
+    if (key.empty()) {
         return nullptr;
     }
 
     auto& state = ktrace::detail::getTraceState();
     std::lock_guard<std::mutex> lock(state.logger_mutex);
 
-    if (auto existing = spdlog::get(name)) {
+    if (auto existing = spdlog::get(key)) {
         return existing.get();
     }
 
@@ -44,7 +60,7 @@ spdlog::logger* getLogger(const std::string& name) {
     }
 
     const auto& sinks = base->sinks();
-    auto created = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
+    auto created = std::make_shared<spdlog::logger>(key, sinks.begin(), sinks.end());
     created->set_level(spdlog::level::trace);
     created->set_pattern("%v");
     spdlog::register_logger(created);
@@ -102,6 +118,11 @@ void ensureInternalTraceChannelsRegistered() {
     });
 }
 
+bool ShouldTraceBridge(std::string_view trace_namespace, std::string_view category) {
+    const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
+    return isTraceChannelEnabled(trace_namespace_name, category);
+}
+
 void RegisterChannelBridge(std::string_view trace_namespace,
                            std::string_view channel,
                            ColorId color) {
@@ -127,13 +148,13 @@ void WriteBridge(std::string_view trace_namespace,
                  int source_line,
                  std::string_view function_name,
                  std::string_view message) {
-    const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
-    if (!isTraceChannelEnabled(trace_namespace_name, category)) {
+    if (!ShouldTraceBridge(trace_namespace, category)) {
         return;
     }
-    const std::string category_name{category};
+    const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
+    const std::string logger_key = makeLoggerKey(trace_namespace_name, category);
 
-    if (auto* logger = getLogger(category_name)) {
+    if (auto* logger = getLogger(logger_key)) {
         const auto prefix = buildTraceMessagePrefix(
             trace_namespace_name, category, source_file, source_line, function_name);
         logger->trace("{} {}", prefix, message);

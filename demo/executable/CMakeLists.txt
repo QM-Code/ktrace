@@ -27,3 +27,27 @@ target_link_libraries(ktrace_demo_executable PRIVATE
 set_target_properties(ktrace_demo_executable PROPERTIES
     OUTPUT_NAME test
 )
+
+include(CTest)
+if(BUILD_TESTING)
+    add_test(
+        NAME demo_cli_unknown_trace_option_shows_help
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/trace_cli_cases.sh
+                $<TARGET_FILE:ktrace_demo_executable>
+                unknown_option
+    )
+
+    add_test(
+        NAME demo_cli_blank_trace_shows_help
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/trace_cli_cases.sh
+                $<TARGET_FILE:ktrace_demo_executable>
+                blank_trace
+    )
+
+    add_test(
+        NAME demo_cli_bad_selector_shows_examples
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/trace_cli_cases.sh
+                $<TARGET_FILE:ktrace_demo_executable>
+                bad_selector
+    )
+endif()

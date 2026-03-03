@@ -267,7 +267,7 @@ void processCliArgs(int& argc,
                 enableSelectorListOrThrow(root, argv[++i], local_namespace);
             } catch (const std::exception& ex) {
                 spdlog::error("\nTrace option error: {}", ex.what());
-                printTraceHelp(root);
+                printTraceExamples(root);
             }
             continue;
         }
@@ -302,7 +302,10 @@ void processCliArgs(int& argc,
         }
 
         if (startsWith(arg, root + "-")) {
-            throw std::invalid_argument("unknown trace option '" + arg + "'");
+            consumed[static_cast<std::size_t>(i)] = true;
+            spdlog::error("\nTrace option error: unknown trace option '{}'", arg);
+            printTraceHelp(root);
+            continue;
         }
 
         consumed[static_cast<std::size_t>(i)] = true;
@@ -343,7 +346,7 @@ void ProcessCLI(int& argc,
         } catch (...) {
         }
         spdlog::error("\nTrace option error: {}", ex.what());
-        printTraceHelp(root);
+        printTraceExamples(root);
     }
 }
 
