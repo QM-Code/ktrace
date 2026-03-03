@@ -22,8 +22,3 @@
 ...
 ```
 
-## Automated Build Tests
-
-Automated testing needs to be told which demos to build and in which order.
-
-This is specified in demo/ORDER.md

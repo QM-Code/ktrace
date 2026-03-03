@@ -2,18 +2,16 @@
 
 Build executable against KTraceSDK + AlphaSDK + BetaSDK + DeltaSDK:
 
+Run from the repository root directory:
+
 ```bash
-./abuild.py -a <name> -d build/test/ \
-  --ktrace-sdk ../../build/test/sdk/ \
-  --alpha-sdk ../libraries/alpha/build/test/sdk/ \
-  --beta-sdk ../libraries/beta/build/test/sdk/ \
-  --delta-sdk ../libraries/delta/build/test/sdk/
+./kbuild.py --build-demos libraries/alpha libraries/beta libraries/delta executable
 ```
 
 Run:
 
 ```bash
-./build/test/test
+./demo/executable/build/latest/test
 ```
 
 ## CLI Behavior Tests
@@ -54,5 +52,5 @@ When `BUILD_TESTING=ON`, `CMakeLists.txt` registers these CTest tests:
 Run only these tests:
 
 ```bash
-ctest --test-dir build/latest --output-on-failure -R demo_cli_
+ctest --test-dir demo/executable/build/latest --output-on-failure -R demo_cli_
 ```

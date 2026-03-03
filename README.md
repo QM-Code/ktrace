@@ -5,15 +5,19 @@
 ```bash
 ./kbuild.py
 ```
-SDK Output:
+SDK output:
 - `build/latest/sdk/include`
 - `build/latest/sdk/lib`
 - `build/latest/sdk/lib/cmake/KTraceSDK`
 
-## Build Demos
+## Build and Test Demos
 
 ```bash
+# Uses kbuild.json "build-demos" order.
 ./kbuild.py --build-demos
+
+# Or provide explicit order.
+./kbuild.py --build-demos libraries/alpha libraries/beta libraries/delta executable
 
 ./demo/executable/build/latest/test
 ```
@@ -21,15 +25,17 @@ Demos:
 - Libraries: `demo/libraries/{alpha,beta,delta}`
 - Executable: `demo/executable/`
 
-Demo libraries demonistrate how other libraries can implement and expose ktrace.
+Demo builds are orchestrated by the root `kbuild.py`
 
-The demo executable demonstrates how an executable can enable ktrace locally as well as for imported libraries (assuming they were build around ktrace).
+Demo libraries demonstrate how other libraries can implement and expose ktrace.
+
+The demo executable shows how an executable can enable ktrace locally and for imported libraries (assuming they were built around ktrace).
 
 ## Install
 
-`KTRACE_NAMESPACE` must be defined by consumers before using
+`KTRACE_NAMESPACE` must be defined by consumers before use.
 
-Generally this is done in CMakeLists.txt, though it can also be done at source level.
+This is generally done in `CMakeLists.txt`, though it can also be done at source level.
 
 ## Channel Expression Forms
 
@@ -52,8 +58,8 @@ Examples:
 
 ## Coding Agents
 
-If you are using a coding agent, paste the follwing prompt:
+If you are using a coding agent, paste the following prompt:
 
 ```bash
-Follow the instrctions in agent/BOOTSTRAP.md
+Follow the instructions in agent/BOOTSTRAP.md
 ```

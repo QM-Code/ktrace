@@ -216,7 +216,9 @@ void processCliArgs(int& argc,
             continue;
         }
         const std::string arg = ktrace::detail::trimWhitespace(std::string(argv[i]));
-        if (arg.empty() || !startsWith(arg, root)) {
+        const bool is_root_option = (arg == root);
+        const bool is_root_dash_option = startsWith(arg, root + "-");
+        if (arg.empty() || (!is_root_option && !is_root_dash_option)) {
             continue;
         }
 
@@ -255,7 +257,7 @@ void processCliArgs(int& argc,
             continue;
         }
 
-        if (arg == root) {
+        if (is_root_option) {
             consumed[static_cast<std::size_t>(i)] = true;
             if (!hasUsableValueToken(i, argc, argv)) {
                 printTraceHelp(root);
@@ -301,16 +303,12 @@ void processCliArgs(int& argc,
             continue;
         }
 
-        if (startsWith(arg, root + "-")) {
+        if (is_root_dash_option) {
             consumed[static_cast<std::size_t>(i)] = true;
             spdlog::error("\nTrace option error: unknown trace option '{}'", arg);
             printTraceHelp(root);
             continue;
         }
-
-        consumed[static_cast<std::size_t>(i)] = true;
-        KTRACE("api", "cli: consumed unknown trace argument '{}'", arg);
-        continue;
     }
 
     if (saw_output_option) {

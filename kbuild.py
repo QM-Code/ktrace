@@ -1,32 +1,30 @@
 #!/usr/bin/env python3
 
+import json
 import os
 import shutil
-import socket
 import subprocess
 import sys
-from datetime import datetime, timezone
 
 
-LOCK_FILENAME = ".kbuild-lock"
+VCPKG_REPO_URL = "https://github.com/microsoft/vcpkg.git"
 
 
 def usage(exit_code: int = 1) -> None:
     prog = os.path.basename(sys.argv[0])
     print(f"Usage: {prog} <options>", file=sys.stderr)
-    print(f"  -l, --lock        claim {LOCK_FILENAME} for --directory and exit (requires owner name)", file=sys.stderr)
+    print("  --list-builds       list existing build version directories", file=sys.stderr)
+    print("  --remove-latest     remove every build/latest/ directory", file=sys.stderr)
+    print("  --version <name>    build version slot under build/ (default: latest)", file=sys.stderr)
     print(
-        "  -d, --directory   build directory (core: build/<name>, demo: demo/<demo-path>/build/<name>)",
+        "  --build-demos [demo ...]  build demos in order; with no args uses kbuild.json 'build-demos'",
         file=sys.stderr,
     )
+    print("  --no-configure      skip cmake configure step", file=sys.stderr)
     print(
-        "  -k, --ktrace-sdk  core: SDK install prefix override (default: <build-dir>/sdk); "
-        "demo: SDK prefix to consume (required)",
+        "  --install-vcpkg     clone/bootstrap local vcpkg under ./vcpkg, then build (default: build/latest)",
         file=sys.stderr,
     )
-    print(f"  --release-lock    release {LOCK_FILENAME} for --directory and exit", file=sys.stderr)
-    print(f"  --lock-status     print {LOCK_FILENAME} metadata for --directory and exit", file=sys.stderr)
-    print("  --no-configure    skip cmake configure step", file=sys.stderr)
     raise SystemExit(exit_code)
 
 
@@ -39,10 +37,237 @@ def run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     subprocess.run(cmd, check=True, env=env)
 
 
+def format_dir_for_output(path: str, repo_root: str) -> str:
+    rel = os.path.relpath(path, repo_root).replace("\\", "/").strip("/")
+    return f"./{rel}/"
+
+
+def collect_build_version_dirs(repo_root: str) -> list[str]:
+    output: list[str] = []
+    core_build_root = os.path.join(repo_root, "build")
+    if os.path.isdir(core_build_root):
+        for entry in sorted(os.listdir(core_build_root)):
+            path = os.path.join(core_build_root, entry)
+            if os.path.isdir(path):
+                output.append(path)
+
+    demo_root = os.path.join(repo_root, "demo")
+    if os.path.isdir(demo_root):
+        for current_root, dirnames, _ in os.walk(demo_root):
+            dirnames.sort()
+            if "build" not in dirnames:
+                continue
+
+            demo_build_root = os.path.join(current_root, "build")
+            for entry in sorted(os.listdir(demo_build_root)):
+                path = os.path.join(demo_build_root, entry)
+                if os.path.isdir(path):
+                    output.append(path)
+
+            # Build trees can be large; they are not candidates for nested demo discovery.
+            dirnames.remove("build")
+    return output
+
+
+def list_build_dirs(repo_root: str) -> int:
+    output = collect_build_version_dirs(repo_root)
+
+    for line in output:
+        print(format_dir_for_output(line, repo_root))
+    return 0
+
+
+def is_safe_latest_build_dir(path: str, repo_root: str) -> bool:
+    path_abs = os.path.abspath(path)
+    repo_root_abs = os.path.abspath(repo_root)
+    rel = os.path.relpath(path_abs, repo_root_abs).replace("\\", "/")
+    if rel == ".." or rel.startswith("../"):
+        return False
+
+    parts = [part for part in rel.split("/") if part not in ("", ".")]
+    if parts == ["build", "latest"]:
+        return True
+    if len(parts) >= 4 and parts[0] == "demo" and parts[-2:] == ["build", "latest"]:
+        return True
+    return False
+
+
+def remove_latest_build_dirs(repo_root: str) -> int:
+    removed = 0
+    for path in collect_build_version_dirs(repo_root):
+        if os.path.basename(path.rstrip("/\\")) != "latest":
+            continue
+        if not is_safe_latest_build_dir(path, repo_root):
+            fail(f"refusing to remove unexpected latest directory: {path}")
+        if os.path.islink(path):
+            fail(f"refusing to remove symlinked latest directory: {path}")
+        shutil.rmtree(path)
+        removed += 1
+        print(f"removed {format_dir_for_output(path, repo_root)}")
+
+    if removed == 0:
+        print("no build/latest/ directories found")
+    return 0
+
+
 def resolve_prefix(path_arg: str, repo_root: str) -> str:
     if os.path.isabs(path_arg):
         return os.path.abspath(path_arg)
     return os.path.abspath(os.path.join(repo_root, path_arg))
+
+
+def package_config_path(prefix: str, cmake_package_name: str) -> str:
+    return os.path.join(
+        prefix,
+        "lib",
+        "cmake",
+        cmake_package_name,
+        f"{cmake_package_name}Config.cmake",
+    )
+
+
+def package_dir(prefix: str, cmake_package_name: str) -> str:
+    return os.path.join(prefix, "lib", "cmake", cmake_package_name)
+
+
+def load_kbuild_config(repo_root: str) -> tuple[str, bool, list[str], list[dict[str, object]]]:
+    config_path = os.path.join(repo_root, "kbuild.json")
+    if not os.path.isfile(config_path):
+        print(
+            "Error: missing required config file './kbuild.json'.\n"
+            "Expected keys:\n"
+            "  schema_version (int)\n"
+            "  cmake_package_name (string)\n"
+            "  requires_vcpkg (bool)\n"
+            "Optional keys:\n"
+            "  build-demos (array of demo names)\n"
+            "  sdk-dependencies (array of dependency objects)",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Error: could not parse {config_path}: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+
+    if not isinstance(raw, dict):
+        print("Error: kbuild.json must be a JSON object", file=sys.stderr)
+        raise SystemExit(2)
+
+    schema_version = raw.get("schema_version")
+    cmake_package_name = raw.get("cmake_package_name")
+    requires_vcpkg = raw.get("requires_vcpkg")
+    build_demos_raw = raw.get("build-demos", [])
+    sdk_dependencies_raw = raw.get("sdk-dependencies", [])
+
+    if not isinstance(schema_version, int):
+        print("Error: kbuild.json key 'schema_version' must be an integer", file=sys.stderr)
+        raise SystemExit(2)
+    if schema_version != 1:
+        print(
+            f"Error: unsupported kbuild.json schema_version '{schema_version}' (expected 1)",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if not isinstance(cmake_package_name, str) or not cmake_package_name.strip():
+        print(
+            "Error: kbuild.json key 'cmake_package_name' must be a non-empty string",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if not isinstance(requires_vcpkg, bool):
+        print("Error: kbuild.json key 'requires_vcpkg' must be true or false", file=sys.stderr)
+        raise SystemExit(2)
+    if not isinstance(build_demos_raw, list):
+        print("Error: kbuild.json key 'build-demos' must be an array if provided", file=sys.stderr)
+        raise SystemExit(2)
+    if not isinstance(sdk_dependencies_raw, list):
+        print("Error: kbuild.json key 'sdk-dependencies' must be an array if provided", file=sys.stderr)
+        raise SystemExit(2)
+
+    build_demos: list[str] = []
+    for idx, item in enumerate(build_demos_raw):
+        if not isinstance(item, str) or not item.strip():
+            print(
+                f"Error: kbuild.json key 'build-demos[{idx}]' must be a non-empty string",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        build_demos.append(item.strip())
+
+    sdk_dependencies: list[dict[str, object]] = []
+    seen_dependency_packages: set[str] = set()
+    for idx, item in enumerate(sdk_dependencies_raw):
+        if not isinstance(item, dict):
+            print(
+                f"Error: kbuild.json key 'sdk-dependencies[{idx}]' must be an object",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        dep_package = item.get("cmake_package_name")
+        dep_prefix_template = item.get("sdk_prefix")
+        dep_fallbacks_raw = item.get("version_fallbacks", [])
+
+        if not isinstance(dep_package, str) or not dep_package.strip():
+            print(
+                f"Error: kbuild.json key 'sdk-dependencies[{idx}].cmake_package_name' must be a non-empty string",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        dep_package = dep_package.strip()
+
+        if dep_package == cmake_package_name.strip():
+            print(
+                f"Error: kbuild.json sdk dependency '{dep_package}' cannot match root cmake_package_name",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        if dep_package in seen_dependency_packages:
+            print(
+                f"Error: duplicate sdk dependency package '{dep_package}' in kbuild.json",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        seen_dependency_packages.add(dep_package)
+
+        if not isinstance(dep_prefix_template, str) or not dep_prefix_template.strip():
+            print(
+                f"Error: kbuild.json key 'sdk-dependencies[{idx}].sdk_prefix' must be a non-empty string",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        dep_prefix_template = dep_prefix_template.strip()
+
+        if not isinstance(dep_fallbacks_raw, list):
+            print(
+                f"Error: kbuild.json key 'sdk-dependencies[{idx}].version_fallbacks' must be an array if provided",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        dep_fallbacks: list[str] = []
+        for fallback_idx, fallback in enumerate(dep_fallbacks_raw):
+            if not isinstance(fallback, str) or not fallback.strip():
+                print(
+                    f"Error: kbuild.json key 'sdk-dependencies[{idx}].version_fallbacks[{fallback_idx}]' must be a non-empty string",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
+            dep_fallbacks.append(validate_version_slot(fallback))
+
+        sdk_dependencies.append(
+            {
+                "cmake_package_name": dep_package,
+                "sdk_prefix": dep_prefix_template,
+                "version_fallbacks": dep_fallbacks,
+            }
+        )
+
+    return cmake_package_name.strip(), requires_vcpkg, build_demos, sdk_dependencies
 
 
 def clean_sdk_install_prefix(prefix: str) -> None:
@@ -68,38 +293,16 @@ def validate_core_build_dir_layout(build_dir: str) -> None:
         fail("build directory must be under 'build/' (example: build/test/)")
 
 
-def classify_build_dir(build_dir: str) -> tuple[str, str]:
-    if not build_dir:
-        fail("build directory is required; use --directory <build-dir>")
-
-    normalized = build_dir.replace("\\", "/")
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-    parts = [part for part in normalized.split("/") if part not in ("", ".")]
-
-    if any(part == ".." for part in parts):
-        fail("build directory must not contain '..'")
-
-    if len(parts) >= 2 and parts[0] == "build":
-        return "core", ""
-
-    if len(parts) >= 4 and parts[0] == "demo":
-        build_index = -1
-        for idx in range(len(parts) - 2, 0, -1):
-            if parts[idx] == "build":
-                build_index = idx
-                break
-        if build_index >= 2 and build_index < len(parts) - 1:
-            return "demo", "/".join(parts[1:build_index])
-
-    fail(
-        "build directory must be under 'build/' for core builds or "
-        "'demo/<demo-path>/build/' for demo builds"
-    )
-    raise AssertionError("unreachable")
+def validate_version_slot(version: str) -> str:
+    token = version.strip()
+    if not token:
+        fail("--version requires a non-empty value")
+    if "/" in token or "\\" in token or token in (".", "..") or ".." in token:
+        fail("--version must be a simple slot name (for example: latest or 0.1)")
+    return token
 
 
-def validate_sdk_prefix(prefix: str) -> None:
+def validate_sdk_prefix(prefix: str, cmake_package_name: str) -> None:
     if not os.path.isdir(prefix):
         print(
             "Error: SDK prefix must point to an existing directory.\n"
@@ -124,16 +327,43 @@ def validate_sdk_prefix(prefix: str) -> None:
         )
         raise SystemExit(2)
 
-    config_path = os.path.join(prefix, "lib", "cmake", "KTraceSDK", "KTraceSDKConfig.cmake")
+    config_path = os.path.join(
+        prefix,
+        "lib",
+        "cmake",
+        cmake_package_name,
+        f"{cmake_package_name}Config.cmake",
+    )
     if os.path.isfile(config_path):
         return
     print(
         "Error: SDK prefix is missing package config.\n"
         f"Expected:\n  {config_path}\n"
-        "Build/install SDK from a core build first (for example: ./kbuild.py --directory build/test).",
+        "Build/install SDK from a core build first (for example: ./kbuild.py --version test).",
         file=sys.stderr,
     )
     raise SystemExit(2)
+
+
+def normalize_demo_name(demo_token: str) -> str:
+    value = demo_token.strip().replace("\\", "/")
+    while value.startswith("./"):
+        value = value[2:]
+    if value.startswith("demo/"):
+        value = value[5:]
+    if not value:
+        fail(f"invalid demo '{demo_token}'")
+    if value.startswith("/") or ".." in value.split("/"):
+        fail(f"invalid demo '{demo_token}'")
+    return value
+
+
+def resolve_demo_source_dir(repo_root: str, demo_name: str) -> str:
+    source_dir = os.path.join(repo_root, "demo", demo_name)
+    cmake_lists = os.path.join(source_dir, "CMakeLists.txt")
+    if not os.path.isfile(cmake_lists):
+        fail(f"demo source directory is missing CMakeLists.txt: {source_dir}")
+    return source_dir
 
 
 def read_cache_value(cache_path: str, key: str) -> str:
@@ -213,6 +443,87 @@ def resolve_demo_vcpkg_context(sdk_prefix: str, repo_root: str) -> tuple[str, st
     raise SystemExit(2)
 
 
+def resolve_sdk_dependencies(
+    repo_root: str,
+    version: str,
+    dependency_specs: list[dict[str, object]],
+) -> list[tuple[str, str]]:
+    resolved: list[tuple[str, str]] = []
+
+    for dependency in dependency_specs:
+        package_name = dependency["cmake_package_name"]
+        prefix_template = dependency["sdk_prefix"]
+        fallback_versions = dependency["version_fallbacks"]
+
+        if not isinstance(package_name, str) or not isinstance(prefix_template, str):
+            print("Error: internal sdk dependency validation failure", file=sys.stderr)
+            raise SystemExit(2)
+        if not isinstance(fallback_versions, list):
+            print("Error: internal sdk dependency validation failure", file=sys.stderr)
+            raise SystemExit(2)
+
+        candidate_slots: list[str] = [version]
+        for fallback in fallback_versions:
+            if isinstance(fallback, str) and fallback not in candidate_slots:
+                candidate_slots.append(fallback)
+
+        candidate_paths: list[tuple[str, str]] = []
+        seen_paths: set[str] = set()
+        for slot in candidate_slots:
+            raw_path = prefix_template.replace("{version}", slot)
+            candidate_prefix = resolve_prefix(raw_path, repo_root)
+            if candidate_prefix in seen_paths:
+                continue
+            seen_paths.add(candidate_prefix)
+            candidate_paths.append((slot, candidate_prefix))
+
+        selected_prefix = ""
+        selected_slot = ""
+        for slot, candidate_prefix in candidate_paths:
+            config_path = package_config_path(candidate_prefix, package_name)
+            if os.path.isfile(config_path):
+                selected_prefix = candidate_prefix
+                selected_slot = slot
+                break
+
+        if not selected_prefix:
+            checked = "\n".join(path for _, path in candidate_paths)
+            print(
+                "Error: sdk dependency package config not found.\n"
+                f"Package:\n  {package_name}\n"
+                "Checked SDK prefixes:\n"
+                f"{checked}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        if selected_slot != version and "{version}" in prefix_template:
+            print(
+                f"{package_name}: using fallback slot '{selected_slot}' (requested '{version}') -> {selected_prefix}",
+                flush=True,
+            )
+
+        validate_sdk_prefix(selected_prefix, package_name)
+        resolved.append((package_name, selected_prefix))
+
+    return resolved
+
+
+def local_vcpkg_paths(repo_root: str) -> tuple[str, str, str, str, str]:
+    local_vcpkg_root = os.path.join(repo_root, "vcpkg", "src")
+    local_toolchain = os.path.join(local_vcpkg_root, "scripts", "buildsystems", "vcpkg.cmake")
+    local_vcpkg_build_root = os.path.join(repo_root, "vcpkg", "build")
+    local_vcpkg_downloads = os.path.join(local_vcpkg_build_root, "downloads")
+    local_vcpkg_binary_cache = os.path.join(local_vcpkg_build_root, "binary-cache")
+    return (
+        os.path.abspath(local_vcpkg_root),
+        os.path.abspath(local_toolchain),
+        os.path.abspath(local_vcpkg_build_root),
+        os.path.abspath(local_vcpkg_downloads),
+        os.path.abspath(local_vcpkg_binary_cache),
+    )
+
+
 def is_local_vcpkg_bootstrapped(vcpkg_root: str) -> bool:
     candidates = [
         os.path.join(vcpkg_root, "vcpkg"),
@@ -222,313 +533,280 @@ def is_local_vcpkg_bootstrapped(vcpkg_root: str) -> bool:
     return any(os.path.isfile(path) for path in candidates)
 
 
-def ensure_local_vcpkg(repo_root: str) -> tuple[str, str]:
-    local_vcpkg_root = os.path.join(repo_root, "vcpkg", "src")
-    local_toolchain = os.path.join(local_vcpkg_root, "scripts", "buildsystems", "vcpkg.cmake")
+def run_vcpkg_bootstrap(vcpkg_root: str) -> None:
+    if os.name == "nt":
+        bootstrap = os.path.join(vcpkg_root, "bootstrap-vcpkg.bat")
+        if not os.path.isfile(bootstrap):
+            print(f"Error: missing bootstrap script: {bootstrap}", file=sys.stderr)
+            raise SystemExit(2)
+        run(["cmd", "/c", bootstrap, "-disableMetrics"])
+        return
+
+    bootstrap = os.path.join(vcpkg_root, "bootstrap-vcpkg.sh")
+    if not os.path.isfile(bootstrap):
+        print(f"Error: missing bootstrap script: {bootstrap}", file=sys.stderr)
+        raise SystemExit(2)
+    run([bootstrap, "-disableMetrics"])
+
+
+def install_local_vcpkg(repo_root: str) -> tuple[str, str, str, str]:
+    (
+        local_vcpkg_root,
+        local_toolchain,
+        local_vcpkg_build_root,
+        local_vcpkg_downloads,
+        local_vcpkg_binary_cache,
+    ) = local_vcpkg_paths(repo_root)
+
+    vcpkg_parent = os.path.dirname(local_vcpkg_root)
+    if os.path.isfile(vcpkg_parent):
+        print(f"Error: expected directory at {vcpkg_parent}, found file", file=sys.stderr)
+        raise SystemExit(2)
+    os.makedirs(vcpkg_parent, exist_ok=True)
 
     if not os.path.isdir(local_vcpkg_root):
-        print(
-            "Error: local vcpkg is required, but ./vcpkg/src is missing.\n"
-            "Bootstrap once from repo root:\n"
-            "  mkdir -p vcpkg\n"
-            "  git clone https://github.com/microsoft/vcpkg.git vcpkg/src\n"
-            "  ./vcpkg/src/bootstrap-vcpkg.sh -disableMetrics",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
+        print(f"Installing vcpkg checkout -> {local_vcpkg_root}", flush=True)
+        run(["git", "clone", VCPKG_REPO_URL, local_vcpkg_root])
 
     if not os.path.isfile(local_toolchain):
         print(
-            "Error: local vcpkg exists but toolchain file is missing.\n"
-            "Expected:\n"
-            "  ./vcpkg/src/scripts/buildsystems/vcpkg.cmake",
+            "Error: vcpkg checkout is invalid; missing toolchain file.\n"
+            f"Expected:\n  {local_toolchain}",
             file=sys.stderr,
         )
         raise SystemExit(2)
 
     if not is_local_vcpkg_bootstrapped(local_vcpkg_root):
+        print("Bootstrapping vcpkg...", flush=True)
+        run_vcpkg_bootstrap(local_vcpkg_root)
+
+    if os.path.isfile(local_vcpkg_build_root):
+        print(f"Error: expected directory at {local_vcpkg_build_root}, found file", file=sys.stderr)
+        raise SystemExit(2)
+    os.makedirs(local_vcpkg_downloads, exist_ok=True)
+    os.makedirs(local_vcpkg_binary_cache, exist_ok=True)
+
+    print(
+        f"vcpkg ready -> src={local_vcpkg_root} | build={local_vcpkg_build_root}",
+        flush=True,
+    )
+    return local_vcpkg_root, local_toolchain, local_vcpkg_downloads, local_vcpkg_binary_cache
+
+
+def ensure_local_vcpkg(repo_root: str) -> tuple[str, str, str, str]:
+    (
+        local_vcpkg_root,
+        local_toolchain,
+        local_vcpkg_build_root,
+        local_vcpkg_downloads,
+        local_vcpkg_binary_cache,
+    ) = local_vcpkg_paths(repo_root)
+
+    ready = (
+        os.path.isdir(local_vcpkg_root)
+        and os.path.isdir(local_vcpkg_build_root)
+        and os.path.isfile(local_toolchain)
+        and is_local_vcpkg_bootstrapped(local_vcpkg_root)
+    )
+    if not ready:
         print(
-            "Error: local ./vcpkg/src is present but not bootstrapped.\n"
+            "Error: build requires vcpkg to be set up under:\n"
+            "  ./vcpkg/src\n"
+            "  ./vcpkg/build\n"
             "Run:\n"
-            "  ./vcpkg/src/bootstrap-vcpkg.sh -disableMetrics",
+            "  ./kbuild.py --install-vcpkg",
             file=sys.stderr,
         )
         raise SystemExit(2)
 
-    return os.path.abspath(local_vcpkg_root), os.path.abspath(local_toolchain)
+    os.makedirs(local_vcpkg_downloads, exist_ok=True)
+    os.makedirs(local_vcpkg_binary_cache, exist_ok=True)
+    return local_vcpkg_root, local_toolchain, local_vcpkg_downloads, local_vcpkg_binary_cache
 
 
-def lock_path(build_dir: str) -> str:
-    return os.path.join(build_dir, LOCK_FILENAME)
+def build_demo(
+    repo_root: str,
+    demo_name: str,
+    version: str,
+    no_configure: bool,
+    cmake_package_name: str,
+    sdk_dependencies: list[tuple[str, str]],
+    env: dict[str, str],
+    demo_order: list[str],
+) -> None:
+    core_build_dir = os.path.join(repo_root, "build", version)
+    core_sdk_prefix = os.path.join(core_build_dir, "sdk")
+    validate_sdk_prefix(core_sdk_prefix, cmake_package_name)
 
-
-def resolve_lock_owner(lock_arg: str) -> str:
-    return lock_arg.strip()
-
-
-def read_lock_metadata(build_dir: str) -> dict[str, str]:
-    path = lock_path(build_dir)
-    if not os.path.isfile(path):
-        return {}
-
-    metadata: dict[str, str] = {}
-    raw_lines: list[str] = []
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            for raw_line in handle:
-                line = raw_line.rstrip("\n")
-                raw_lines.append(line)
-                if "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                metadata[key.strip()] = value.strip()
-    except OSError:
-        return {}
-
-    if metadata:
-        return metadata
-
-    legacy_text = "\n".join(raw_lines).strip()
-    if legacy_text:
-        return {"legacy": legacy_text}
-    return {}
-
-
-def write_lock_metadata(build_dir: str, owner: str) -> None:
-    os.makedirs(build_dir, exist_ok=True)
-    path = lock_path(build_dir)
-    claimed_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    lines = [
-        f"owner={owner}",
-        f"claimed_at={claimed_at}",
-        f"host={socket.gethostname()}",
-        f"pid={os.getpid()}",
-    ]
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write("\n".join(lines) + "\n")
-
-
-def format_lock(metadata: dict[str, str]) -> str:
-    owner = metadata.get("owner", "<unknown>")
-    claimed_at = metadata.get("claimed_at", "<unknown>")
-    host = metadata.get("host", "<unknown>")
-    pid = metadata.get("pid", "<unknown>")
-    if "legacy" in metadata:
-        return f"legacy lock ({metadata['legacy']})"
-    return f"owner={owner}, claimed_at={claimed_at}, host={host}, pid={pid}"
-
-
-def claim_lock(build_dir: str, lock_owner: str) -> None:
-    metadata = read_lock_metadata(build_dir)
-    owner = metadata.get("owner", "")
-    if owner and owner != lock_owner:
-        print(
-            f"Error: build directory '{build_dir}' is already claimed by '{owner}' ({format_lock(metadata)}).",
-            file=sys.stderr,
-        )
-        raise SystemExit(3)
-    if owner == lock_owner:
-        print(f"Lock already claimed by '{lock_owner}' on {build_dir}.")
-        return
-    if metadata.get("legacy"):
-        print(
-            f"Error: build directory '{build_dir}' has legacy/unowned lock data: {metadata['legacy']}. "
-            "Remove the lock file manually to continue.",
-            file=sys.stderr,
-        )
-        raise SystemExit(3)
-
-    write_lock_metadata(build_dir, lock_owner)
-    print(f"Claimed lock for '{lock_owner}' on {build_dir}.")
-
-
-def release_lock(build_dir: str, lock_owner: str) -> None:
-    path = lock_path(build_dir)
-    if not os.path.isfile(path):
-        print(f"No lock present for {build_dir}.")
-        return
-
-    metadata = read_lock_metadata(build_dir)
-    owner = metadata.get("owner", "")
-    if owner and not lock_owner:
-        print(
-            f"Error: cannot release lock for '{build_dir}' without --lock <name>; owner is '{owner}' ({format_lock(metadata)}).",
-            file=sys.stderr,
-        )
-        raise SystemExit(3)
-    if owner and owner != lock_owner:
-        print(
-            f"Error: cannot release lock for '{build_dir}'; owner is '{owner}' ({format_lock(metadata)}).",
-            file=sys.stderr,
-        )
-        raise SystemExit(3)
-    if metadata.get("legacy"):
-        print(
-            f"Error: cannot safely release legacy lock for '{build_dir}' ({metadata['legacy']}). "
-            "Remove the lock file manually if intended.",
-            file=sys.stderr,
-        )
-        raise SystemExit(3)
-
-    os.remove(path)
-    print(f"Released lock for '{lock_owner}' on {build_dir}.")
-
-
-def show_lock_status(build_dir: str) -> None:
-    path = lock_path(build_dir)
-    if not os.path.isfile(path):
-        print(f"{build_dir}: unclaimed")
-        return
-    metadata = read_lock_metadata(build_dir)
-    print(f"{build_dir}: {format_lock(metadata)}")
-
-
-def ensure_build_unlocked(build_dir: str) -> None:
-    path = lock_path(build_dir)
-    if not os.path.isfile(path):
-        return
-
-    metadata = read_lock_metadata(build_dir)
-    lock_desc = format_lock(metadata) if metadata else "present but unreadable metadata"
-    print(
-        f"Error: build directory '{build_dir}' is locked ({lock_desc}).\n"
-        f"Use '--lock-status --directory {build_dir}' to inspect or '--release-lock --lock <name> --directory {build_dir}' to unlock.",
-        file=sys.stderr,
+    demo_vcpkg_installed_dir, demo_vcpkg_triplet = resolve_demo_vcpkg_context(
+        core_sdk_prefix, repo_root
     )
-    raise SystemExit(3)
+    demo_vcpkg_prefix = os.path.join(demo_vcpkg_installed_dir, demo_vcpkg_triplet)
+    if not os.path.isdir(demo_vcpkg_prefix):
+        fail(f"missing vcpkg triplet prefix: {demo_vcpkg_prefix}")
+
+    source_dir = resolve_demo_source_dir(repo_root, demo_name)
+    build_dir = os.path.join(repo_root, "demo", demo_name, "build", version)
+    install_prefix = os.path.join(build_dir, "sdk")
+
+    prefix_entries: list[str] = [core_sdk_prefix, demo_vcpkg_prefix]
+    for _, dependency_prefix in sdk_dependencies:
+        if dependency_prefix not in prefix_entries:
+            prefix_entries.append(dependency_prefix)
+    for dependency_demo in demo_order:
+        dependency_sdk = os.path.join(repo_root, "demo", dependency_demo, "build", version, "sdk")
+        if os.path.isdir(dependency_sdk) and dependency_sdk not in prefix_entries:
+            prefix_entries.append(dependency_sdk)
+
+    cmake_args = [
+        "-DCMAKE_BUILD_TYPE=Release",
+        f"-DCMAKE_PREFIX_PATH={';'.join(prefix_entries)}",
+        "-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON",
+        f"-D{cmake_package_name}_DIR={package_dir(core_sdk_prefix, cmake_package_name)}",
+    ]
+    for package_name, dependency_prefix in sdk_dependencies:
+        cmake_args.append(f"-D{package_name}_DIR={package_dir(dependency_prefix, package_name)}")
+    print(
+        f"Demo build -> dir={build_dir} | demo={demo_name} | sdk={core_sdk_prefix} | triplet={demo_vcpkg_triplet}",
+        flush=True,
+    )
+
+    if no_configure:
+        cache_path = os.path.join(build_dir, "CMakeCache.txt")
+        if not os.path.isfile(cache_path):
+            fail(f"--no-configure requires an existing CMakeCache.txt in the build directory ({build_dir})")
+    else:
+        os.makedirs(build_dir, exist_ok=True)
+        run(["cmake", "-S", source_dir, "-B", build_dir, *cmake_args], env=env)
+
+    run(["cmake", "--build", build_dir, "-j4"], env=env)
+    clean_sdk_install_prefix(install_prefix)
+    run(
+        [
+            "cmake",
+            "--install",
+            build_dir,
+            "--prefix",
+            install_prefix,
+        ],
+        env=env,
+    )
+    print(f"Build complete -> dir={build_dir} | sdk={install_prefix}")
 
 
 def main() -> int:
     args = sys.argv[1:]
-    lock_owner_arg = ""
-    build_dir = ""
-    sdk_prefix_arg = ""
+    version = "latest"
+    version_explicit = False
     no_configure = False
-    release_lock_only = False
-    lock_status_only = False
+    install_vcpkg = False
+    build_demos = False
+    list_builds = False
+    remove_latest_builds = False
+    requested_demos: list[str] = []
 
     i = 0
     while i < len(args):
         arg = args[i]
         if arg in ("-h", "--help"):
             usage(0)
-        elif arg in ("-l", "--lock"):
+        elif arg == "--list-builds":
+            list_builds = True
+        elif arg == "--remove-latest":
+            remove_latest_builds = True
+        elif arg == "--version":
             i += 1
             if i >= len(args):
-                fail("missing value for '--lock'")
-            lock_owner_arg = args[i]
-        elif arg in ("-d", "--directory"):
+                fail("missing value for '--version'")
+            version = validate_version_slot(args[i])
+            version_explicit = True
+        elif arg == "--build-demos":
+            build_demos = True
             i += 1
-            if i >= len(args):
-                fail("missing value for '--directory'")
-            build_dir = args[i]
-        elif arg in ("-k", "--install-sdk", "--sdk", "--ktrace-sdk"):
-            i += 1
-            if i >= len(args):
-                fail("missing value for '--install-sdk'")
-            sdk_prefix_arg = args[i]
+            while i < len(args) and not args[i].startswith("-"):
+                requested_demos.append(args[i])
+                i += 1
+            continue
         elif arg == "--no-configure":
             no_configure = True
-        elif arg == "--release-lock":
-            release_lock_only = True
-        elif arg == "--lock-status":
-            lock_status_only = True
+        elif arg == "--install-vcpkg":
+            install_vcpkg = True
         elif arg.startswith("-"):
             fail(f"unknown option '{arg}'")
         else:
-            if build_dir:
-                fail("only one build directory may be provided")
-            build_dir = arg
+            fail(f"unexpected positional argument '{arg}'; use --version <name>")
         i += 1
 
-    lock_owner = resolve_lock_owner(lock_owner_arg)
+    build_mode_flags: list[str] = []
+    if version_explicit:
+        build_mode_flags.append("--version")
+    if build_demos:
+        build_mode_flags.append("--build-demos")
+    if no_configure:
+        build_mode_flags.append("--no-configure")
+    if install_vcpkg:
+        build_mode_flags.append("--install-vcpkg")
 
-    if (1 if release_lock_only else 0) + (1 if lock_status_only else 0) > 1:
-        fail("choose only one lock operation: --release-lock or --lock-status")
-
-    if lock_owner and not release_lock_only and not lock_status_only:
-        if no_configure or sdk_prefix_arg:
-            fail("lock operations cannot be combined with build/config options")
-        if not build_dir:
-            fail("--lock requires --directory <build-dir>")
-        classify_build_dir(build_dir)
-        claim_lock(build_dir, lock_owner)
-        return 0
-
-    if release_lock_only or lock_status_only:
-        if no_configure or sdk_prefix_arg:
-            fail("lock operations cannot be combined with build/config options")
-        if not build_dir:
-            fail("lock operations require --directory <build-dir>")
-        classify_build_dir(build_dir)
-        if release_lock_only:
-            release_lock(build_dir, lock_owner)
-            return 0
-        show_lock_status(build_dir)
-        return 0
-
-    if not build_dir:
-        build_dir = "build/latest"
+    if list_builds and remove_latest_builds:
+        fail("--list-builds and --remove-latest cannot be combined")
+    if list_builds and build_mode_flags:
+        fail("--list-builds cannot be combined with build options")
+    if remove_latest_builds and build_mode_flags:
+        fail("--remove-latest cannot be combined with build options")
 
     repo_root = os.path.abspath(os.path.dirname(__file__))
-    build_mode, demo_name = classify_build_dir(build_dir)
+    if remove_latest_builds:
+        return remove_latest_build_dirs(repo_root)
+    if list_builds:
+        return list_build_dirs(repo_root)
+
+    cmake_package_name, requires_vcpkg, config_build_demos, config_sdk_dependencies = load_kbuild_config(repo_root)
+    sdk_dependencies = resolve_sdk_dependencies(repo_root, version, config_sdk_dependencies)
+
+    demo_order: list[str] = []
+    if build_demos:
+        if requested_demos:
+            demo_order = [normalize_demo_name(token) for token in requested_demos]
+        else:
+            if not config_build_demos:
+                fail("kbuild.json must define 'build-demos' for --build-demos with no demo arguments")
+            demo_order = [normalize_demo_name(token) for token in config_build_demos]
+
+        # Validate all requested demo source directories before core build work.
+        for demo_name in demo_order:
+            resolve_demo_source_dir(repo_root, demo_name)
+
+    if install_vcpkg:
+        install_local_vcpkg(repo_root)
+
+    build_dir = os.path.join("build", version)
+
     source_dir = repo_root
     cmake_args = ["-DCMAKE_BUILD_TYPE=Release"]
-    demo_sdk_prefix = ""
-    core_install_sdk_prefix_arg = ""
-
-    if build_mode == "core":
-        validate_core_build_dir_layout(build_dir)
-        core_install_sdk_prefix_arg = sdk_prefix_arg
-    else:
-        if not sdk_prefix_arg.strip():
-            fail("-k/--ktrace-sdk <sdk-prefix> is required for demo build directories")
-
-        demo_source_dir = os.path.join(repo_root, "demo", demo_name)
-        demo_cmake_lists = os.path.join(demo_source_dir, "CMakeLists.txt")
-        if not os.path.isfile(demo_cmake_lists):
-            fail(f"demo source directory is missing CMakeLists.txt: {demo_source_dir}")
-
-        demo_sdk_prefix = resolve_prefix(sdk_prefix_arg.strip(), repo_root)
-        validate_sdk_prefix(demo_sdk_prefix)
-        demo_vcpkg_installed_dir, demo_vcpkg_triplet = resolve_demo_vcpkg_context(
-            demo_sdk_prefix, repo_root
-        )
-        demo_vcpkg_prefix = os.path.join(demo_vcpkg_installed_dir, demo_vcpkg_triplet)
-        if not os.path.isdir(demo_vcpkg_prefix):
-            fail(f"missing vcpkg triplet prefix: {demo_vcpkg_prefix}")
-
-        source_dir = demo_source_dir
+    if sdk_dependencies:
+        prefix_entries = [dependency_prefix for _, dependency_prefix in sdk_dependencies]
         cmake_args.extend(
             [
-                f"-DVCPKG_TARGET_TRIPLET={demo_vcpkg_triplet}",
-                f"-DVCPKG_INSTALLED_DIR={demo_vcpkg_installed_dir}",
-                f"-DCMAKE_PREFIX_PATH={demo_sdk_prefix};{demo_vcpkg_prefix}",
+                f"-DCMAKE_PREFIX_PATH={';'.join(prefix_entries)}",
                 "-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON",
-                f"-DKTraceSDK_DIR={os.path.join(demo_sdk_prefix, 'lib', 'cmake', 'KTraceSDK')}",
             ]
         )
-        print(
-            f"Demo build -> dir={build_dir} | demo={demo_name} | sdk={demo_sdk_prefix} | triplet={demo_vcpkg_triplet}",
-            flush=True,
-        )
+        for package_name, dependency_prefix in sdk_dependencies:
+            cmake_args.append(f"-D{package_name}_DIR={package_dir(dependency_prefix, package_name)}")
 
-    local_vcpkg_root, local_toolchain = ensure_local_vcpkg(repo_root)
-    local_vcpkg_build_root = os.path.join(repo_root, "vcpkg", "build")
-    local_vcpkg_downloads = os.path.join(local_vcpkg_build_root, "downloads")
-    local_vcpkg_binary_cache = os.path.join(local_vcpkg_build_root, "binary-cache")
-    os.makedirs(local_vcpkg_downloads, exist_ok=True)
-    os.makedirs(local_vcpkg_binary_cache, exist_ok=True)
+    validate_core_build_dir_layout(build_dir)
 
     env = os.environ.copy()
-    env["VCPKG_ROOT"] = local_vcpkg_root
-    if not env.get("VCPKG_DOWNLOADS", "").strip():
-        env["VCPKG_DOWNLOADS"] = local_vcpkg_downloads
-    if not env.get("VCPKG_DEFAULT_BINARY_CACHE", "").strip():
-        env["VCPKG_DEFAULT_BINARY_CACHE"] = local_vcpkg_binary_cache
-
-    cmake_args.append(f"-DCMAKE_TOOLCHAIN_FILE={local_toolchain}")
-    ensure_build_unlocked(build_dir)
+    if requires_vcpkg:
+        local_vcpkg_root, local_toolchain, local_vcpkg_downloads, local_vcpkg_binary_cache = (
+            ensure_local_vcpkg(repo_root)
+        )
+        env["VCPKG_ROOT"] = local_vcpkg_root
+        if not env.get("VCPKG_DOWNLOADS", "").strip():
+            env["VCPKG_DOWNLOADS"] = local_vcpkg_downloads
+        if not env.get("VCPKG_DEFAULT_BINARY_CACHE", "").strip():
+            env["VCPKG_DEFAULT_BINARY_CACHE"] = local_vcpkg_binary_cache
+        cmake_args.append(f"-DCMAKE_TOOLCHAIN_FILE={local_toolchain}")
 
     if no_configure:
         cache_path = os.path.join(build_dir, "CMakeCache.txt")
@@ -540,14 +818,7 @@ def main() -> int:
 
     run(["cmake", "--build", build_dir, "-j4"], env=env)
 
-    if build_mode == "demo":
-        print(f"Build complete -> dir={build_dir}")
-        return 0
-
-    if core_install_sdk_prefix_arg:
-        install_prefix = resolve_prefix(core_install_sdk_prefix_arg, repo_root)
-    else:
-        install_prefix = os.path.abspath(os.path.join(build_dir, "sdk"))
+    install_prefix = os.path.abspath(os.path.join(build_dir, "sdk"))
     clean_sdk_install_prefix(install_prefix)
     run(
         [
@@ -556,13 +827,25 @@ def main() -> int:
             build_dir,
             "--prefix",
             install_prefix,
-            "--component",
-            "KTraceSDK",
         ],
         env=env,
     )
 
     print(f"Build complete -> dir={build_dir} | sdk={install_prefix}")
+
+    if build_demos:
+        for demo_name in demo_order:
+            build_demo(
+                repo_root=repo_root,
+                demo_name=demo_name,
+                version=version,
+                no_configure=no_configure,
+                cmake_package_name=cmake_package_name,
+                sdk_dependencies=sdk_dependencies,
+                env=env,
+                demo_order=demo_order,
+            )
+
     return 0
 
 

@@ -1,6 +1,0 @@
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/delta/build/latest/sdk/lib/libdelta.a
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/delta/build/latest/sdk/include/delta/sdk.hpp
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/delta/build/latest/sdk/lib/cmake/DeltaSDK/DeltaSDKTargets.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/delta/build/latest/sdk/lib/cmake/DeltaSDK/DeltaSDKTargets-release.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/delta/build/latest/sdk/lib/cmake/DeltaSDK/DeltaSDKConfig.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/delta/build/latest/sdk/lib/cmake/DeltaSDK/DeltaSDKConfigVersion.cmake

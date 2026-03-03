@@ -23,21 +23,6 @@ const char* resolveCategoryColorCode(std::string_view trace_namespace, std::stri
     return "";
 }
 
-} // namespace
-
-namespace ktrace::detail {
-
-void initializeColorSupport() {
-    auto& state = getTraceState();
-    std::call_once(state.color_init_once, [&state]() {
-#ifndef _WIN32
-        state.color_enabled = (isatty(fileno(stdout)) != 0);
-#else
-        state.color_enabled = false;
-#endif
-    });
-}
-
 void appendCompactTimestamp(std::string& out) {
     using clock = std::chrono::system_clock;
     const auto now = clock::now();
@@ -94,6 +79,21 @@ std::string_view formatSourceLabel(std::string_view source_path) {
         source_path = source_path.substr(0, dot);
     }
     return source_path;
+}
+
+} // namespace
+
+namespace ktrace::detail {
+
+void initializeColorSupport() {
+    auto& state = getTraceState();
+    std::call_once(state.color_init_once, [&state]() {
+#ifndef _WIN32
+        state.color_enabled = (isatty(fileno(stdout)) != 0);
+#else
+        state.color_enabled = false;
+#endif
+    });
 }
 
 std::string buildTraceMessagePrefix(std::string_view trace_namespace,

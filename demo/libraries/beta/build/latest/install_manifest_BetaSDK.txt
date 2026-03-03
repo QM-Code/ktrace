@@ -1,6 +1,0 @@
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/beta/build/latest/sdk/lib/libbeta.a
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/beta/build/latest/sdk/include/beta/sdk.hpp
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/beta/build/latest/sdk/lib/cmake/BetaSDK/BetaSDKTargets.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/beta/build/latest/sdk/lib/cmake/BetaSDK/BetaSDKTargets-release.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/beta/build/latest/sdk/lib/cmake/BetaSDK/BetaSDKConfig.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/beta/build/latest/sdk/lib/cmake/BetaSDK/BetaSDKConfigVersion.cmake

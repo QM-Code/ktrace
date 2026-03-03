@@ -1,6 +1,0 @@
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/alpha/build/latest/sdk/lib/libalpha.a
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/alpha/build/latest/sdk/include/alpha/sdk.hpp
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/alpha/build/latest/sdk/lib/cmake/AlphaSDK/AlphaSDKTargets.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/alpha/build/latest/sdk/lib/cmake/AlphaSDK/AlphaSDKTargets-release.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/alpha/build/latest/sdk/lib/cmake/AlphaSDK/AlphaSDKConfig.cmake
-/home/karmak/dev/bz3-rewrite/m-ktrace/demo/libraries/alpha/build/latest/sdk/lib/cmake/AlphaSDK/AlphaSDKConfigVersion.cmake

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "cmake_package_name": "KTraceSDK",
+  "requires_vcpkg": true,
+  "build-demos": [
+    "libraries/alpha",
+    "libraries/beta",
+    "libraries/delta",
+    "executable"
+  ]
+}

@@ -2,6 +2,11 @@
 
 Build and install `DeltaSDK`:
 
+Run from the repository root directory:
+
 ```bash
-./abuild.py -a <name> -d build/test/ --ktrace-sdk ../../../build/test/sdk/
+./kbuild.py --build-demos libraries/delta
 ```
+
+Output:
+- `demo/libraries/delta/build/latest/sdk`

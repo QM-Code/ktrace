@@ -59,11 +59,6 @@ const std::array<std::string_view, 256>& colorNames();
 const char* ansiColorCode(ColorId color);
 void initializeColorSupport();
 
-bool parseSelectorChannelPattern(std::string_view expression, Selector& selector, std::string& error);
-bool parseSelectorExpression(std::string_view raw_token,
-                             std::string_view local_namespace,
-                             Selector& selector,
-                             std::string& error);
 std::vector<Selector> parseSelectorList(const std::string& list,
                                         std::string_view local_namespace,
                                         std::vector<std::string>& invalid_tokens);
@@ -75,8 +70,6 @@ void ensureInternalTraceChannelsRegistered();
 
 std::optional<ColorId> resolveChannelColor(std::string_view trace_namespace,
                                            std::string_view category);
-void appendCompactTimestamp(std::string& out);
-std::string_view formatSourceLabel(std::string_view source_path);
 std::string buildTraceMessagePrefix(std::string_view trace_namespace,
                                     std::string_view category,
                                     std::string_view source_file,

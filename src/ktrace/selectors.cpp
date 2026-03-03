@@ -106,12 +106,8 @@ bool expandBraceExpression(const std::string& value,
     return true;
 }
 
-} // namespace
-
-namespace ktrace::detail {
-
 bool parseSelectorChannelPattern(const std::string_view expression,
-                                 Selector& selector,
+                                 ktrace::detail::Selector& selector,
                                  std::string& error) {
     if (expression.empty()) {
         error = "missing channel expression";
@@ -153,7 +149,7 @@ bool parseSelectorChannelPattern(const std::string_view expression,
 
 bool parseSelectorExpression(const std::string_view raw_token,
                              const std::string_view local_namespace,
-                             Selector& selector,
+                             ktrace::detail::Selector& selector,
                              std::string& error) {
     const std::size_t dot = raw_token.find('.');
     if (dot == std::string_view::npos) {
@@ -186,6 +182,10 @@ bool parseSelectorExpression(const std::string_view raw_token,
     }
     return true;
 }
+
+} // namespace
+
+namespace ktrace::detail {
 
 std::vector<Selector> parseSelectorList(const std::string& list,
                                         const std::string_view local_namespace,
