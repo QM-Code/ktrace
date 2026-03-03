@@ -1,11 +1,11 @@
 # Executable Demo
 
-Build executable against KTraceSDK + AlphaSDK + BetaSDK + DeltaSDK:
+Build executable against KTraceSDK + AlphaSDK + BetaSDK + GammaSDK:
 
 Run from the repository root directory:
 
 ```bash
-./kbuild.py --build-demos libraries/alpha libraries/beta libraries/delta executable
+./kbuild.py --build-demos libraries/alpha libraries/beta libraries/gamma executable
 ```
 
 Run:

@@ -116,8 +116,8 @@ void printTraceExamples(const std::string& root) {
         << "  " << root << " alpha.net\n"
         << "  " << root << " beta.scheduler.tick\n"
         << "  " << root << " alpha.net,beta.io\n"
-        << "  " << root << " delta.physics.*\n"
-        << "  " << root << " delta.physics.*.*\n"
+        << "  " << root << " gamma.physics.*\n"
+        << "  " << root << " gamma.physics.*.*\n"
         << "  " << root << " alpha.{net,cache}\n"
         << "  " << root << " beta.{io,scheduler}.packet\n"
         << "  " << root << " '{alpha,beta}.net'\n\n";

@@ -17,12 +17,12 @@ SDK output:
 ./kbuild.py --build-demos
 
 # Or provide explicit order.
-./kbuild.py --build-demos libraries/alpha libraries/beta libraries/delta executable
+./kbuild.py --build-demos libraries/alpha libraries/beta libraries/gamma executable
 
 ./demo/executable/build/latest/test
 ```
 Demos:
-- Libraries: `demo/libraries/{alpha,beta,delta}`
+- Libraries: `demo/libraries/{alpha,beta,gamma}`
 - Executable: `demo/executable/`
 
 Demo builds are orchestrated by the root `kbuild.py`
@@ -30,6 +30,18 @@ Demo builds are orchestrated by the root `kbuild.py`
 Demo libraries demonstrate how other libraries can implement and expose ktrace.
 
 The demo executable shows how an executable can enable ktrace locally and for imported libraries (assuming they were built around ktrace).
+
+Trace CLI examples:
+
+```bash
+./demo/executable/build/latest/test --trace
+./demo/executable/build/latest/test --trace '*'
+./demo/executable/build/latest/test --trace '*.*'
+./demo/executable/build/latest/test --trace '*.*.*'
+./demo/executable/build/latest/test --trace-namespaces
+./demo/executable/build/latest/test --trace-channels
+./demo/executable/build/latest/test --trace-colors
+```
 
 ## Install
 
@@ -53,7 +65,7 @@ Examples:
 - `ktrace::EnableChannel(".abc");`
 - `ktrace::EnableChannel(".abc.xyz");`
 - `ktrace::EnableChannel("otherapp.channel");`
-- `ktrace::EnableChannels("alpha.*,{beta,delta}.net.*");`
+- `ktrace::EnableChannels("alpha.*,{beta,gamma}.net.*");`
 - `ktrace::EnableChannels(".net.*,otherapp.scheduler.tick");`
 
 ## Coding Agents

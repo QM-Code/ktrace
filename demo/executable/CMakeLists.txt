@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(KTraceSDK CONFIG REQUIRED)
 find_package(AlphaSDK CONFIG REQUIRED)
 find_package(BetaSDK CONFIG REQUIRED)
-find_package(DeltaSDK CONFIG REQUIRED)
+find_package(GammaSDK CONFIG REQUIRED)
 
 add_executable(ktrace_demo_executable
     src/main.cpp
@@ -21,7 +21,7 @@ target_link_libraries(ktrace_demo_executable PRIVATE
     ktrace::sdk
     alpha::sdk
     beta::sdk
-    delta::sdk
+    gamma::sdk
 )
 
 set_target_properties(ktrace_demo_executable PROPERTIES

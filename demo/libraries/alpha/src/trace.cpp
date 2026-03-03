@@ -8,7 +8,7 @@ bool g_alpha_trace_initialized = false;
 
 } // namespace
 
-namespace alpha {
+namespace ktrace::demo::alpha {
 
 void Init() {
     if (!g_alpha_trace_initialized) {
@@ -24,4 +24,4 @@ void TestTraceLoggingChannels() {
     KTRACE("cache", "alpha trace test on channel 'cache'");
 }
 
-} // namespace alpha
+} // namespace ktrace::demo::alpha

@@ -5,7 +5,7 @@
   "build-demos": [
     "libraries/alpha",
     "libraries/beta",
-    "libraries/delta",
+    "libraries/gamma",
     "executable"
   ]
 }

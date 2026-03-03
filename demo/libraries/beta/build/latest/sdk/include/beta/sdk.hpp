@@ -1,8 +1,8 @@
 #pragma once
 
-namespace beta {
+namespace ktrace::demo::beta {
 
 void InitializeTraceLogging();
 void TestTraceLoggingChannels();
 
-} // namespace beta
+} // namespace ktrace::demo::beta

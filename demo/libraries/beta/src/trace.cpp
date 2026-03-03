@@ -8,7 +8,7 @@ bool g_beta_trace_initialized = false;
 
 } // namespace
 
-namespace beta {
+namespace ktrace::demo::beta {
 
 void InitializeTraceLogging() {
     if (!g_beta_trace_initialized) {
@@ -24,4 +24,4 @@ void TestTraceLoggingChannels() {
     KTRACE("scheduler", "beta trace test on channel 'scheduler'");
 }
 
-} // namespace beta
+} // namespace ktrace::demo::beta

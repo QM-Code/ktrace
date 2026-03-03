@@ -1,6 +1,6 @@
 #include "alpha/sdk.hpp"
 #include "beta/sdk.hpp"
-#include "delta/sdk.hpp"
+#include "gamma/sdk.hpp"
 #include "ktrace.hpp"
 
 int main(int argc, char** argv) {
@@ -15,9 +15,9 @@ int main(int argc, char** argv) {
 
 	// Enabling external library tracing
 	ktrace::EnableInternalTrace();
-    alpha::Init();
-    beta::InitializeTraceLogging();
-    delta::SystemStartup();
+    ktrace::demo::alpha::Init();
+    ktrace::demo::beta::InitializeTraceLogging();
+    ktrace::demo::gamma::SystemStartup();
 
 	// Process the CLI
 	// Must happen after enabling external library tracing
@@ -26,9 +26,9 @@ int main(int argc, char** argv) {
 
 	// Test external trace logging.
     KTRACE("app", "testing external tracing, use --trace '*.*' to view top-level channels");
-    alpha::TestTraceLoggingChannels();
-    beta::TestTraceLoggingChannels();
-    delta::TestTraceLoggingChannels();
+    ktrace::demo::alpha::TestTraceLoggingChannels();
+    ktrace::demo::beta::TestTraceLoggingChannels();
+    ktrace::demo::gamma::TestTraceLoggingChannels();
 
 	// Random shutdown note from internal logging.
     KTRACE("orchestrator", "executable completed imported SDK trace checks");
