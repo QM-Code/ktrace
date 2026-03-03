@@ -1,6 +1,6 @@
 #include "delta/sdk.hpp"
 
-#include "ktrace/trace.hpp"
+#include "ktrace.hpp"
 
 namespace {
 

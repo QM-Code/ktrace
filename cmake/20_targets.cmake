@@ -1,12 +1,13 @@
 set(KTRACE_LOG_SOURCES
-    ${PROJECT_SOURCE_DIR}/src/cli.cpp
-    ${PROJECT_SOURCE_DIR}/src/colors.cpp
-    ${PROJECT_SOURCE_DIR}/src/filter.cpp
-    ${PROJECT_SOURCE_DIR}/src/format.cpp
-    ${PROJECT_SOURCE_DIR}/src/registry.cpp
-    ${PROJECT_SOURCE_DIR}/src/selectors.cpp
-    ${PROJECT_SOURCE_DIR}/src/state.cpp
-    ${PROJECT_SOURCE_DIR}/src/trace.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace/bridge.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace/cli.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace/colors.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace/filter.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace/format.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace/registry.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace/selectors.cpp
+    ${PROJECT_SOURCE_DIR}/src/ktrace/state.cpp
 )
 
 if(KTRACE_BUILD_SHARED)

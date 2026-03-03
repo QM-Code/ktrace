@@ -1,35 +1,7 @@
-#include "trace.hpp"
+#include "../ktrace.hpp"
 
 #include <algorithm>
 #include <stdexcept>
-
-namespace ktrace::detail {
-
-std::optional<colors::Id> resolveChannelColor(std::string_view trace_namespace,
-                                              std::string_view category) {
-    auto& state = getTraceState();
-    std::lock_guard<std::mutex> lock(state.registry_mutex);
-    const auto ns_it = state.channel_colors_by_namespace.find(std::string(trace_namespace));
-    if (ns_it == state.channel_colors_by_namespace.end()) {
-        return std::nullopt;
-    }
-
-    std::string key(category);
-    while (!key.empty()) {
-        const auto it = ns_it->second.find(key);
-        if (it != ns_it->second.end()) {
-            return it->second;
-        }
-        const std::size_t dot = key.rfind('.');
-        if (dot == std::string::npos) {
-            break;
-        }
-        key.resize(dot);
-    }
-    return std::nullopt;
-}
-
-} // namespace ktrace::detail
 
 namespace ktrace {
 

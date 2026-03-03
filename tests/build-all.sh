@@ -34,7 +34,10 @@ done
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
 # Build SDK
-./abuild.py -a mike -d "build/${version}/"
+./kbuild.py -d "build/${version}/"
+
+# Run tests
+ctest --test-dir "build/${version}" --output-on-failure
 
 # Build Libraries
 cd demo/libraries/alpha/

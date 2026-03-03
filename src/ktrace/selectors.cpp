@@ -1,10 +1,11 @@
-#include "trace.hpp"
+#include "../ktrace.hpp"
 
 #include <unordered_set>
 
-namespace ktrace::detail {
-
 namespace {
+
+using ktrace::detail::isSelectorIdentifier;
+using ktrace::detail::trimWhitespace;
 
 bool splitByTopLevelCommas(std::string_view value,
                            std::vector<std::string>& parts,
@@ -107,6 +108,8 @@ bool expandBraceExpression(const std::string& value,
 
 } // namespace
 
+namespace ktrace::detail {
+
 bool parseSelectorChannelPattern(const std::string_view expression,
                                  Selector& selector,
                                  std::string& error) {
@@ -149,6 +152,7 @@ bool parseSelectorChannelPattern(const std::string_view expression,
 }
 
 bool parseSelectorExpression(const std::string_view raw_token,
+                             const std::string_view local_namespace,
                              Selector& selector,
                              std::string& error) {
     const std::size_t dot = raw_token.find('.');
@@ -159,12 +163,16 @@ bool parseSelectorExpression(const std::string_view raw_token,
 
     const std::string_view ns = raw_token.substr(0, dot);
     const std::string_view channel_pattern = raw_token.substr(dot + 1);
-    if (ns.empty()) {
-        error = "missing namespace";
-        return false;
-    }
     if (ns == "*") {
         selector.any_namespace = true;
+    } else if (ns.empty()) {
+        const std::string namespace_name = trimWhitespace(std::string(local_namespace));
+        if (!isSelectorIdentifier(namespace_name)) {
+            error = "missing namespace";
+            return false;
+        }
+        selector.any_namespace = false;
+        selector.trace_namespace = namespace_name;
     } else if (isSelectorIdentifier(ns)) {
         selector.any_namespace = false;
         selector.trace_namespace = std::string(ns);
@@ -180,6 +188,7 @@ bool parseSelectorExpression(const std::string_view raw_token,
 }
 
 std::vector<Selector> parseSelectorList(const std::string& list,
+                                        const std::string_view local_namespace,
                                         std::vector<std::string>& invalid_tokens) {
     ensureInternalTraceChannelsRegistered();
     std::vector<Selector> selectors;
@@ -216,7 +225,7 @@ std::vector<Selector> parseSelectorList(const std::string& list,
         for (const std::string& expanded_token : expanded_tokens) {
             Selector selector{};
             std::string parse_error;
-            if (!parseSelectorExpression(expanded_token, selector, parse_error)) {
+            if (!parseSelectorExpression(expanded_token, local_namespace, selector, parse_error)) {
                 const std::string reason = parse_error.empty()
                                                ? expanded_token
                                                : (expanded_token + " (" + parse_error + ")");

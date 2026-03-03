@@ -1,4 +1,4 @@
-#include "trace.hpp"
+#include "../ktrace.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -70,12 +70,14 @@ std::string normalizeSelectorList(std::string_view raw_value) {
     return out.str();
 }
 
-void enableSelectorListOrThrow(const std::string_view option, const std::string_view raw_value) {
+void enableSelectorListOrThrow(const std::string_view option,
+                               const std::string_view raw_value,
+                               const std::string_view local_namespace) {
     const std::string selectors = normalizeSelectorList(raw_value);
     if (selectors.empty()) {
         throw std::invalid_argument("option '" + std::string(option) + "' requires one or more selectors");
     }
-    ktrace::EnableChannels(selectors);
+    ktrace::EnableChannels(selectors, local_namespace);
     KTRACE("api.cli", "option '{}' enabled selectors '{}'", option, selectors);
 }
 
@@ -99,6 +101,9 @@ void printTraceExamples(const std::string& root) {
         << "\nGeneral trace selector pattern:\n"
         << "  " << root << " <namespace>.<channel>[.<subchannel>[.<subchannel>]]\n\n"
         << "Trace selector examples:\n"
+        << "  " << root << " '.abc'           Select local 'abc' in current namespace\n"
+        << "  " << root << " '.abc.xyz'       Select local nested channel in current namespace\n"
+        << "  " << root << " 'otherapp.channel' Select explicit namespace channel\n"
         << "  " << root << " '*.*'            Select all <namespace>.<channel> channels\n"
         << "  " << root << " '*.*.*'          Select all channels up to 3 levels\n"
         << "  " << root << " 'alpha.*'        Select all top-level channels in alpha\n"
@@ -178,7 +183,10 @@ void printTraceColors() {
     std::cout << "\n";
 }
 
-void processCliArgs(int& argc, char** argv, std::string_view trace_root) {
+void processCliArgs(int& argc,
+                    char** argv,
+                    std::string_view trace_root,
+                    std::string_view local_namespace) {
     if (argc <= 0 || argv == nullptr) {
         return;
     }
@@ -256,10 +264,10 @@ void processCliArgs(int& argc, char** argv, std::string_view trace_root) {
             }
             consumed[static_cast<std::size_t>(i + 1)] = true;
             try {
-                enableSelectorListOrThrow(root, argv[++i]);
+                enableSelectorListOrThrow(root, argv[++i], local_namespace);
             } catch (const std::exception& ex) {
                 spdlog::error("\nTrace option error: {}", ex.what());
-                printTraceExamples(root);
+                printTraceHelp(root);
             }
             continue;
         }
@@ -293,8 +301,12 @@ void processCliArgs(int& argc, char** argv, std::string_view trace_root) {
             continue;
         }
 
+        if (startsWith(arg, root + "-")) {
+            throw std::invalid_argument("unknown trace option '" + arg + "'");
+        }
+
         consumed[static_cast<std::size_t>(i)] = true;
-        KTRACE("api", "cli: consumed unknown trace option '{}'", arg);
+        KTRACE("api", "cli: consumed unknown trace argument '{}'", arg);
         continue;
     }
 
@@ -318,9 +330,12 @@ void processCliArgs(int& argc, char** argv, std::string_view trace_root) {
 
 namespace ktrace {
 
-void ProcessCLI(int& argc, char** argv, std::string_view trace_root) {
+void ProcessCLI(int& argc,
+                char** argv,
+                std::string_view trace_root,
+                std::string_view local_namespace) {
     try {
-        processCliArgs(argc, argv, trace_root);
+        processCliArgs(argc, argv, trace_root, local_namespace);
     } catch (const std::exception& ex) {
         std::string root = "--trace";
         try {
@@ -328,7 +343,7 @@ void ProcessCLI(int& argc, char** argv, std::string_view trace_root) {
         } catch (...) {
         }
         spdlog::error("\nTrace option error: {}", ex.what());
-        printTraceExamples(root);
+        printTraceHelp(root);
     }
 }
 

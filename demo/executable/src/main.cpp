@@ -1,7 +1,7 @@
 #include "alpha/sdk.hpp"
 #include "beta/sdk.hpp"
 #include "delta/sdk.hpp"
-#include "ktrace/trace.hpp"
+#include "ktrace.hpp"
 
 int main(int argc, char** argv) {
 

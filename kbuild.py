@@ -2,14 +2,19 @@
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
+from datetime import datetime, timezone
+
+
+LOCK_FILENAME = ".kbuild-lock"
 
 
 def usage(exit_code: int = 1) -> None:
     prog = os.path.basename(sys.argv[0])
     print(f"Usage: {prog} <options>", file=sys.stderr)
-    print("  -a, --agent       required agent/session owner name", file=sys.stderr)
+    print(f"  -l, --lock        claim {LOCK_FILENAME} for --directory and exit (requires owner name)", file=sys.stderr)
     print(
         "  -d, --directory   build directory (core: build/<name>, demo: demo/<demo-path>/build/<name>)",
         file=sys.stderr,
@@ -19,6 +24,8 @@ def usage(exit_code: int = 1) -> None:
         "demo: SDK prefix to consume (required)",
         file=sys.stderr,
     )
+    print(f"  --release-lock    release {LOCK_FILENAME} for --directory and exit", file=sys.stderr)
+    print(f"  --lock-status     print {LOCK_FILENAME} metadata for --directory and exit", file=sys.stderr)
     print("  --no-configure    skip cmake configure step", file=sys.stderr)
     raise SystemExit(exit_code)
 
@@ -123,7 +130,7 @@ def validate_sdk_prefix(prefix: str) -> None:
     print(
         "Error: SDK prefix is missing package config.\n"
         f"Expected:\n  {config_path}\n"
-        "Build/install SDK from a core build first (for example: ./abuild.py --agent <name> --directory build/test).",
+        "Build/install SDK from a core build first (for example: ./kbuild.py --directory build/test).",
         file=sys.stderr,
     )
     raise SystemExit(2)
@@ -251,23 +258,165 @@ def ensure_local_vcpkg(repo_root: str) -> tuple[str, str]:
     return os.path.abspath(local_vcpkg_root), os.path.abspath(local_toolchain)
 
 
+def lock_path(build_dir: str) -> str:
+    return os.path.join(build_dir, LOCK_FILENAME)
+
+
+def resolve_lock_owner(lock_arg: str) -> str:
+    return lock_arg.strip()
+
+
+def read_lock_metadata(build_dir: str) -> dict[str, str]:
+    path = lock_path(build_dir)
+    if not os.path.isfile(path):
+        return {}
+
+    metadata: dict[str, str] = {}
+    raw_lines: list[str] = []
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.rstrip("\n")
+                raw_lines.append(line)
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                metadata[key.strip()] = value.strip()
+    except OSError:
+        return {}
+
+    if metadata:
+        return metadata
+
+    legacy_text = "\n".join(raw_lines).strip()
+    if legacy_text:
+        return {"legacy": legacy_text}
+    return {}
+
+
+def write_lock_metadata(build_dir: str, owner: str) -> None:
+    os.makedirs(build_dir, exist_ok=True)
+    path = lock_path(build_dir)
+    claimed_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    lines = [
+        f"owner={owner}",
+        f"claimed_at={claimed_at}",
+        f"host={socket.gethostname()}",
+        f"pid={os.getpid()}",
+    ]
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+
+
+def format_lock(metadata: dict[str, str]) -> str:
+    owner = metadata.get("owner", "<unknown>")
+    claimed_at = metadata.get("claimed_at", "<unknown>")
+    host = metadata.get("host", "<unknown>")
+    pid = metadata.get("pid", "<unknown>")
+    if "legacy" in metadata:
+        return f"legacy lock ({metadata['legacy']})"
+    return f"owner={owner}, claimed_at={claimed_at}, host={host}, pid={pid}"
+
+
+def claim_lock(build_dir: str, lock_owner: str) -> None:
+    metadata = read_lock_metadata(build_dir)
+    owner = metadata.get("owner", "")
+    if owner and owner != lock_owner:
+        print(
+            f"Error: build directory '{build_dir}' is already claimed by '{owner}' ({format_lock(metadata)}).",
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
+    if owner == lock_owner:
+        print(f"Lock already claimed by '{lock_owner}' on {build_dir}.")
+        return
+    if metadata.get("legacy"):
+        print(
+            f"Error: build directory '{build_dir}' has legacy/unowned lock data: {metadata['legacy']}. "
+            "Remove the lock file manually to continue.",
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
+
+    write_lock_metadata(build_dir, lock_owner)
+    print(f"Claimed lock for '{lock_owner}' on {build_dir}.")
+
+
+def release_lock(build_dir: str, lock_owner: str) -> None:
+    path = lock_path(build_dir)
+    if not os.path.isfile(path):
+        print(f"No lock present for {build_dir}.")
+        return
+
+    metadata = read_lock_metadata(build_dir)
+    owner = metadata.get("owner", "")
+    if owner and not lock_owner:
+        print(
+            f"Error: cannot release lock for '{build_dir}' without --lock <name>; owner is '{owner}' ({format_lock(metadata)}).",
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
+    if owner and owner != lock_owner:
+        print(
+            f"Error: cannot release lock for '{build_dir}'; owner is '{owner}' ({format_lock(metadata)}).",
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
+    if metadata.get("legacy"):
+        print(
+            f"Error: cannot safely release legacy lock for '{build_dir}' ({metadata['legacy']}). "
+            "Remove the lock file manually if intended.",
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
+
+    os.remove(path)
+    print(f"Released lock for '{lock_owner}' on {build_dir}.")
+
+
+def show_lock_status(build_dir: str) -> None:
+    path = lock_path(build_dir)
+    if not os.path.isfile(path):
+        print(f"{build_dir}: unclaimed")
+        return
+    metadata = read_lock_metadata(build_dir)
+    print(f"{build_dir}: {format_lock(metadata)}")
+
+
+def ensure_build_unlocked(build_dir: str) -> None:
+    path = lock_path(build_dir)
+    if not os.path.isfile(path):
+        return
+
+    metadata = read_lock_metadata(build_dir)
+    lock_desc = format_lock(metadata) if metadata else "present but unreadable metadata"
+    print(
+        f"Error: build directory '{build_dir}' is locked ({lock_desc}).\n"
+        f"Use '--lock-status --directory {build_dir}' to inspect or '--release-lock --lock <name> --directory {build_dir}' to unlock.",
+        file=sys.stderr,
+    )
+    raise SystemExit(3)
+
+
 def main() -> int:
     args = sys.argv[1:]
-    agent_name = ""
+    lock_owner_arg = ""
     build_dir = ""
     sdk_prefix_arg = ""
     no_configure = False
+    release_lock_only = False
+    lock_status_only = False
 
     i = 0
     while i < len(args):
         arg = args[i]
         if arg in ("-h", "--help"):
             usage(0)
-        elif arg in ("-a", "--agent"):
+        elif arg in ("-l", "--lock"):
             i += 1
             if i >= len(args):
-                fail("missing value for '--agent'")
-            agent_name = args[i].strip()
+                fail("missing value for '--lock'")
+            lock_owner_arg = args[i]
         elif arg in ("-d", "--directory"):
             i += 1
             if i >= len(args):
@@ -280,6 +429,10 @@ def main() -> int:
             sdk_prefix_arg = args[i]
         elif arg == "--no-configure":
             no_configure = True
+        elif arg == "--release-lock":
+            release_lock_only = True
+        elif arg == "--lock-status":
+            lock_status_only = True
         elif arg.startswith("-"):
             fail(f"unknown option '{arg}'")
         else:
@@ -288,10 +441,34 @@ def main() -> int:
             build_dir = arg
         i += 1
 
-    if not agent_name:
-        fail("--agent <name> is required")
+    lock_owner = resolve_lock_owner(lock_owner_arg)
+
+    if (1 if release_lock_only else 0) + (1 if lock_status_only else 0) > 1:
+        fail("choose only one lock operation: --release-lock or --lock-status")
+
+    if lock_owner and not release_lock_only and not lock_status_only:
+        if no_configure or sdk_prefix_arg:
+            fail("lock operations cannot be combined with build/config options")
+        if not build_dir:
+            fail("--lock requires --directory <build-dir>")
+        classify_build_dir(build_dir)
+        claim_lock(build_dir, lock_owner)
+        return 0
+
+    if release_lock_only or lock_status_only:
+        if no_configure or sdk_prefix_arg:
+            fail("lock operations cannot be combined with build/config options")
+        if not build_dir:
+            fail("lock operations require --directory <build-dir>")
+        classify_build_dir(build_dir)
+        if release_lock_only:
+            release_lock(build_dir, lock_owner)
+            return 0
+        show_lock_status(build_dir)
+        return 0
+
     if not build_dir:
-        fail("--directory <build-dir> is required")
+        build_dir = "build/latest"
 
     repo_root = os.path.abspath(os.path.dirname(__file__))
     build_mode, demo_name = classify_build_dir(build_dir)
@@ -351,6 +528,7 @@ def main() -> int:
         env["VCPKG_DEFAULT_BINARY_CACHE"] = local_vcpkg_binary_cache
 
     cmake_args.append(f"-DCMAKE_TOOLCHAIN_FILE={local_toolchain}")
+    ensure_build_unlocked(build_dir)
 
     if no_configure:
         cache_path = os.path.join(build_dir, "CMakeCache.txt")

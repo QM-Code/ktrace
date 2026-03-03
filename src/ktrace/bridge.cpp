@@ -1,4 +1,4 @@
-#include "trace.hpp"
+#include "../ktrace.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -92,34 +92,6 @@ void registerInternalChannels() {
 }
 
 } // namespace
-
-namespace ktrace {
-
-ColorId Color(std::string_view color_name) {
-    const std::string token = detail::trimWhitespace(std::string(color_name));
-    if (token.empty()) {
-        throw std::invalid_argument("trace color name must not be empty");
-    }
-
-    if (token == "Default" || token == "default") {
-        return kDefaultColor;
-    }
-
-    const auto& names = detail::colorNames();
-    for (std::size_t i = 0; i < names.size(); ++i) {
-        if (names[i] == token) {
-            return static_cast<ColorId>(i);
-        }
-    }
-
-    throw std::invalid_argument("unknown trace color '" + token + "'");
-}
-
-void EnableInternalTrace() {
-    detail::ensureInternalTraceChannelsRegistered();
-}
-
-} // namespace ktrace
 
 namespace ktrace::detail {
 

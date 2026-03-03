@@ -1,10 +1,8 @@
-#include "trace.hpp"
+#include "../ktrace.hpp"
 
 #include <array>
 #include <cstdio>
 #include <string_view>
-
-namespace ktrace::detail {
 
 namespace {
 
@@ -269,12 +267,38 @@ constexpr std::array<std::string_view, 256> kColorNames = {
 
 } // namespace
 
+namespace ktrace::detail {
+
 const std::array<std::string_view, 256>& colorNames() {
     return kColorNames;
 }
 
-const char* ansiColorCode(colors::Id color) {
-    if (color == colors::Default) {
+std::optional<ColorId> resolveChannelColor(std::string_view trace_namespace,
+                                           std::string_view category) {
+    auto& state = getTraceState();
+    std::lock_guard<std::mutex> lock(state.registry_mutex);
+    const auto ns_it = state.channel_colors_by_namespace.find(std::string(trace_namespace));
+    if (ns_it == state.channel_colors_by_namespace.end()) {
+        return std::nullopt;
+    }
+
+    std::string key(category);
+    while (!key.empty()) {
+        const auto it = ns_it->second.find(key);
+        if (it != ns_it->second.end()) {
+            return it->second;
+        }
+        const std::size_t dot = key.rfind('.');
+        if (dot == std::string::npos) {
+            break;
+        }
+        key.resize(dot);
+    }
+    return std::nullopt;
+}
+
+const char* ansiColorCode(ColorId color) {
+    if (color == kDefaultColor) {
         return "";
     }
     if (color <= 7u) {

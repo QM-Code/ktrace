@@ -1,6 +1,6 @@
 #include "alpha/sdk.hpp"
 
-#include "ktrace/trace.hpp"
+#include "ktrace.hpp"
 
 namespace {
 
