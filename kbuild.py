@@ -2,9 +2,11 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 
 VCPKG_REPO_URL = "https://github.com/microsoft/vcpkg.git"
@@ -21,8 +23,16 @@ def usage(exit_code: int = 1) -> None:
         file=sys.stderr,
     )
     print("  --no-configure      skip cmake configure step", file=sys.stderr)
+    print("  --create-config     create a starter kbuild.json template", file=sys.stderr)
+    print("  --initialize-repo   scaffold this repo from kbuild.json metadata", file=sys.stderr)
     print(
-        "  --install-vcpkg     clone/bootstrap local vcpkg under ./vcpkg, then build (default: build/latest)",
+        "  --initialize-git    verify remote, initialize local git repo, commit, and push main",
+        file=sys.stderr,
+    )
+    print("  --git-sync <msg>    git add . && git commit -m <msg> && git push", file=sys.stderr)
+    print("  --sync-vcpkg-baseline  set baseline fields from ./vcpkg/src HEAD", file=sys.stderr)
+    print(
+        "  --install-vcpkg     clone/bootstrap local vcpkg under ./vcpkg, sync baseline, then build",
         file=sys.stderr,
     )
     raise SystemExit(exit_code)
@@ -35,6 +45,21 @@ def fail(message: str) -> None:
 
 def run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     subprocess.run(cmd, check=True, env=env)
+
+
+def enforce_script_directory() -> str:
+    repo_root = os.path.abspath(os.path.dirname(__file__))
+    cwd = os.path.abspath(os.getcwd())
+    repo_root_cmp = os.path.normcase(os.path.realpath(repo_root))
+    cwd_cmp = os.path.normcase(os.path.realpath(cwd))
+    if cwd_cmp != repo_root_cmp:
+        print(
+            "Error: kbuild.py must be run from the directory it is in.\n"
+            "Run `./kbuild.py` from that directory.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    return repo_root
 
 
 def format_dir_for_output(path: str, repo_root: str) -> str:
@@ -136,9 +161,9 @@ def load_kbuild_config(repo_root: str) -> tuple[str, bool, list[str], list[dict[
         print(
             "Error: missing required config file './kbuild.json'.\n"
             "Expected keys:\n"
-            "  schema_version (int)\n"
-            "  cmake_package_name (string)\n"
-            "  requires_vcpkg (bool)\n"
+            "  cmake (object, optional)\n"
+            "  cmake.sdk (object, optional)\n"
+            "  vcpkg (object, optional)\n"
             "Optional keys:\n"
             "  build-demos (array of demo names)\n"
             "  sdk-dependencies (array of dependency objects)",
@@ -157,29 +182,35 @@ def load_kbuild_config(repo_root: str) -> tuple[str, bool, list[str], list[dict[
         print("Error: kbuild.json must be a JSON object", file=sys.stderr)
         raise SystemExit(2)
 
-    schema_version = raw.get("schema_version")
-    cmake_package_name = raw.get("cmake_package_name")
-    requires_vcpkg = raw.get("requires_vcpkg")
+    cmake_block = raw.get("cmake")
+    if cmake_block is not None and not isinstance(cmake_block, dict):
+        print("Error: kbuild.json key 'cmake' must be an object", file=sys.stderr)
+        raise SystemExit(2)
+
+    sdk_mode = False
+    cmake_package_name = ""
+    if isinstance(cmake_block, dict) and "sdk" in cmake_block:
+        sdk_mode = True
+        sdk_block = cmake_block.get("sdk")
+        if not isinstance(sdk_block, dict):
+            print("Error: kbuild.json key 'cmake.sdk' must be an object when defined", file=sys.stderr)
+            raise SystemExit(2)
+        package_name = sdk_block.get("package_name")
+        if not isinstance(package_name, str) or not package_name.strip():
+            print("Error: kbuild.json key 'cmake.sdk.package_name' must be a non-empty string", file=sys.stderr)
+            raise SystemExit(2)
+        cmake_package_name = package_name.strip()
+
+    vcpkg_entry = raw.get("vcpkg")
+    if "vcpkg" in raw and not isinstance(vcpkg_entry, dict):
+        print("Error: kbuild.json key 'vcpkg' must be an object when defined", file=sys.stderr)
+        raise SystemExit(2)
+    requires_vcpkg = "vcpkg" in raw
     build_demos_raw = raw.get("build-demos", [])
     sdk_dependencies_raw = raw.get("sdk-dependencies", [])
 
-    if not isinstance(schema_version, int):
-        print("Error: kbuild.json key 'schema_version' must be an integer", file=sys.stderr)
-        raise SystemExit(2)
-    if schema_version != 1:
-        print(
-            f"Error: unsupported kbuild.json schema_version '{schema_version}' (expected 1)",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-    if not isinstance(cmake_package_name, str) or not cmake_package_name.strip():
-        print(
-            "Error: kbuild.json key 'cmake_package_name' must be a non-empty string",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
-    if not isinstance(requires_vcpkg, bool):
-        print("Error: kbuild.json key 'requires_vcpkg' must be true or false", file=sys.stderr)
+    if sdk_mode and not cmake_package_name:
+        print("Error: kbuild.json key 'cmake.sdk.package_name' must be a non-empty string", file=sys.stderr)
         raise SystemExit(2)
     if not isinstance(build_demos_raw, list):
         print("Error: kbuild.json key 'build-demos' must be an array if provided", file=sys.stderr)
@@ -220,9 +251,9 @@ def load_kbuild_config(repo_root: str) -> tuple[str, bool, list[str], list[dict[
             raise SystemExit(2)
         dep_package = dep_package.strip()
 
-        if dep_package == cmake_package_name.strip():
+        if cmake_package_name and dep_package == cmake_package_name:
             print(
-                f"Error: kbuild.json sdk dependency '{dep_package}' cannot match root cmake_package_name",
+                f"Error: kbuild.json sdk dependency '{dep_package}' cannot match root cmake.sdk.package_name",
                 file=sys.stderr,
             )
             raise SystemExit(2)
@@ -267,7 +298,7 @@ def load_kbuild_config(repo_root: str) -> tuple[str, bool, list[str], list[dict[
             }
         )
 
-    return cmake_package_name.strip(), requires_vcpkg, build_demos, sdk_dependencies
+    return cmake_package_name, requires_vcpkg, build_demos, sdk_dependencies
 
 
 def clean_sdk_install_prefix(prefix: str) -> None:
@@ -593,6 +624,429 @@ def install_local_vcpkg(repo_root: str) -> tuple[str, str, str, str]:
     return local_vcpkg_root, local_toolchain, local_vcpkg_downloads, local_vcpkg_binary_cache
 
 
+def read_git_head_commit(repo_path: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", repo_path, "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "git rev-parse failed"
+        print(
+            "Error: could not read vcpkg baseline commit from ./vcpkg/src.\n"
+            f"Details:\n  {detail}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    commit = result.stdout.strip()
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", commit):
+        print(
+            "Error: unexpected git commit format from ./vcpkg/src HEAD.\n"
+            f"Value:\n  {commit}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    return commit.lower()
+
+
+def load_json_object(path: str) -> dict[str, object]:
+    if not os.path.isfile(path):
+        print(f"Error: missing required JSON file: {path}", file=sys.stderr)
+        raise SystemExit(2)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Error: could not parse {path}: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+    if not isinstance(payload, dict):
+        print(f"Error: expected JSON object in {path}", file=sys.stderr)
+        raise SystemExit(2)
+    return payload
+
+
+def write_json_object(path: str, payload: dict[str, object]) -> None:
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+
+
+def create_kbuild_config_template(repo_root: str) -> int:
+    config_path = os.path.join(repo_root, "kbuild.json")
+    if os.path.exists(config_path):
+        print("Error: './kbuild.json' already exists.", file=sys.stderr)
+        return 2
+
+    payload = {
+        "project_title": "My Project Title",
+        "project_id": "myproject",
+        "git": {
+            "url": "https://github.com/your-org/your-repo",
+            "auth": "git@github.com:your-org/your-repo.git",
+        },
+        "cmake": {
+            "minimum_version": "3.20",
+            "sdk": {
+                "package_name": "MyPackageNameSDK",
+            },
+        },
+        "vcpkg": {
+            "dependencies": [],
+        },
+    }
+    write_json_object(config_path, payload)
+    print("Created ./kbuild.json template.", flush=True)
+    return 0
+
+
+def load_git_urls(repo_root: str) -> tuple[str, str]:
+    config_path = os.path.join(repo_root, "kbuild.json")
+    raw = load_json_object(config_path)
+
+    git_raw = raw.get("git")
+    if not isinstance(git_raw, dict):
+        print("Error: kbuild.json key 'git' must be an object", file=sys.stderr)
+        raise SystemExit(2)
+
+    url_raw = git_raw.get("url")
+    if not isinstance(url_raw, str) or not url_raw.strip():
+        print("Error: kbuild.json key 'git.url' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    auth_raw = git_raw.get("auth")
+    if not isinstance(auth_raw, str) or not auth_raw.strip():
+        print("Error: kbuild.json key 'git.auth' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    return url_raw.strip(), auth_raw.strip()
+
+
+def verify_remote_repo_access(repo_url: str, auth_url: str) -> None:
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    result = subprocess.run(
+        ["git", "ls-remote", repo_url],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if result.returncode == 0:
+        pass
+    else:
+        print(
+            f"\nError: Could not reach\n  {repo_url}\n\n"
+            "This is most likely due to one of the following reasons:\n"
+            "  (1) There is a typo in the git repo specified in kbuild.json (git.url).\n"
+            "  (2) You have not created the remote repo.\n"
+            "  (3) You do not have network access.\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    with tempfile.TemporaryDirectory(prefix="kbuild-auth-probe-") as probe_root:
+        init_result = subprocess.run(
+            ["git", "init", probe_root],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if init_result.returncode != 0:
+            detail = init_result.stderr.strip() or init_result.stdout.strip() or "git init failed"
+            print(
+                "Error: failed to run git authentication preflight.\n"
+                f"Detail:\n  {detail}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        config_name_result = subprocess.run(
+            ["git", "-C", probe_root, "config", "user.name", "kbuild-auth-probe"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if config_name_result.returncode != 0:
+            detail = (
+                config_name_result.stderr.strip()
+                or config_name_result.stdout.strip()
+                or "git config user.name failed"
+            )
+            print(
+                "Error: failed to run git authentication preflight.\n"
+                f"Detail:\n  {detail}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        config_email_result = subprocess.run(
+            ["git", "-C", probe_root, "config", "user.email", "kbuild-auth-probe@example.invalid"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if config_email_result.returncode != 0:
+            detail = (
+                config_email_result.stderr.strip()
+                or config_email_result.stdout.strip()
+                or "git config user.email failed"
+            )
+            print(
+                "Error: failed to run git authentication preflight.\n"
+                f"Detail:\n  {detail}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        probe_file = os.path.join(probe_root, ".kbuild-auth-probe")
+        try:
+            with open(probe_file, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write("probe\n")
+        except OSError as exc:
+            print(
+                "Error: failed to run git authentication preflight.\n"
+                f"Detail:\n  {exc}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        add_result = subprocess.run(
+            ["git", "-C", probe_root, "add", ".kbuild-auth-probe"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if add_result.returncode != 0:
+            detail = add_result.stderr.strip() or add_result.stdout.strip() or "git add failed"
+            print(
+                "Error: failed to run git authentication preflight.\n"
+                f"Detail:\n  {detail}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        commit_result = subprocess.run(
+            ["git", "-C", probe_root, "commit", "-m", "kbuild auth probe"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if commit_result.returncode != 0:
+            detail = commit_result.stderr.strip() or commit_result.stdout.strip() or "git commit failed"
+            print(
+                "Error: failed to run git authentication preflight.\n"
+                f"Detail:\n  {detail}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+        push_result = subprocess.run(
+            [
+                "git",
+                "-C",
+                probe_root,
+                "push",
+                "--dry-run",
+                auth_url,
+                "HEAD:refs/heads/kbuild-auth-probe",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        if push_result.returncode != 0:
+            print(
+                f"\nError: Authentication failed for\n  {auth_url}\n\n"
+                "This is most likely due to one of the following reasons:\n"
+                "  (1) Your git credentials for this host are missing, expired, or invalid.\n"
+                "  (2) You do not have push permission for this repository.\n"
+                "  (3) Your credential helper is not configured for non-interactive use.\n",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+
+def initialize_git_repo(repo_root: str, repo_url: str, auth_url: str) -> int:
+    verify_remote_repo_access(repo_url, auth_url)
+
+    inside_worktree = subprocess.run(
+        ["git", "-C", repo_root, "rev-parse", "--is-inside-work-tree"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if inside_worktree.returncode == 0 and inside_worktree.stdout.strip().lower() == "true":
+        print("Error: current directory is already inside a git worktree.", file=sys.stderr)
+        raise SystemExit(2)
+
+    git_dir = os.path.join(repo_root, ".git")
+    if os.path.exists(git_dir):
+        print("Error: './.git' already exists.", file=sys.stderr)
+        raise SystemExit(2)
+
+    run(["git", "init", repo_root])
+    run(["git", "-C", repo_root, "branch", "-M", "main"])
+
+    remote_check = subprocess.run(
+        ["git", "-C", repo_root, "remote", "get-url", "origin"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if remote_check.returncode == 0:
+        run(["git", "-C", repo_root, "remote", "set-url", "origin", auth_url])
+        remote_action = "updated"
+    else:
+        run(["git", "-C", repo_root, "remote", "add", "origin", auth_url])
+        remote_action = "added"
+
+    run(["git", "-C", repo_root, "add", "-A"])
+
+    commit_result = subprocess.run(
+        ["git", "-C", repo_root, "commit", "-m", "Initial scaffold"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if commit_result.returncode != 0:
+        detail = commit_result.stderr.strip() or commit_result.stdout.strip() or "git commit failed"
+        print(
+            "Error: failed to create initial commit.\n"
+            "Configure git identity (user.name/user.email) and retry.\n"
+            f"Detail:\n  {detail}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    push_env = os.environ.copy()
+    push_env["GIT_TERMINAL_PROMPT"] = "0"
+    push_result = subprocess.run(
+        ["git", "-C", repo_root, "push", "-u", "origin", "main"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=push_env,
+    )
+    if push_result.returncode != 0:
+        detail = push_result.stderr.strip() or push_result.stdout.strip() or "git push failed"
+        print(
+            "Error: failed to push initial commit to remote.\n"
+            "Ensure the remote exists and git authentication is configured.\n"
+            f"Detail:\n  {detail}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    print("Initialized git repository:", flush=True)
+    print("  branch: main", flush=True)
+    print(f"  remote origin ({remote_action}): {auth_url}", flush=True)
+    print("  initial commit: created", flush=True)
+    print("  push: origin/main", flush=True)
+    return 0
+
+
+def git_sync(repo_root: str, commit_message: str) -> int:
+    worktree_check = subprocess.run(
+        ["git", "-C", repo_root, "rev-parse", "--is-inside-work-tree"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if worktree_check.returncode != 0 or worktree_check.stdout.strip().lower() != "true":
+        print(
+            "Error: git repository is not initialized. Run `./kbuild.py --initialize-git`.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    add_result = subprocess.run(["git", "-C", repo_root, "add", "."], check=False)
+    if add_result.returncode != 0:
+        print("Error: git add failed.", file=sys.stderr)
+        raise SystemExit(2)
+
+    commit_result = subprocess.run(
+        ["git", "-C", repo_root, "commit", "-m", commit_message],
+        check=False,
+    )
+    if commit_result.returncode != 0:
+        print("Error: git commit failed.", file=sys.stderr)
+        raise SystemExit(2)
+
+    push_result = subprocess.run(["git", "-C", repo_root, "push"], check=False)
+    if push_result.returncode != 0:
+        print("Error: git push failed.", file=sys.stderr)
+        raise SystemExit(2)
+
+    print("Git sync complete.", flush=True)
+    return 0
+
+
+def sync_vcpkg_baseline(repo_root: str) -> str:
+    local_vcpkg_root, _, _, _, _ = local_vcpkg_paths(repo_root)
+    if not os.path.isdir(local_vcpkg_root):
+        print(
+            "Error: missing vcpkg checkout under ./vcpkg/src.\n"
+            "Run:\n"
+            "  ./kbuild.py --install-vcpkg",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    baseline = read_git_head_commit(local_vcpkg_root)
+
+    manifest_path = os.path.join(repo_root, "vcpkg", "vcpkg.json")
+    configuration_path = os.path.join(repo_root, "vcpkg", "vcpkg-configuration.json")
+
+    manifest = load_json_object(manifest_path)
+    configuration = load_json_object(configuration_path)
+
+    old_manifest_baseline = manifest.get("builtin-baseline")
+    manifest["builtin-baseline"] = baseline
+
+    registry = configuration.get("default-registry")
+    if registry is None:
+        registry_obj: dict[str, object] = {}
+        configuration["default-registry"] = registry_obj
+    elif isinstance(registry, dict):
+        registry_obj = registry
+    else:
+        print(
+            "Error: vcpkg-configuration.json key 'default-registry' must be an object",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if "kind" not in registry_obj:
+        registry_obj["kind"] = "builtin"
+    old_config_baseline = registry_obj.get("baseline")
+    registry_obj["baseline"] = baseline
+
+    write_json_object(manifest_path, manifest)
+    write_json_object(configuration_path, configuration)
+
+    old_manifest_text = (
+        old_manifest_baseline.strip()
+        if isinstance(old_manifest_baseline, str) and old_manifest_baseline.strip()
+        else "<unset>"
+    )
+    old_config_text = (
+        old_config_baseline.strip()
+        if isinstance(old_config_baseline, str) and old_config_baseline.strip()
+        else "<unset>"
+    )
+    print(f"vcpkg baseline synced -> {baseline}", flush=True)
+    print(
+        f"  ./vcpkg/vcpkg.json: builtin-baseline {old_manifest_text} -> {baseline}",
+        flush=True,
+    )
+    print(
+        "  ./vcpkg/vcpkg-configuration.json: "
+        f"default-registry.baseline {old_config_text} -> {baseline}",
+        flush=True,
+    )
+    return baseline
+
+
 def ensure_local_vcpkg(repo_root: str) -> tuple[str, str, str, str]:
     (
         local_vcpkg_root,
@@ -610,11 +1064,7 @@ def ensure_local_vcpkg(repo_root: str) -> tuple[str, str, str, str]:
     )
     if not ready:
         print(
-            "Error: build requires vcpkg to be set up under:\n"
-            "  ./vcpkg/src\n"
-            "  ./vcpkg/build\n"
-            "Run:\n"
-            "  ./kbuild.py --install-vcpkg",
+            "Error: vcpkg has not been set up. Run `./kbuild.py --install-vcpkg`",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -695,14 +1145,21 @@ def build_demo(
 
 
 def main() -> int:
+    repo_root = enforce_script_directory()
     args = sys.argv[1:]
     version = "latest"
     version_explicit = False
     no_configure = False
+    create_config = False
     install_vcpkg = False
+    sync_vcpkg_baseline_only = False
     build_demos = False
     list_builds = False
     remove_latest_builds = False
+    initialize_repo = False
+    initialize_git = False
+    git_sync_requested = False
+    git_sync_message = ""
     requested_demos: list[str] = []
 
     i = 0
@@ -710,10 +1167,26 @@ def main() -> int:
         arg = args[i]
         if arg in ("-h", "--help"):
             usage(0)
+        elif arg == "--create-config":
+            create_config = True
         elif arg == "--list-builds":
             list_builds = True
         elif arg == "--remove-latest":
             remove_latest_builds = True
+        elif arg == "--initialize-repo":
+            initialize_repo = True
+        elif arg == "--initialize-git":
+            initialize_git = True
+        elif arg == "--git-sync":
+            git_sync_requested = True
+            i += 1
+            if i >= len(args):
+                fail("missing value for '--git-sync'")
+            git_sync_message = args[i].strip()
+            if not git_sync_message:
+                fail("--git-sync requires a non-empty commit message")
+        elif arg == "--sync-vcpkg-baseline":
+            sync_vcpkg_baseline_only = True
         elif arg == "--version":
             i += 1
             if i >= len(args):
@@ -747,14 +1220,81 @@ def main() -> int:
     if install_vcpkg:
         build_mode_flags.append("--install-vcpkg")
 
+    if create_config and (
+        list_builds
+        or remove_latest_builds
+        or initialize_repo
+        or initialize_git
+        or git_sync_requested
+        or sync_vcpkg_baseline_only
+        or bool(build_mode_flags)
+    ):
+        fail("--create-config cannot be combined with other options")
+
     if list_builds and remove_latest_builds:
         fail("--list-builds and --remove-latest cannot be combined")
     if list_builds and build_mode_flags:
         fail("--list-builds cannot be combined with build options")
     if remove_latest_builds and build_mode_flags:
         fail("--remove-latest cannot be combined with build options")
+    if initialize_repo and (list_builds or remove_latest_builds or build_mode_flags):
+        fail("--initialize-repo cannot be combined with other options")
+    if initialize_git and (
+        list_builds
+        or remove_latest_builds
+        or initialize_repo
+        or git_sync_requested
+        or sync_vcpkg_baseline_only
+        or bool(build_mode_flags)
+    ):
+        fail("--initialize-git cannot be combined with other options")
+    if git_sync_requested and (
+        list_builds
+        or remove_latest_builds
+        or initialize_repo
+        or initialize_git
+        or sync_vcpkg_baseline_only
+        or bool(build_mode_flags)
+    ):
+        fail("--git-sync cannot be combined with other options")
+    if sync_vcpkg_baseline_only and (
+        list_builds
+        or remove_latest_builds
+        or initialize_repo
+        or initialize_git
+        or git_sync_requested
+        or build_mode_flags
+    ):
+        fail("--sync-vcpkg-baseline cannot be combined with other options")
 
-    repo_root = os.path.abspath(os.path.dirname(__file__))
+    config_path = os.path.join(repo_root, "kbuild.json")
+    if not os.path.isfile(config_path):
+        if create_config:
+            return create_kbuild_config_template(repo_root)
+        print(
+            "Error: 'kbuild.json' does not exist.\n"
+            "Run `./kbuild.py --create-config` to create a template.",
+            file=sys.stderr,
+        )
+        return 2
+    if create_config:
+        print("Error: './kbuild.json' already exists.", file=sys.stderr)
+        return 2
+
+    if initialize_repo:
+        return initialize_repo_layout(repo_root)
+    if initialize_git:
+        git_url, git_auth = load_git_urls(repo_root)
+        return initialize_git_repo(repo_root, git_url, git_auth)
+    if git_sync_requested:
+        return git_sync(repo_root, git_sync_message)
+    allowed_entries = {"kbuild.py", "kbuild.json"}
+    if all(entry in allowed_entries for entry in os.listdir(repo_root)):
+        print("Empty directory. Run `./kbuild.py --initialize-repo` to initialize.", file=sys.stderr)
+        return 2
+    if sync_vcpkg_baseline_only:
+        sync_vcpkg_baseline(repo_root)
+        return 0
     if remove_latest_builds:
         return remove_latest_build_dirs(repo_root)
     if list_builds:
@@ -765,6 +1305,10 @@ def main() -> int:
 
     demo_order: list[str] = []
     if build_demos:
+        if not cmake_package_name:
+            fail(
+                "--build-demos requires SDK metadata; define cmake.sdk.package_name in kbuild.json"
+            )
         if requested_demos:
             demo_order = [normalize_demo_name(token) for token in requested_demos]
         else:
@@ -778,6 +1322,7 @@ def main() -> int:
 
     if install_vcpkg:
         install_local_vcpkg(repo_root)
+        sync_vcpkg_baseline(repo_root)
 
     build_dir = os.path.join("build", version)
 
@@ -845,6 +1390,310 @@ def main() -> int:
                 env=env,
                 demo_order=demo_order,
             )
+
+    return 0
+
+
+def load_initialize_repo_config(repo_root: str) -> dict[str, object]:
+    config_path = os.path.join(repo_root, "kbuild.json")
+    if not os.path.isfile(config_path):
+        print("Error: missing required config file './kbuild.json'", file=sys.stderr)
+        raise SystemExit(2)
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Error: could not parse {config_path}: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+
+    if not isinstance(raw, dict):
+        print("Error: kbuild.json must be a JSON object", file=sys.stderr)
+        raise SystemExit(2)
+
+    project_title_raw = raw.get("project_title")
+    if not isinstance(project_title_raw, str) or not project_title_raw.strip():
+        print("Error: kbuild.json key 'project_title' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    project_title = project_title_raw.strip()
+
+    project_id_raw = raw.get("project_id")
+    if not isinstance(project_id_raw, str) or not project_id_raw.strip():
+        print("Error: kbuild.json key 'project_id' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    project_id = project_id_raw.strip()
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", project_id):
+        print(
+            "Error: kbuild.json key 'project_id' must be a valid C/C++ identifier",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    git_raw = raw.get("git")
+    if not isinstance(git_raw, dict):
+        print("Error: kbuild.json key 'git' must be an object", file=sys.stderr)
+        raise SystemExit(2)
+    git_url_raw = git_raw.get("url")
+    if not isinstance(git_url_raw, str) or not git_url_raw.strip():
+        print("Error: kbuild.json key 'git.url' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    git_auth_raw = git_raw.get("auth")
+    if not isinstance(git_auth_raw, str) or not git_auth_raw.strip():
+        print("Error: kbuild.json key 'git.auth' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    git_url = git_url_raw.strip()
+    git_auth = git_auth_raw.strip()
+
+    cmake_raw = raw.get("cmake")
+    if not isinstance(cmake_raw, dict):
+        print("Error: kbuild.json key 'cmake' must be an object", file=sys.stderr)
+        raise SystemExit(2)
+
+    cmake_minimum_version_raw = cmake_raw.get("minimum_version", "3.20")
+    if not isinstance(cmake_minimum_version_raw, str) or not cmake_minimum_version_raw.strip():
+        print("Error: kbuild.json key 'cmake.minimum_version' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    cmake_minimum_version = cmake_minimum_version_raw.strip()
+
+    sdk_enabled = False
+    sdk_package_name = ""
+    if "sdk" in cmake_raw:
+        sdk_raw = cmake_raw.get("sdk")
+        if not isinstance(sdk_raw, dict):
+            print("Error: kbuild.json key 'cmake.sdk' must be an object when defined", file=sys.stderr)
+            raise SystemExit(2)
+        sdk_package_name_raw = sdk_raw.get("package_name")
+        if not isinstance(sdk_package_name_raw, str) or not sdk_package_name_raw.strip():
+            print(
+                "Error: kbuild.json key 'cmake.sdk.package_name' must be a non-empty string",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        sdk_enabled = True
+        sdk_package_name = sdk_package_name_raw.strip()
+
+    vcpkg_raw = raw.get("vcpkg")
+    if not isinstance(vcpkg_raw, dict):
+        print("Error: kbuild.json key 'vcpkg' must be an object", file=sys.stderr)
+        raise SystemExit(2)
+
+    dependencies_raw = vcpkg_raw.get("dependencies", [])
+    if not isinstance(dependencies_raw, list):
+        print("Error: kbuild.json key 'vcpkg.dependencies' must be an array", file=sys.stderr)
+        raise SystemExit(2)
+    vcpkg_dependencies: list[str] = []
+    for idx, dep in enumerate(dependencies_raw):
+        if not isinstance(dep, str) or not dep.strip():
+            print(
+                f"Error: kbuild.json key 'vcpkg.dependencies[{idx}]' must be a non-empty string",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        vcpkg_dependencies.append(dep.strip())
+
+    return {
+        "project_title": project_title,
+        "project_id": project_id,
+        "git_url": git_url,
+        "git_auth": git_auth,
+        "cmake_minimum_version": cmake_minimum_version,
+        "sdk_enabled": sdk_enabled,
+        "sdk_package_name": sdk_package_name,
+        "vcpkg_dependencies": vcpkg_dependencies,
+    }
+
+
+def format_path_for_output(path: str, repo_root: str) -> str:
+    rel = os.path.relpath(path, repo_root).replace("\\", "/").strip("/")
+    return f"./{rel}"
+
+
+def ensure_directory_for_init(path: str) -> bool:
+    if os.path.isdir(path):
+        return False
+    if os.path.exists(path):
+        print(f"Error: expected directory path is occupied by a non-directory: {path}", file=sys.stderr)
+        raise SystemExit(2)
+    os.makedirs(path, exist_ok=True)
+    return True
+
+
+def ensure_initialize_repo_root_empty(repo_root: str) -> None:
+    allowed_entries = {"kbuild.py", "kbuild.json"}
+    unexpected_entries = sorted(entry for entry in os.listdir(repo_root) if entry not in allowed_entries)
+    if not unexpected_entries:
+        return
+
+    print(
+        "Error: --initialize-repo must be run from an empty directory "
+        "(other than kbuild.json and kbuild.py).",
+        file=sys.stderr,
+    )
+    print("Found:", file=sys.stderr)
+    for entry in unexpected_entries:
+        print(f"  {entry}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def write_file_for_init(path: str, content: str) -> None:
+    if os.path.isdir(path):
+        print(f"Error: expected file path is occupied by a directory: {path}", file=sys.stderr)
+        raise SystemExit(2)
+    if os.path.exists(path):
+        print(f"Error: refusing to overwrite existing file: {path}", file=sys.stderr)
+        raise SystemExit(2)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(content)
+
+
+def initialize_repo_layout(repo_root: str) -> int:
+    config = load_initialize_repo_config(repo_root)
+    ensure_initialize_repo_root_empty(repo_root)
+
+    project_title = str(config["project_title"])
+    project_id = str(config["project_id"])
+    cmake_minimum_version = str(config["cmake_minimum_version"])
+    sdk_enabled = bool(config["sdk_enabled"])
+    sdk_package_name = str(config["sdk_package_name"])
+    vcpkg_dependencies = list(config["vcpkg_dependencies"])
+
+    created_dirs: list[str] = []
+    created_files: list[str] = []
+
+    directory_order = [
+        os.path.join(repo_root, "agent"),
+        os.path.join(repo_root, "agent", "projects"),
+        os.path.join(repo_root, "cmake"),
+        os.path.join(repo_root, "demo"),
+        os.path.join(repo_root, "src"),
+        os.path.join(repo_root, "tests"),
+        os.path.join(repo_root, "vcpkg"),
+    ]
+    if sdk_enabled:
+        directory_order.extend(
+            [
+                os.path.join(repo_root, "include"),
+                os.path.join(repo_root, "include", project_id),
+            ]
+        )
+
+    for path in directory_order:
+        if ensure_directory_for_init(path):
+            created_dirs.append(path)
+
+    cmake_lists_content = (
+        f"cmake_minimum_required(VERSION {cmake_minimum_version})\n\n"
+        f"project({project_id} LANGUAGES CXX)\n\n"
+        "set(CMAKE_CXX_STANDARD 20)\n"
+        "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n"
+        "set(CMAKE_CXX_EXTENSIONS OFF)\n"
+    )
+
+    readme_content = f"# {project_title}\n\n##Overview\n"
+
+    bootstrap_content = (
+        "# Coding Agent Bootstrap Instructions\n\n"
+        "## Preparation\n\n"
+        "Read the following files:\n"
+        "- README.md\n"
+    )
+
+    src_cpp_lines: list[str] = []
+    if sdk_enabled:
+        src_cpp_lines.extend(
+            [
+                f"#include <{project_id}.hpp>",
+                "",
+            ]
+        )
+    src_cpp_lines.extend(
+        [
+            f"namespace {project_id} {{",
+            f"}}  // namespace {project_id}",
+            "",
+        ]
+    )
+    src_cpp_content = "\n".join(src_cpp_lines)
+
+    if sdk_enabled:
+        vcpkg_json_payload: dict[str, object] = {
+            "name": project_id,
+            "dependencies": vcpkg_dependencies,
+        }
+    else:
+        vcpkg_json_payload = {
+            "dependencies": vcpkg_dependencies,
+        }
+    vcpkg_json_content = f"{json.dumps(vcpkg_json_payload, indent=2)}\n"
+
+    vcpkg_configuration_payload = {
+        "default-registry": {
+            "kind": "builtin",
+        }
+    }
+    vcpkg_configuration_content = f"{json.dumps(vcpkg_configuration_payload, indent=2)}\n"
+    gitignore_content = (
+        "# Build directories\n"
+        "/build/\n"
+        "/demo/**/build/\n\n"
+        "# vcpkg\n"
+        "/vcpkg/src/\n"
+        "/vcpkg/build/\n\n"
+        "# Python caches\n"
+        "__pycache__/\n"
+        "*.pyc\n\n"
+    )
+
+    files_to_write: list[tuple[str, str]] = [
+        (os.path.join(repo_root, "CMakeLists.txt"), cmake_lists_content),
+        (os.path.join(repo_root, "README.md"), readme_content),
+        (os.path.join(repo_root, ".gitignore"), gitignore_content),
+        (os.path.join(repo_root, "agent", "BOOTSTRAP.md"), bootstrap_content),
+        (os.path.join(repo_root, "src", f"{project_id}.cpp"), src_cpp_content),
+        (os.path.join(repo_root, "vcpkg", "vcpkg.json"), vcpkg_json_content),
+        (
+            os.path.join(repo_root, "vcpkg", "vcpkg-configuration.json"),
+            vcpkg_configuration_content,
+        ),
+    ]
+
+    if sdk_enabled:
+        include_header_content = (
+            "#pragma once\n\n"
+            f"namespace {project_id} {{\n"
+            f"}}  // namespace {project_id}\n"
+        )
+        sdk_config_content = (
+            "@PACKAGE_INIT@\n\n"
+            f'include("${{CMAKE_CURRENT_LIST_DIR}}/{sdk_package_name}Targets.cmake")\n'
+            f"check_required_components({sdk_package_name})\n"
+        )
+        files_to_write.extend(
+            [
+                (os.path.join(repo_root, "include", f"{project_id}.hpp"), include_header_content),
+                (
+                    os.path.join(repo_root, "cmake", f"{sdk_package_name}Config.cmake.in"),
+                    sdk_config_content,
+                ),
+            ]
+        )
+
+    for path, content in files_to_write:
+        write_file_for_init(path, content)
+        created_files.append(path)
+
+    print("Initialized repository scaffold:")
+    if created_dirs:
+        print("  Directories:")
+        for path in created_dirs:
+            print(f"    + {format_path_for_output(path, repo_root)}/")
+    if created_files:
+        print("  Files:")
+        for path in created_files:
+            print(f"    + {format_path_for_output(path, repo_root)}")
 
     return 0
 

@@ -1,11 +1,25 @@
 {
-  "schema_version": 1,
-  "cmake_package_name": "KTraceSDK",
-  "requires_vcpkg": true,
-  "build-demos": [
-    "libraries/alpha",
-    "libraries/beta",
-    "libraries/gamma",
-    "executable"
-  ]
+	"project_title": "Karma Trace Logging SDK",
+	"project_id": "ktrace",
+	"git": {
+		"url": "https://github.com/QM-Code/ktrace",
+		"auth": "git@github.com:QM-Code/kcli.git"
+	},
+	"cmake" : {
+		"minimum_version": "3.20",
+		"sdk": {
+			"package_name": "KTraceSDK"
+		}
+	},
+	"vcpkg": {
+		"dependencies": [
+			"spdlog"
+		]
+	},
+	"build-demos": [
+		"libraries/alpha",
+		"libraries/beta",
+		"libraries/gamma",
+		"executable"
+	]
 }

@@ -1,6 +1,5 @@
 {
   "name": "ktrace",
-  "version": "0.1.0",
   "dependencies": [
     "spdlog"
   ],
