@@ -1,3 +1,5 @@
+#include <ktrace.hpp>
+
 #include "../ktrace.hpp"
 
 #include <spdlog/spdlog.h>
@@ -82,9 +84,11 @@ void printTraceExamples(const std::string& root) {
         << "  " << root << " '.abc.xyz'       Select local nested channel in current namespace\n"
         << "  " << root << " 'otherapp.channel' Select explicit namespace channel\n"
         << "  " << root << " '*.*'            Select all <namespace>.<channel> channels\n"
-        << "  " << root << " '*.*.*'          Select all channels up to 3 levels\n"
+        << "  " << root << " '*.*.*'          Select all channels up to 2 levels\n"
+        << "  " << root << " '*.*.*.*'        Select all channels up to 3 levels\n"
         << "  " << root << " 'alpha.*'        Select all top-level channels in alpha\n"
-        << "  " << root << " 'alpha.*.*'      Select all channels in alpha (up to 3 levels)\n"
+        << "  " << root << " 'alpha.*.*'      Select all channels in alpha (up to 2 levels)\n"
+        << "  " << root << " 'alpha.*.*.*'    Select all channels in alpha (up to 3 levels)\n"
         << "  " << root << " '*.net'          Select 'net' across all namespaces\n"
         << "  " << root << " '*.scheduler.tick' Select 'scheduler.tick' across all namespaces\n"
         << "  " << root << " '*.net.*'        Select subchannels under 'net' across namespaces\n"

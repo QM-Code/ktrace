@@ -1,3 +1,5 @@
+#include <ktrace.hpp>
+
 #include "../ktrace.hpp"
 
 #include <algorithm>
@@ -168,6 +170,9 @@ void EnableChannel(std::string_view qualified_channel, std::string_view local_na
 void EnableChannels(std::string_view selectors_csv, std::string_view local_namespace) {
     detail::ensureInternalTraceChannelsRegistered();
     const std::string selector_text = detail::trimWhitespace(std::string(selectors_csv));
+    if (selector_text.empty()) {
+        throw std::invalid_argument("EnableChannels requires one or more selectors");
+    }
     const std::vector<detail::Selector> selectors =
         parseSelectorListOrThrow(selector_text, local_namespace);
     enableSelectors(selectors);
@@ -213,6 +218,9 @@ void DisableChannel(std::string_view qualified_channel, std::string_view local_n
 void DisableChannels(std::string_view selectors_csv, std::string_view local_namespace) {
     detail::ensureInternalTraceChannelsRegistered();
     const std::string selector_text = detail::trimWhitespace(std::string(selectors_csv));
+    if (selector_text.empty()) {
+        throw std::invalid_argument("DisableChannels requires one or more selectors");
+    }
     const std::vector<detail::Selector> selectors =
         parseSelectorListOrThrow(selector_text, local_namespace);
     disableSelectors(selectors);

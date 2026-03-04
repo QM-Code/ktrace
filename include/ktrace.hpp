@@ -26,7 +26,7 @@ struct OutputOptions {
 
 ColorId Color(std::string_view color_name);
 void SetOutputOptions(const OutputOptions& options);
-void EnableInternalTrace();
+void Initialize();
 // Processes and consumes all argv entries that begin with trace_root (for example "--trace*").
 void ProcessCLI(int& argc,
                 char** argv,
@@ -43,12 +43,14 @@ std::vector<std::string> GetChannels(std::string_view trace_namespace);
 // resolve against local_namespace.
 void EnableChannel(std::string_view qualified_channel,
                    std::string_view local_namespace = KTRACE_NAMESPACE);
+// selectors_csv must not be empty after trimming whitespace.
 void EnableChannels(std::string_view selectors_csv,
                     std::string_view local_namespace = KTRACE_NAMESPACE);
 bool ShouldTraceChannel(std::string_view qualified_channel,
                         std::string_view local_namespace = KTRACE_NAMESPACE);
 void DisableChannel(std::string_view qualified_channel,
                     std::string_view local_namespace = KTRACE_NAMESPACE);
+// selectors_csv must not be empty after trimming whitespace.
 void DisableChannels(std::string_view selectors_csv,
                      std::string_view local_namespace = KTRACE_NAMESPACE);
 void ClearEnabledChannels();
@@ -60,12 +62,14 @@ bool ShouldTraceBridge(std::string_view trace_namespace,
 void RegisterChannelBridge(std::string_view trace_namespace,
                            std::string_view channel,
                            ColorId color);
-void WriteBridge(std::string_view trace_namespace,
-                 std::string_view category,
-                 std::string_view source_file,
-                 int source_line,
-                 std::string_view function_name,
-                 std::string_view message);
+// Internal bridge for KTRACE/KTRACE_CHANGED. Do not call directly.
+// Use KTRACE/KTRACE_CHANGED for trace logging.
+void TraceChecked(std::string_view trace_namespace,
+                  std::string_view category,
+                  std::string_view source_file,
+                  int source_line,
+                  std::string_view function_name,
+                  std::string_view message);
 
 } // namespace detail
 
@@ -82,12 +86,12 @@ inline void RegisterChannel(std::string_view channel, ColorId color) {
         auto&& ktrace_category_expr_ = (cat);                                     \
         if (::ktrace::detail::ShouldTraceBridge(KTRACE_NAMESPACE,                 \
                                                 ktrace_category_expr_)) {         \
-            ::ktrace::detail::WriteBridge(KTRACE_NAMESPACE,                       \
-                                          ktrace_category_expr_,                   \
-                                          __FILE__,                                \
-                                          __LINE__,                                \
-                                          __func__,                                \
-                                          fmt::format((format_text), ##__VA_ARGS__)); \
+            ::ktrace::detail::TraceChecked(KTRACE_NAMESPACE,                      \
+                                           ktrace_category_expr_,                  \
+                                           __FILE__,                               \
+                                           __LINE__,                               \
+                                           __func__,                               \
+                                           fmt::format((format_text), ##__VA_ARGS__)); \
         }                                                                         \
     } while (0)
 
@@ -108,12 +112,12 @@ inline void RegisterChannel(std::string_view channel, ColorId color) {
         if (key_changed &&                                                         \
             ::ktrace::detail::ShouldTraceBridge(KTRACE_NAMESPACE,                 \
                                                 ktrace_category_expr_)) {         \
-            ::ktrace::detail::WriteBridge(KTRACE_NAMESPACE,                       \
-                                          ktrace_category_expr_,                   \
-                                          __FILE__,                                \
-                                          __LINE__,                                \
-                                          __func__,                                \
-                                          fmt::format((format_text), ##__VA_ARGS__)); \
+            ::ktrace::detail::TraceChecked(KTRACE_NAMESPACE,                      \
+                                           ktrace_category_expr_,                  \
+                                           __FILE__,                               \
+                                           __LINE__,                               \
+                                           __func__,                               \
+                                           fmt::format((format_text), ##__VA_ARGS__)); \
         }                                                                         \
     } while (0)
 

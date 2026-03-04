@@ -1,3 +1,5 @@
+#include <ktrace.hpp>
+
 #include "../ktrace.hpp"
 
 #include <chrono>

@@ -7,6 +7,7 @@ usage() {
     echo "  unknown_option"
     echo "  blank_trace"
     echo "  bad_selector"
+    echo "  wildcard_all_depth3"
     echo "  brace_selector"
 }
 
@@ -70,6 +71,14 @@ case "$test_case" in
         require_contains "$output" "Trace option error: Invalid trace selector: '*' (did you mean '.*'?)"
         require_contains "$output" "Trace selector examples:"
         require_not_contains "$output" "Trace logging options:"
+        ;;
+    wildcard_all_depth3)
+        output="$(run_case --trace "*.*.*.*")"
+        require_not_contains "$output" "Trace option error:"
+        require_contains "$output" "executable trace test on channel 'deep.branch.leaf'"
+        require_contains "$output" "alpha trace test on channel 'net'"
+        require_contains "$output" "beta trace test on channel 'io'"
+        require_contains "$output" "gamma trace test on channel 'physics'"
         ;;
     brace_selector)
         output="$(run_case --trace "*.{net,io}")"

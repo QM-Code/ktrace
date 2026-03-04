@@ -1,5 +1,7 @@
 # Karma Trace Logging SDK
 
+Trace logging library.
+
 ## Build SDK
 
 ```bash
@@ -15,9 +17,6 @@ SDK output:
 ```bash
 # Uses kbuild.json "build-demos" order.
 ./kbuild.py --build-demos
-
-# Or provide explicit order.
-./kbuild.py --build-demos libraries/alpha libraries/beta libraries/gamma executable
 
 ./demo/executable/build/latest/test
 ```
@@ -37,7 +36,7 @@ Trace CLI examples:
 ./demo/executable/build/latest/test --trace
 ./demo/executable/build/latest/test --trace '.*'
 ./demo/executable/build/latest/test --trace '*.*'
-./demo/executable/build/latest/test --trace '*.*.*'
+./demo/executable/build/latest/test --trace '*.*.*.*'
 ./demo/executable/build/latest/test --trace '*.{net,io}'
 ./demo/executable/build/latest/test --trace-namespaces
 ./demo/executable/build/latest/test --trace-channels
@@ -61,6 +60,7 @@ List APIs:
 - `DisableChannels(...)`
 - list APIs accept selector patterns such as `*`, `{}`, and CSV
 - leading-dot selectors in list APIs resolve against current `KTRACE_NAMESPACE`
+- empty/whitespace selector lists are rejected
 
 Examples:
 - `ktrace::EnableChannel(".abc");`

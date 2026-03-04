@@ -1,3 +1,5 @@
+#include <ktrace.hpp>
+
 #include "../ktrace.hpp"
 
 #include <spdlog/spdlog.h>
@@ -142,15 +144,12 @@ void RegisterChannelBridge(std::string_view trace_namespace,
     state.channel_colors_by_namespace[trace_namespace_name][channel_name] = color;
 }
 
-void WriteBridge(std::string_view trace_namespace,
-                 std::string_view category,
-                 std::string_view source_file,
-                 int source_line,
-                 std::string_view function_name,
-                 std::string_view message) {
-    if (!ShouldTraceBridge(trace_namespace, category)) {
-        return;
-    }
+void TraceChecked(std::string_view trace_namespace,
+                  std::string_view category,
+                  std::string_view source_file,
+                  int source_line,
+                  std::string_view function_name,
+                  std::string_view message) {
     const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
     const std::string logger_key = makeLoggerKey(trace_namespace_name, category);
 

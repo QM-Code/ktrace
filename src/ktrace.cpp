@@ -1,3 +1,5 @@
+#include <ktrace.hpp>
+
 #include "ktrace.hpp"
 
 #include <stdexcept>
@@ -24,7 +26,7 @@ ColorId Color(std::string_view color_name) {
     throw std::invalid_argument("unknown trace color '" + token + "'");
 }
 
-void EnableInternalTrace() {
+void Initialize() {
     detail::ensureInternalTraceChannelsRegistered();
 }
 

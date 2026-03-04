@@ -18,7 +18,7 @@ Run:
 
 The executable demo defines CLI behavior checks in:
 
-- `tests/trace_cli_cases.sh`
+- `tests/trace_cli_cases.sh` (repo root)
 
 When `BUILD_TESTING=ON`, `CMakeLists.txt` registers these CTest tests:
 
@@ -48,6 +48,29 @@ When `BUILD_TESTING=ON`, `CMakeLists.txt` registers these CTest tests:
      - `Trace selector examples:`
    - Must not include:
      - `Trace logging options:`
+
+4. `demo_cli_wildcard_all_includes_depth3`
+   - Purpose: ensure wildcard-all selector includes nested depth-3 channels.
+   - Command under test: `./test --trace '*.*.*.*'`
+   - Required output:
+     - `executable trace test on channel 'deep.branch.leaf'`
+     - `alpha trace test on channel 'net'`
+     - `beta trace test on channel 'io'`
+     - `gamma trace test on channel 'physics'`
+   - Must not include:
+     - `Trace option error:`
+
+5. `demo_cli_brace_selector_enables_expected_channels`
+   - Purpose: ensure brace selectors enable only expected channels.
+   - Command under test: `./test --trace '*.{net,io}'`
+   - Required output:
+     - `alpha trace test on channel 'net'`
+     - `beta trace test on channel 'io'`
+   - Must not include:
+     - `alpha trace test on channel 'cache'`
+     - `beta trace test on channel 'scheduler'`
+     - `gamma trace test on channel 'physics'`
+     - `gamma trace test on channel 'metrics'`
 
 Run only these tests:
 
