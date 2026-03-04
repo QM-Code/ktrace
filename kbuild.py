@@ -19,9 +19,10 @@ def usage(exit_code: int = 1) -> None:
     print("  --remove-latest     remove every build/latest/ directory", file=sys.stderr)
     print("  --version <name>    build version slot under build/ (default: latest)", file=sys.stderr)
     print(
-        "  --build-demos [demo ...]  build demos in order; with no args uses kbuild.json 'build-demos'",
+        "  --build-demos [demo ...]  build demos in order; with no args uses kbuild.json build.defaults.demos",
         file=sys.stderr,
     )
+    print("  --configure         force cmake configure step", file=sys.stderr)
     print("  --no-configure      skip cmake configure step", file=sys.stderr)
     print("  --create-config     create a starter kbuild.json template", file=sys.stderr)
     print("  --initialize-repo   scaffold this repo from kbuild.json metadata", file=sys.stderr)
@@ -155,18 +156,20 @@ def package_dir(prefix: str, cmake_package_name: str) -> str:
     return os.path.join(prefix, "lib", "cmake", cmake_package_name)
 
 
-def load_kbuild_config(repo_root: str) -> tuple[str, bool, list[str], list[dict[str, object]]]:
+def load_kbuild_config(
+    repo_root: str,
+) -> tuple[bool, str, bool, bool, list[str], list[tuple[str, str]]]:
     config_path = os.path.join(repo_root, "kbuild.json")
     if not os.path.isfile(config_path):
         print(
             "Error: missing required config file './kbuild.json'.\n"
             "Expected keys:\n"
-            "  cmake (object, optional)\n"
-            "  cmake.sdk (object, optional)\n"
-            "  vcpkg (object, optional)\n"
+            "  project (object, required)\n"
+            "  git (object, required)\n"
             "Optional keys:\n"
-            "  build-demos (array of demo names)\n"
-            "  sdk-dependencies (array of dependency objects)",
+            "  cmake (object)\n"
+            "  vcpkg (object)\n"
+            "  build (object)",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -182,123 +185,198 @@ def load_kbuild_config(repo_root: str) -> tuple[str, bool, list[str], list[dict[
         print("Error: kbuild.json must be a JSON object", file=sys.stderr)
         raise SystemExit(2)
 
-    cmake_block = raw.get("cmake")
-    if cmake_block is not None and not isinstance(cmake_block, dict):
-        print("Error: kbuild.json key 'cmake' must be an object", file=sys.stderr)
+    allowed_top = {"project", "git", "cmake", "vcpkg", "build"}
+    for key in raw:
+        if key not in allowed_top:
+            print(f"Error: unexpected key in kbuild.json: '{key}'", file=sys.stderr)
+            raise SystemExit(2)
+
+    project_raw = raw.get("project")
+    if not isinstance(project_raw, dict):
+        print("Error: kbuild.json key 'project' must be an object", file=sys.stderr)
+        raise SystemExit(2)
+    project_title_raw = project_raw.get("title")
+    if not isinstance(project_title_raw, str) or not project_title_raw.strip():
+        print("Error: kbuild.json key 'project.title' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    project_id_raw = project_raw.get("id")
+    if not isinstance(project_id_raw, str) or not project_id_raw.strip():
+        print("Error: kbuild.json key 'project.id' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    project_id = project_id_raw.strip()
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", project_id):
+        print(
+            "Error: kbuild.json key 'project.id' must be a valid C/C++ identifier",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
 
-    sdk_mode = False
+    git_raw = raw.get("git")
+    if not isinstance(git_raw, dict):
+        print("Error: kbuild.json key 'git' must be an object", file=sys.stderr)
+        raise SystemExit(2)
+    git_url_raw = git_raw.get("url")
+    if not isinstance(git_url_raw, str) or not git_url_raw.strip():
+        print("Error: kbuild.json key 'git.url' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+    git_auth_raw = git_raw.get("auth")
+    if not isinstance(git_auth_raw, str) or not git_auth_raw.strip():
+        print("Error: kbuild.json key 'git.auth' must be a non-empty string", file=sys.stderr)
+        raise SystemExit(2)
+
+    has_cmake = False
     cmake_package_name = ""
-    if isinstance(cmake_block, dict) and "sdk" in cmake_block:
-        sdk_mode = True
-        sdk_block = cmake_block.get("sdk")
-        if not isinstance(sdk_block, dict):
-            print("Error: kbuild.json key 'cmake.sdk' must be an object when defined", file=sys.stderr)
+    configure_by_default = False
+    sdk_dependencies: list[tuple[str, str]] = []
+    cmake_raw = raw.get("cmake")
+    if cmake_raw is not None:
+        if not isinstance(cmake_raw, dict):
+            print("Error: kbuild.json key 'cmake' must be an object", file=sys.stderr)
             raise SystemExit(2)
-        package_name = sdk_block.get("package_name")
-        if not isinstance(package_name, str) or not package_name.strip():
-            print("Error: kbuild.json key 'cmake.sdk.package_name' must be a non-empty string", file=sys.stderr)
+        has_cmake = True
+
+        allowed_cmake = {"minimum_version", "configure_by_default", "sdk", "dependencies"}
+        for key in cmake_raw:
+            if key not in allowed_cmake:
+                print(f"Error: unexpected key in kbuild.json 'cmake': '{key}'", file=sys.stderr)
+                raise SystemExit(2)
+
+        if "minimum_version" in cmake_raw:
+            cmake_minimum_version_raw = cmake_raw.get("minimum_version")
+            if not isinstance(cmake_minimum_version_raw, str) or not cmake_minimum_version_raw.strip():
+                print("Error: kbuild.json key 'cmake.minimum_version' must be a non-empty string", file=sys.stderr)
+                raise SystemExit(2)
+
+        configure_by_default_raw = cmake_raw.get("configure_by_default", False)
+        if not isinstance(configure_by_default_raw, bool):
+            print("Error: kbuild.json key 'cmake.configure_by_default' must be a boolean", file=sys.stderr)
             raise SystemExit(2)
-        cmake_package_name = package_name.strip()
+        configure_by_default = configure_by_default_raw
 
-    vcpkg_entry = raw.get("vcpkg")
-    if "vcpkg" in raw and not isinstance(vcpkg_entry, dict):
-        print("Error: kbuild.json key 'vcpkg' must be an object when defined", file=sys.stderr)
-        raise SystemExit(2)
-    requires_vcpkg = "vcpkg" in raw
-    build_demos_raw = raw.get("build-demos", [])
-    sdk_dependencies_raw = raw.get("sdk-dependencies", [])
+        if "sdk" in cmake_raw:
+            sdk_raw = cmake_raw.get("sdk")
+            if not isinstance(sdk_raw, dict):
+                print("Error: kbuild.json key 'cmake.sdk' must be an object when defined", file=sys.stderr)
+                raise SystemExit(2)
+            allowed_sdk = {"package_name"}
+            for key in sdk_raw:
+                if key not in allowed_sdk:
+                    print(f"Error: unexpected key in kbuild.json 'cmake.sdk': '{key}'", file=sys.stderr)
+                    raise SystemExit(2)
+            package_name_raw = sdk_raw.get("package_name")
+            if not isinstance(package_name_raw, str) or not package_name_raw.strip():
+                print("Error: kbuild.json key 'cmake.sdk.package_name' must be a non-empty string", file=sys.stderr)
+                raise SystemExit(2)
+            cmake_package_name = package_name_raw.strip()
 
-    if sdk_mode and not cmake_package_name:
-        print("Error: kbuild.json key 'cmake.sdk.package_name' must be a non-empty string", file=sys.stderr)
-        raise SystemExit(2)
-    if not isinstance(build_demos_raw, list):
-        print("Error: kbuild.json key 'build-demos' must be an array if provided", file=sys.stderr)
-        raise SystemExit(2)
-    if not isinstance(sdk_dependencies_raw, list):
-        print("Error: kbuild.json key 'sdk-dependencies' must be an array if provided", file=sys.stderr)
-        raise SystemExit(2)
-
-    build_demos: list[str] = []
-    for idx, item in enumerate(build_demos_raw):
-        if not isinstance(item, str) or not item.strip():
-            print(
-                f"Error: kbuild.json key 'build-demos[{idx}]' must be a non-empty string",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        build_demos.append(item.strip())
-
-    sdk_dependencies: list[dict[str, object]] = []
-    seen_dependency_packages: set[str] = set()
-    for idx, item in enumerate(sdk_dependencies_raw):
-        if not isinstance(item, dict):
-            print(
-                f"Error: kbuild.json key 'sdk-dependencies[{idx}]' must be an object",
-                file=sys.stderr,
-            )
+        dependencies_raw = cmake_raw.get("dependencies", {})
+        if not isinstance(dependencies_raw, dict):
+            print("Error: kbuild.json key 'cmake.dependencies' must be an object when defined", file=sys.stderr)
             raise SystemExit(2)
 
-        dep_package = item.get("cmake_package_name")
-        dep_prefix_template = item.get("sdk_prefix")
-        dep_fallbacks_raw = item.get("version_fallbacks", [])
-
-        if not isinstance(dep_package, str) or not dep_package.strip():
-            print(
-                f"Error: kbuild.json key 'sdk-dependencies[{idx}].cmake_package_name' must be a non-empty string",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        dep_package = dep_package.strip()
-
-        if cmake_package_name and dep_package == cmake_package_name:
-            print(
-                f"Error: kbuild.json sdk dependency '{dep_package}' cannot match root cmake.sdk.package_name",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        if dep_package in seen_dependency_packages:
-            print(
-                f"Error: duplicate sdk dependency package '{dep_package}' in kbuild.json",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        seen_dependency_packages.add(dep_package)
-
-        if not isinstance(dep_prefix_template, str) or not dep_prefix_template.strip():
-            print(
-                f"Error: kbuild.json key 'sdk-dependencies[{idx}].sdk_prefix' must be a non-empty string",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        dep_prefix_template = dep_prefix_template.strip()
-
-        if not isinstance(dep_fallbacks_raw, list):
-            print(
-                f"Error: kbuild.json key 'sdk-dependencies[{idx}].version_fallbacks' must be an array if provided",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-
-        dep_fallbacks: list[str] = []
-        for fallback_idx, fallback in enumerate(dep_fallbacks_raw):
-            if not isinstance(fallback, str) or not fallback.strip():
+        for dependency_name_raw, dependency_raw in dependencies_raw.items():
+            if not isinstance(dependency_name_raw, str) or not dependency_name_raw.strip():
+                print("Error: kbuild.json key 'cmake.dependencies' has an invalid package name", file=sys.stderr)
+                raise SystemExit(2)
+            dependency_name = dependency_name_raw.strip()
+            if cmake_package_name and dependency_name == cmake_package_name:
                 print(
-                    f"Error: kbuild.json key 'sdk-dependencies[{idx}].version_fallbacks[{fallback_idx}]' must be a non-empty string",
+                    f"Error: kbuild.json cmake dependency '{dependency_name}' cannot match root cmake.sdk.package_name",
                     file=sys.stderr,
                 )
                 raise SystemExit(2)
-            dep_fallbacks.append(validate_version_slot(fallback))
+            if not isinstance(dependency_raw, dict):
+                print(
+                    f"Error: kbuild.json key 'cmake.dependencies.{dependency_name}' must be an object",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
 
-        sdk_dependencies.append(
-            {
-                "cmake_package_name": dep_package,
-                "sdk_prefix": dep_prefix_template,
-                "version_fallbacks": dep_fallbacks,
-            }
-        )
+            allowed_dependency = {"prefix"}
+            for key in dependency_raw:
+                if key not in allowed_dependency:
+                    print(
+                        f"Error: unexpected key in kbuild.json 'cmake.dependencies.{dependency_name}': '{key}'",
+                        file=sys.stderr,
+                    )
+                    raise SystemExit(2)
 
-    return cmake_package_name, requires_vcpkg, build_demos, sdk_dependencies
+            prefix_raw = dependency_raw.get("prefix")
+            if not isinstance(prefix_raw, str) or not prefix_raw.strip():
+                print(
+                    f"Error: kbuild.json key 'cmake.dependencies.{dependency_name}.prefix' must be a non-empty string",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
+            sdk_dependencies.append((dependency_name, prefix_raw.strip()))
+
+    has_vcpkg = False
+    vcpkg_raw = raw.get("vcpkg")
+    if vcpkg_raw is not None:
+        if not isinstance(vcpkg_raw, dict):
+            print("Error: kbuild.json key 'vcpkg' must be an object", file=sys.stderr)
+            raise SystemExit(2)
+        has_vcpkg = True
+        allowed_vcpkg = {"dependencies"}
+        for key in vcpkg_raw:
+            if key not in allowed_vcpkg:
+                print(f"Error: unexpected key in kbuild.json 'vcpkg': '{key}'", file=sys.stderr)
+                raise SystemExit(2)
+        dependencies_raw = vcpkg_raw.get("dependencies", [])
+        if not isinstance(dependencies_raw, list):
+            print("Error: kbuild.json key 'vcpkg.dependencies' must be an array", file=sys.stderr)
+            raise SystemExit(2)
+        for idx, dep in enumerate(dependencies_raw):
+            if not isinstance(dep, str) or not dep.strip():
+                print(
+                    f"Error: kbuild.json key 'vcpkg.dependencies[{idx}]' must be a non-empty string",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
+
+    default_demos: list[str] = []
+    build_raw = raw.get("build")
+    if build_raw is not None:
+        if not isinstance(build_raw, dict):
+            print("Error: kbuild.json key 'build' must be an object", file=sys.stderr)
+            raise SystemExit(2)
+        allowed_build = {"defaults"}
+        for key in build_raw:
+            if key not in allowed_build:
+                print(f"Error: unexpected key in kbuild.json 'build': '{key}'", file=sys.stderr)
+                raise SystemExit(2)
+
+        defaults_raw = build_raw.get("defaults", {})
+        if not isinstance(defaults_raw, dict):
+            print("Error: kbuild.json key 'build.defaults' must be an object when defined", file=sys.stderr)
+            raise SystemExit(2)
+        allowed_defaults = {"demos"}
+        for key in defaults_raw:
+            if key not in allowed_defaults:
+                print(f"Error: unexpected key in kbuild.json 'build.defaults': '{key}'", file=sys.stderr)
+                raise SystemExit(2)
+
+        demos_raw = defaults_raw.get("demos", [])
+        if not isinstance(demos_raw, list):
+            print("Error: kbuild.json key 'build.defaults.demos' must be an array when defined", file=sys.stderr)
+            raise SystemExit(2)
+        for idx, item in enumerate(demos_raw):
+            if not isinstance(item, str) or not item.strip():
+                print(
+                    f"Error: kbuild.json key 'build.defaults.demos[{idx}]' must be a non-empty string",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
+            default_demos.append(item.strip())
+
+    return (
+        has_cmake,
+        cmake_package_name,
+        configure_by_default,
+        has_vcpkg,
+        default_demos,
+        sdk_dependencies,
+    )
 
 
 def clean_sdk_install_prefix(prefix: str) -> None:
@@ -397,6 +475,20 @@ def resolve_demo_source_dir(repo_root: str, demo_name: str) -> str:
     return source_dir
 
 
+def build_dir_has_install_rules(build_dir: str) -> bool:
+    install_script = os.path.join(build_dir, "cmake_install.cmake")
+    if not os.path.isfile(install_script):
+        return False
+    try:
+        with open(install_script, "r", encoding="utf-8") as handle:
+            for line in handle:
+                if re.match(r"\s*file\(INSTALL\b", line):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
 def read_cache_value(cache_path: str, key: str) -> str:
     if not os.path.isfile(cache_path):
         return ""
@@ -477,65 +569,30 @@ def resolve_demo_vcpkg_context(sdk_prefix: str, repo_root: str) -> tuple[str, st
 def resolve_sdk_dependencies(
     repo_root: str,
     version: str,
-    dependency_specs: list[dict[str, object]],
+    dependency_specs: list[tuple[str, str]],
 ) -> list[tuple[str, str]]:
     resolved: list[tuple[str, str]] = []
 
-    for dependency in dependency_specs:
-        package_name = dependency["cmake_package_name"]
-        prefix_template = dependency["sdk_prefix"]
-        fallback_versions = dependency["version_fallbacks"]
-
+    for package_name, prefix_template in dependency_specs:
         if not isinstance(package_name, str) or not isinstance(prefix_template, str):
             print("Error: internal sdk dependency validation failure", file=sys.stderr)
             raise SystemExit(2)
-        if not isinstance(fallback_versions, list):
-            print("Error: internal sdk dependency validation failure", file=sys.stderr)
-            raise SystemExit(2)
 
-        candidate_slots: list[str] = [version]
-        for fallback in fallback_versions:
-            if isinstance(fallback, str) and fallback not in candidate_slots:
-                candidate_slots.append(fallback)
-
-        candidate_paths: list[tuple[str, str]] = []
-        seen_paths: set[str] = set()
-        for slot in candidate_slots:
-            raw_path = prefix_template.replace("{version}", slot)
-            candidate_prefix = resolve_prefix(raw_path, repo_root)
-            if candidate_prefix in seen_paths:
-                continue
-            seen_paths.add(candidate_prefix)
-            candidate_paths.append((slot, candidate_prefix))
-
-        selected_prefix = ""
-        selected_slot = ""
-        for slot, candidate_prefix in candidate_paths:
-            config_path = package_config_path(candidate_prefix, package_name)
-            if os.path.isfile(config_path):
-                selected_prefix = candidate_prefix
-                selected_slot = slot
-                break
-
-        if not selected_prefix:
-            checked = "\n".join(path for _, path in candidate_paths)
+        raw_path = prefix_template.replace("{version}", version)
+        candidate_prefix = resolve_prefix(raw_path, repo_root)
+        config_path = package_config_path(candidate_prefix, package_name)
+        if not os.path.isfile(config_path):
             print(
                 "Error: sdk dependency package config not found.\n"
                 f"Package:\n  {package_name}\n"
-                "Checked SDK prefixes:\n"
-                f"{checked}",
+                "Checked SDK prefix:\n"
+                f"  {candidate_prefix}",
                 file=sys.stderr,
             )
             raise SystemExit(2)
 
-        if selected_slot != version and "{version}" in prefix_template:
-            print(
-                f"{package_name}: using fallback slot '{selected_slot}' (requested '{version}') -> {selected_prefix}",
-                flush=True,
-            )
-
-        validate_sdk_prefix(selected_prefix, package_name)
-        resolved.append((package_name, selected_prefix))
+        validate_sdk_prefix(candidate_prefix, package_name)
+        resolved.append((package_name, candidate_prefix))
 
     return resolved
 
@@ -680,20 +737,29 @@ def create_kbuild_config_template(repo_root: str) -> int:
         return 2
 
     payload = {
-        "project_title": "My Project Title",
-        "project_id": "myproject",
+        "project": {
+            "title": "My Project Title",
+            "id": "myproject",
+        },
         "git": {
             "url": "https://github.com/your-org/your-repo",
             "auth": "git@github.com:your-org/your-repo.git",
         },
         "cmake": {
             "minimum_version": "3.20",
+            "configure_by_default": False,
             "sdk": {
                 "package_name": "MyPackageNameSDK",
             },
+            "dependencies": {},
         },
         "vcpkg": {
             "dependencies": [],
+        },
+        "build": {
+            "defaults": {
+                "demos": [],
+            }
         },
     }
     write_json_object(config_path, payload)
@@ -1078,7 +1144,7 @@ def build_demo(
     repo_root: str,
     demo_name: str,
     version: str,
-    no_configure: bool,
+    configure: bool,
     cmake_package_name: str,
     sdk_dependencies: list[tuple[str, str]],
     env: dict[str, str],
@@ -1121,7 +1187,7 @@ def build_demo(
         flush=True,
     )
 
-    if no_configure:
+    if not configure:
         cache_path = os.path.join(build_dir, "CMakeCache.txt")
         if not os.path.isfile(cache_path):
             fail(f"--no-configure requires an existing CMakeCache.txt in the build directory ({build_dir})")
@@ -1130,18 +1196,26 @@ def build_demo(
         run(["cmake", "-S", source_dir, "-B", build_dir, *cmake_args], env=env)
 
     run(["cmake", "--build", build_dir, "-j4"], env=env)
-    clean_sdk_install_prefix(install_prefix)
-    run(
-        [
-            "cmake",
-            "--install",
-            build_dir,
-            "--prefix",
-            install_prefix,
-        ],
-        env=env,
-    )
-    print(f"Build complete -> dir={build_dir} | sdk={install_prefix}")
+    if build_dir_has_install_rules(build_dir):
+        clean_sdk_install_prefix(install_prefix)
+        run(
+            [
+                "cmake",
+                "--install",
+                build_dir,
+                "--prefix",
+                install_prefix,
+            ],
+            env=env,
+        )
+        print(f"Build complete -> dir={build_dir} | sdk={install_prefix}")
+        return
+
+    if os.path.islink(install_prefix) or os.path.isfile(install_prefix):
+        os.remove(install_prefix)
+    elif os.path.isdir(install_prefix):
+        shutil.rmtree(install_prefix)
+    print(f"Build complete -> dir={build_dir} | sdk=<none>")
 
 
 def main() -> int:
@@ -1149,7 +1223,8 @@ def main() -> int:
     args = sys.argv[1:]
     version = "latest"
     version_explicit = False
-    no_configure = False
+    configure_override: bool | None = None
+    configure_flag_seen = False
     create_config = False
     install_vcpkg = False
     sync_vcpkg_baseline_only = False
@@ -1200,8 +1275,12 @@ def main() -> int:
                 requested_demos.append(args[i])
                 i += 1
             continue
+        elif arg == "--configure":
+            configure_override = True
+            configure_flag_seen = True
         elif arg == "--no-configure":
-            no_configure = True
+            configure_override = False
+            configure_flag_seen = True
         elif arg == "--install-vcpkg":
             install_vcpkg = True
         elif arg.startswith("-"):
@@ -1215,8 +1294,8 @@ def main() -> int:
         build_mode_flags.append("--version")
     if build_demos:
         build_mode_flags.append("--build-demos")
-    if no_configure:
-        build_mode_flags.append("--no-configure")
+    if configure_flag_seen:
+        build_mode_flags.append("--configure/--no-configure")
     if install_vcpkg:
         build_mode_flags.append("--install-vcpkg")
 
@@ -1288,20 +1367,37 @@ def main() -> int:
         return initialize_git_repo(repo_root, git_url, git_auth)
     if git_sync_requested:
         return git_sync(repo_root, git_sync_message)
-    allowed_entries = {"kbuild.py", "kbuild.json"}
-    if all(entry in allowed_entries for entry in os.listdir(repo_root)):
-        print("Empty directory. Run `./kbuild.py --initialize-repo` to initialize.", file=sys.stderr)
-        return 2
-    if sync_vcpkg_baseline_only:
-        sync_vcpkg_baseline(repo_root)
-        return 0
     if remove_latest_builds:
         return remove_latest_build_dirs(repo_root)
     if list_builds:
         return list_build_dirs(repo_root)
 
-    cmake_package_name, requires_vcpkg, config_build_demos, config_sdk_dependencies = load_kbuild_config(repo_root)
+    (
+        has_cmake,
+        cmake_package_name,
+        configure_by_default,
+        has_vcpkg,
+        config_build_demos,
+        config_sdk_dependencies,
+    ) = load_kbuild_config(repo_root)
+
+    if sync_vcpkg_baseline_only:
+        if not has_vcpkg:
+            print("Nothing to do.")
+            return 0
+        sync_vcpkg_baseline(repo_root)
+        return 0
+
+    if install_vcpkg and has_vcpkg:
+        install_local_vcpkg(repo_root)
+        sync_vcpkg_baseline(repo_root)
+
+    if not has_cmake:
+        print("Nothing to do.")
+        return 0
+
     sdk_dependencies = resolve_sdk_dependencies(repo_root, version, config_sdk_dependencies)
+    configure = configure_by_default if configure_override is None else configure_override
 
     demo_order: list[str] = []
     if build_demos:
@@ -1313,16 +1409,12 @@ def main() -> int:
             demo_order = [normalize_demo_name(token) for token in requested_demos]
         else:
             if not config_build_demos:
-                fail("kbuild.json must define 'build-demos' for --build-demos with no demo arguments")
+                fail("kbuild.json must define 'build.defaults.demos' for --build-demos with no demo arguments")
             demo_order = [normalize_demo_name(token) for token in config_build_demos]
 
         # Validate all requested demo source directories before core build work.
         for demo_name in demo_order:
             resolve_demo_source_dir(repo_root, demo_name)
-
-    if install_vcpkg:
-        install_local_vcpkg(repo_root)
-        sync_vcpkg_baseline(repo_root)
 
     build_dir = os.path.join("build", version)
 
@@ -1342,7 +1434,7 @@ def main() -> int:
     validate_core_build_dir_layout(build_dir)
 
     env = os.environ.copy()
-    if requires_vcpkg:
+    if has_vcpkg:
         local_vcpkg_root, local_toolchain, local_vcpkg_downloads, local_vcpkg_binary_cache = (
             ensure_local_vcpkg(repo_root)
         )
@@ -1353,7 +1445,7 @@ def main() -> int:
             env["VCPKG_DEFAULT_BINARY_CACHE"] = local_vcpkg_binary_cache
         cmake_args.append(f"-DCMAKE_TOOLCHAIN_FILE={local_toolchain}")
 
-    if no_configure:
+    if not configure:
         cache_path = os.path.join(build_dir, "CMakeCache.txt")
         if not os.path.isfile(cache_path):
             fail("--no-configure requires an existing CMakeCache.txt in the build directory")
@@ -1384,7 +1476,7 @@ def main() -> int:
                 repo_root=repo_root,
                 demo_name=demo_name,
                 version=version,
-                no_configure=no_configure,
+                configure=configure,
                 cmake_package_name=cmake_package_name,
                 sdk_dependencies=sdk_dependencies,
                 env=env,
@@ -1411,20 +1503,25 @@ def load_initialize_repo_config(repo_root: str) -> dict[str, object]:
         print("Error: kbuild.json must be a JSON object", file=sys.stderr)
         raise SystemExit(2)
 
-    project_title_raw = raw.get("project_title")
+    project_raw = raw.get("project")
+    if not isinstance(project_raw, dict):
+        print("Error: kbuild.json key 'project' must be an object", file=sys.stderr)
+        raise SystemExit(2)
+
+    project_title_raw = project_raw.get("title")
     if not isinstance(project_title_raw, str) or not project_title_raw.strip():
-        print("Error: kbuild.json key 'project_title' must be a non-empty string", file=sys.stderr)
+        print("Error: kbuild.json key 'project.title' must be a non-empty string", file=sys.stderr)
         raise SystemExit(2)
     project_title = project_title_raw.strip()
 
-    project_id_raw = raw.get("project_id")
+    project_id_raw = project_raw.get("id")
     if not isinstance(project_id_raw, str) or not project_id_raw.strip():
-        print("Error: kbuild.json key 'project_id' must be a non-empty string", file=sys.stderr)
+        print("Error: kbuild.json key 'project.id' must be a non-empty string", file=sys.stderr)
         raise SystemExit(2)
     project_id = project_id_raw.strip()
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", project_id):
         print(
-            "Error: kbuild.json key 'project_id' must be a valid C/C++ identifier",
+            "Error: kbuild.json key 'project.id' must be a valid C/C++ identifier",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -1445,51 +1542,54 @@ def load_initialize_repo_config(repo_root: str) -> dict[str, object]:
     git_auth = git_auth_raw.strip()
 
     cmake_raw = raw.get("cmake")
-    if not isinstance(cmake_raw, dict):
-        print("Error: kbuild.json key 'cmake' must be an object", file=sys.stderr)
-        raise SystemExit(2)
-
-    cmake_minimum_version_raw = cmake_raw.get("minimum_version", "3.20")
-    if not isinstance(cmake_minimum_version_raw, str) or not cmake_minimum_version_raw.strip():
-        print("Error: kbuild.json key 'cmake.minimum_version' must be a non-empty string", file=sys.stderr)
-        raise SystemExit(2)
-    cmake_minimum_version = cmake_minimum_version_raw.strip()
-
+    cmake_minimum_version = "3.20"
     sdk_enabled = False
     sdk_package_name = ""
-    if "sdk" in cmake_raw:
-        sdk_raw = cmake_raw.get("sdk")
-        if not isinstance(sdk_raw, dict):
-            print("Error: kbuild.json key 'cmake.sdk' must be an object when defined", file=sys.stderr)
+    if cmake_raw is not None:
+        if not isinstance(cmake_raw, dict):
+            print("Error: kbuild.json key 'cmake' must be an object", file=sys.stderr)
             raise SystemExit(2)
-        sdk_package_name_raw = sdk_raw.get("package_name")
-        if not isinstance(sdk_package_name_raw, str) or not sdk_package_name_raw.strip():
-            print(
-                "Error: kbuild.json key 'cmake.sdk.package_name' must be a non-empty string",
-                file=sys.stderr,
-            )
+
+        cmake_minimum_version_raw = cmake_raw.get("minimum_version", "3.20")
+        if not isinstance(cmake_minimum_version_raw, str) or not cmake_minimum_version_raw.strip():
+            print("Error: kbuild.json key 'cmake.minimum_version' must be a non-empty string", file=sys.stderr)
             raise SystemExit(2)
-        sdk_enabled = True
-        sdk_package_name = sdk_package_name_raw.strip()
+        cmake_minimum_version = cmake_minimum_version_raw.strip()
+
+        if "sdk" in cmake_raw:
+            sdk_raw = cmake_raw.get("sdk")
+            if not isinstance(sdk_raw, dict):
+                print("Error: kbuild.json key 'cmake.sdk' must be an object when defined", file=sys.stderr)
+                raise SystemExit(2)
+            sdk_package_name_raw = sdk_raw.get("package_name")
+            if not isinstance(sdk_package_name_raw, str) or not sdk_package_name_raw.strip():
+                print(
+                    "Error: kbuild.json key 'cmake.sdk.package_name' must be a non-empty string",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
+            sdk_enabled = True
+            sdk_package_name = sdk_package_name_raw.strip()
 
     vcpkg_raw = raw.get("vcpkg")
-    if not isinstance(vcpkg_raw, dict):
-        print("Error: kbuild.json key 'vcpkg' must be an object", file=sys.stderr)
-        raise SystemExit(2)
-
-    dependencies_raw = vcpkg_raw.get("dependencies", [])
-    if not isinstance(dependencies_raw, list):
-        print("Error: kbuild.json key 'vcpkg.dependencies' must be an array", file=sys.stderr)
-        raise SystemExit(2)
     vcpkg_dependencies: list[str] = []
-    for idx, dep in enumerate(dependencies_raw):
-        if not isinstance(dep, str) or not dep.strip():
-            print(
-                f"Error: kbuild.json key 'vcpkg.dependencies[{idx}]' must be a non-empty string",
-                file=sys.stderr,
-            )
+    if vcpkg_raw is not None:
+        if not isinstance(vcpkg_raw, dict):
+            print("Error: kbuild.json key 'vcpkg' must be an object", file=sys.stderr)
             raise SystemExit(2)
-        vcpkg_dependencies.append(dep.strip())
+
+        dependencies_raw = vcpkg_raw.get("dependencies", [])
+        if not isinstance(dependencies_raw, list):
+            print("Error: kbuild.json key 'vcpkg.dependencies' must be an array", file=sys.stderr)
+            raise SystemExit(2)
+        for idx, dep in enumerate(dependencies_raw):
+            if not isinstance(dep, str) or not dep.strip():
+                print(
+                    f"Error: kbuild.json key 'vcpkg.dependencies[{idx}]' must be a non-empty string",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
+            vcpkg_dependencies.append(dep.strip())
 
     return {
         "project_title": project_title,
