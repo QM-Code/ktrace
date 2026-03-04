@@ -226,7 +226,7 @@ def load_kbuild_config(
 
     has_cmake = False
     cmake_package_name = ""
-    configure_by_default = False
+    configure_by_default = True
     sdk_dependencies: list[tuple[str, str]] = []
     cmake_raw = raw.get("cmake")
     if cmake_raw is not None:
@@ -247,7 +247,7 @@ def load_kbuild_config(
                 print("Error: kbuild.json key 'cmake.minimum_version' must be a non-empty string", file=sys.stderr)
                 raise SystemExit(2)
 
-        configure_by_default_raw = cmake_raw.get("configure_by_default", False)
+        configure_by_default_raw = cmake_raw.get("configure_by_default", True)
         if not isinstance(configure_by_default_raw, bool):
             print("Error: kbuild.json key 'cmake.configure_by_default' must be a boolean", file=sys.stderr)
             raise SystemExit(2)
@@ -747,7 +747,7 @@ def create_kbuild_config_template(repo_root: str) -> int:
         },
         "cmake": {
             "minimum_version": "3.20",
-            "configure_by_default": False,
+            "configure_by_default": True,
             "sdk": {
                 "package_name": "MyPackageNameSDK",
             },
