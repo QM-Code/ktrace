@@ -3,7 +3,7 @@
 	"project_id": "ktrace",
 	"git": {
 		"url": "https://github.com/QM-Code/ktrace",
-		"auth": "git@github.com:QM-Code/kcli.git"
+		"auth": "git@github.com:QM-Code/ktrace.git"
 	},
 	"cmake" : {
 		"minimum_version": "3.20",
