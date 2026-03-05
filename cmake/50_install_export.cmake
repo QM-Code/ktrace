@@ -2,7 +2,15 @@ include(CMakePackageConfigHelpers)
 
 set(KTOOLS_INSTALL_CMAKEDIR "lib/cmake/KTraceSDK")
 
-install(TARGETS ktrace_sdk
+set(_ktrace_install_targets)
+if(TARGET ktrace_sdk_static)
+    list(APPEND _ktrace_install_targets ktrace_sdk_static)
+endif()
+if(TARGET ktrace_sdk_shared)
+    list(APPEND _ktrace_install_targets ktrace_sdk_shared)
+endif()
+
+install(TARGETS ${_ktrace_install_targets}
     EXPORT KTraceSDKTargets
     ARCHIVE DESTINATION lib COMPONENT KTraceSDK
     LIBRARY DESTINATION lib COMPONENT KTraceSDK

@@ -9,32 +9,83 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(NOT TARGET ktrace::sdk)
+option(KTOOLS_DEMO_BUILD_STATIC "Build demo static library target" ON)
+option(KTOOLS_DEMO_BUILD_SHARED "Build demo shared library target" ON)
+
+if(NOT KTOOLS_DEMO_BUILD_STATIC AND NOT KTOOLS_DEMO_BUILD_SHARED)
+    message(FATAL_ERROR "Demo library requires at least one of KTOOLS_DEMO_BUILD_STATIC or KTOOLS_DEMO_BUILD_SHARED to be ON.")
+endif()
+
+if(NOT TARGET ktrace::sdk_shared)
     find_package(KTraceSDK CONFIG REQUIRED)
 endif()
 include(CMakePackageConfigHelpers)
 
-add_library(gamma_sdk STATIC
-    src/trace.cpp
-)
-add_library(gamma::sdk ALIAS gamma_sdk)
+set(_gamma_sdk_static_dep ktrace::sdk_static)
+if(NOT TARGET ktrace::sdk_static)
+    set(_gamma_sdk_static_dep ktrace::sdk)
+endif()
 
-target_compile_definitions(gamma_sdk PRIVATE KTRACE_NAMESPACE="gamma")
+set(_gamma_sdk_shared_dep ktrace::sdk_shared)
+if(NOT TARGET ktrace::sdk_shared)
+    set(_gamma_sdk_shared_dep ktrace::sdk)
+endif()
 
-target_include_directories(gamma_sdk
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-)
+set(_gamma_install_targets)
 
-target_link_libraries(gamma_sdk PUBLIC ktrace::sdk)
+if(KTOOLS_DEMO_BUILD_STATIC)
+    add_library(gamma_sdk_static STATIC
+        src/trace.cpp
+    )
+    add_library(gamma::sdk_static ALIAS gamma_sdk_static)
 
-set_target_properties(gamma_sdk PROPERTIES
-    OUTPUT_NAME gamma
-    EXPORT_NAME sdk
-)
+    target_compile_definitions(gamma_sdk_static PRIVATE KTRACE_NAMESPACE="gamma")
 
-install(TARGETS gamma_sdk
+    target_include_directories(gamma_sdk_static
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    target_link_libraries(gamma_sdk_static PUBLIC ${_gamma_sdk_static_dep})
+
+    set_target_properties(gamma_sdk_static PROPERTIES
+        OUTPUT_NAME gamma
+        EXPORT_NAME sdk_static
+    )
+    list(APPEND _gamma_install_targets gamma_sdk_static)
+endif()
+
+if(KTOOLS_DEMO_BUILD_SHARED)
+    add_library(gamma_sdk_shared SHARED
+        src/trace.cpp
+    )
+    add_library(gamma::sdk_shared ALIAS gamma_sdk_shared)
+
+    target_compile_definitions(gamma_sdk_shared PRIVATE KTRACE_NAMESPACE="gamma")
+
+    target_include_directories(gamma_sdk_shared
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    target_link_libraries(gamma_sdk_shared PUBLIC ${_gamma_sdk_shared_dep})
+
+    set_target_properties(gamma_sdk_shared PROPERTIES
+        OUTPUT_NAME gamma
+        EXPORT_NAME sdk_shared
+    )
+    list(APPEND _gamma_install_targets gamma_sdk_shared)
+endif()
+
+if(TARGET gamma_sdk_shared)
+    add_library(gamma::sdk ALIAS gamma_sdk_shared)
+elseif(TARGET gamma_sdk_static)
+    add_library(gamma::sdk ALIAS gamma_sdk_static)
+endif()
+
+install(TARGETS ${_gamma_install_targets}
     EXPORT GammaSDKTargets
     ARCHIVE DESTINATION lib COMPONENT GammaSDK
     LIBRARY DESTINATION lib COMPONENT GammaSDK

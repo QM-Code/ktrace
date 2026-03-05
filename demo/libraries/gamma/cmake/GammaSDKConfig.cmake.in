@@ -4,4 +4,19 @@ include(CMakeFindDependencyMacro)
 find_dependency(KTraceSDK CONFIG REQUIRED)
 
 include("${CMAKE_CURRENT_LIST_DIR}/GammaSDKTargets.cmake")
+
+if(NOT TARGET gamma::sdk)
+    if(TARGET gamma::sdk_shared)
+        add_library(gamma::sdk INTERFACE IMPORTED)
+        set_property(TARGET gamma::sdk PROPERTY
+            INTERFACE_LINK_LIBRARIES gamma::sdk_shared
+        )
+    elseif(TARGET gamma::sdk_static)
+        add_library(gamma::sdk INTERFACE IMPORTED)
+        set_property(TARGET gamma::sdk PROPERTY
+            INTERFACE_LINK_LIBRARIES gamma::sdk_static
+        )
+    endif()
+endif()
+
 check_required_components(GammaSDK)

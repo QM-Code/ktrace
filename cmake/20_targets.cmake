@@ -10,33 +10,76 @@ set(KTRACE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/ktrace/state.cpp
 )
 
-if(KTRACE_BUILD_SHARED)
-    set(_ktrace_library_type SHARED)
-else()
-    set(_ktrace_library_type STATIC)
+if(NOT KTRACE_BUILD_STATIC AND NOT KTRACE_BUILD_SHARED)
+    message(FATAL_ERROR "ktrace requires at least one of KTRACE_BUILD_STATIC or KTRACE_BUILD_SHARED to be ON.")
 endif()
 
-add_library(ktrace_sdk ${_ktrace_library_type} ${KTRACE_SOURCES})
-add_library(ktrace::sdk ALIAS ktrace_sdk)
+set(_ktrace_kcli_static_dep kcli::sdk_static)
+if(NOT TARGET kcli::sdk_static)
+    set(_ktrace_kcli_static_dep kcli::sdk)
+endif()
 
-target_include_directories(ktrace_sdk
-    PUBLIC
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-    PRIVATE
-        ${PROJECT_SOURCE_DIR}/src
-)
+set(_ktrace_kcli_shared_dep kcli::sdk_shared)
+if(NOT TARGET kcli::sdk_shared)
+    set(_ktrace_kcli_shared_dep kcli::sdk)
+endif()
 
-target_link_libraries(ktrace_sdk PUBLIC
-    kcli::sdk
-    spdlog::spdlog
-)
+if(KTRACE_BUILD_STATIC)
+    add_library(ktrace_sdk_static STATIC ${KTRACE_SOURCES})
+    add_library(ktrace::sdk_static ALIAS ktrace_sdk_static)
 
-# Internal trace macros require a compile-time namespace string.
-target_compile_definitions(ktrace_sdk PRIVATE KTRACE_NAMESPACE="ktrace")
+    target_include_directories(ktrace_sdk_static
+        PUBLIC
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/src
+    )
 
-set_target_properties(ktrace_sdk PROPERTIES
-    OUTPUT_NAME ktrace
-    EXPORT_NAME sdk
-    POSITION_INDEPENDENT_CODE ON
-)
+    target_link_libraries(ktrace_sdk_static PUBLIC
+        ${_ktrace_kcli_static_dep}
+        spdlog::spdlog
+    )
+
+    # Internal trace macros require a compile-time namespace string.
+    target_compile_definitions(ktrace_sdk_static PRIVATE KTRACE_NAMESPACE="ktrace")
+
+    set_target_properties(ktrace_sdk_static PROPERTIES
+        OUTPUT_NAME ktrace
+        EXPORT_NAME sdk_static
+        POSITION_INDEPENDENT_CODE ON
+    )
+endif()
+
+if(KTRACE_BUILD_SHARED)
+    add_library(ktrace_sdk_shared SHARED ${KTRACE_SOURCES})
+    add_library(ktrace::sdk_shared ALIAS ktrace_sdk_shared)
+
+    target_include_directories(ktrace_sdk_shared
+        PUBLIC
+            $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+        PRIVATE
+            ${PROJECT_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(ktrace_sdk_shared PUBLIC
+        ${_ktrace_kcli_shared_dep}
+        spdlog::spdlog
+    )
+
+    # Internal trace macros require a compile-time namespace string.
+    target_compile_definitions(ktrace_sdk_shared PRIVATE KTRACE_NAMESPACE="ktrace")
+
+    set_target_properties(ktrace_sdk_shared PROPERTIES
+        OUTPUT_NAME ktrace
+        EXPORT_NAME sdk_shared
+        POSITION_INDEPENDENT_CODE ON
+    )
+endif()
+
+if(TARGET ktrace_sdk_shared)
+    add_library(ktrace::sdk ALIAS ktrace_sdk_shared)
+elseif(TARGET ktrace_sdk_static)
+    add_library(ktrace::sdk ALIAS ktrace_sdk_static)
+endif()

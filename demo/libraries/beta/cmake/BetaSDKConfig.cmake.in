@@ -4,4 +4,19 @@ include(CMakeFindDependencyMacro)
 find_dependency(KTraceSDK CONFIG REQUIRED)
 
 include("${CMAKE_CURRENT_LIST_DIR}/BetaSDKTargets.cmake")
+
+if(NOT TARGET beta::sdk)
+    if(TARGET beta::sdk_shared)
+        add_library(beta::sdk INTERFACE IMPORTED)
+        set_property(TARGET beta::sdk PROPERTY
+            INTERFACE_LINK_LIBRARIES beta::sdk_shared
+        )
+    elseif(TARGET beta::sdk_static)
+        add_library(beta::sdk INTERFACE IMPORTED)
+        set_property(TARGET beta::sdk PROPERTY
+            INTERFACE_LINK_LIBRARIES beta::sdk_static
+        )
+    endif()
+endif()
+
 check_required_components(BetaSDK)
