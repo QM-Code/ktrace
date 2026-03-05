@@ -1,4 +1,8 @@
 {
+	"kbuild": {
+		"rootdir": "../kbuild",
+		"api": "1"
+	},
 	"project" : {
 		"title": "Karma Trace Logging SDK",
 		"id": "ktrace"
