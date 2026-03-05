@@ -26,8 +26,7 @@ When `BUILD_TESTING=ON`, `CMakeLists.txt` registers these CTest tests:
    - Purpose: ensure unknown `--trace-*` options show usage hint output.
    - Command under test: `./test --trace-f`
    - Required output:
-     - `Trace option error: unknown trace option '--trace-f'`
-     - `Use --trace to list available options.`
+     - `unknown option --trace-f (use --trace to list options)`
    - Must not include:
      - `Trace logging options:`
      - `Trace selector examples:`
