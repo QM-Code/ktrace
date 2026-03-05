@@ -18,7 +18,7 @@ Run:
 
 The executable demo defines CLI behavior checks in:
 
-- `tests/trace_cli_cases.sh` (repo root)
+- `cmake/tests/trace_cli_cases.sh`
 
 When `BUILD_TESTING=ON`, `CMakeLists.txt` registers these CTest tests:
 

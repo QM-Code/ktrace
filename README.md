@@ -15,7 +15,10 @@ SDK output:
 ## Build and Test Demos
 
 ```bash
-# Uses kbuild.json "build-demos" order.
+# Builds SDK plus kbuild.json "build.defaults.demos".
+./kbuild.py
+
+# Explicit demo-only run (uses build.demos when no args are provided).
 ./kbuild.py --build-demos
 
 ./demo/executable/build/latest/test

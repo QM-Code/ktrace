@@ -1,41 +1,46 @@
 {
-	"kbuild": {
-		"rootdir": "../kbuild",
-		"api": "1"
-	},
-	"project" : {
-		"title": "Karma Trace Logging SDK",
-		"id": "ktrace"
-	},
-	"git": {
-		"url": "https://github.com/QM-Code/ktrace",
-		"auth": "git@github.com:QM-Code/ktrace.git"
-	},
-	"cmake" : {
-		"minimum_version": "3.20",
-		"configure_by_default": true,
-		"sdk": {
-			"package_name": "KTraceSDK"
-		},
-		"dependencies": {
-			"KcliSDK": {
-				"prefix": "../kcli/build/{version}/sdk"
-			}
-		}
-	},
-	"vcpkg": {
-		"dependencies": [
-			"spdlog"
-		]
-	},
-	"build" : {
-		"defaults": {
-			"demos": [
-				"libraries/alpha",
-				"libraries/beta",
-				"libraries/gamma",
-				"executable"
-			]
-		}
-	}
+  "kbuild": {
+    "rootdir": "../kbuild",
+    "api": "1"
+  },
+  "project": {
+    "title": "Karma Trace Logging SDK",
+    "id": "ktrace"
+  },
+  "git": {
+    "url": "https://github.com/QM-Code/ktrace",
+    "auth": "git@github.com:QM-Code/ktrace.git"
+  },
+  "cmake": {
+    "minimum_version": "3.20",
+    "sdk": {
+      "package_name": "KTraceSDK"
+    },
+    "dependencies": {
+      "KcliSDK": {
+        "prefix": "../kcli/build/{version}/sdk"
+      }
+    }
+  },
+  "vcpkg": {
+    "dependencies": [
+      "spdlog"
+    ]
+  },
+  "build": {
+    "demos": [
+      "libraries/alpha",
+      "libraries/beta",
+      "libraries/gamma",
+      "executable"
+    ],
+    "defaults": {
+      "demos": [
+        "libraries/alpha",
+        "libraries/beta",
+        "libraries/gamma",
+        "executable"
+      ]
+    }
+  }
 }
