@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.20)
+if(NOT DEFINED KTOOLS_CMAKE_MINIMUM_VERSION OR KTOOLS_CMAKE_MINIMUM_VERSION STREQUAL "")
+    set(KTOOLS_CMAKE_MINIMUM_VERSION "3.20")
+endif()
+cmake_minimum_required(VERSION ${KTOOLS_CMAKE_MINIMUM_VERSION})
 
 project(alpha VERSION 0.1.0 LANGUAGES CXX)
 
@@ -6,7 +9,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(KTraceSDK CONFIG REQUIRED)
+if(NOT TARGET ktrace::sdk)
+    find_package(KTraceSDK CONFIG REQUIRED)
+endif()
 include(CMakePackageConfigHelpers)
 
 add_library(alpha_sdk STATIC
@@ -68,3 +73,8 @@ install(FILES
     DESTINATION lib/cmake/AlphaSDK
     COMPONENT AlphaSDK
 )
+
+include(CTest)
+if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/cmake/tests/CMakeLists.txt")
+    add_subdirectory(cmake/tests)
+endif()

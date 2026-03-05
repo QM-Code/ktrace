@@ -1,12 +1,3 @@
-# Beta SDK Demo
+# Beta Demo Library
 
-Build and install `BetaSDK`:
-
-Run from the repository root directory:
-
-```bash
-./kbuild.py --build-demos libraries/beta
-```
-
-Output:
-- `demo/libraries/beta/build/latest/sdk`
+Exists for CI and as a minimal reference for integrating a library with KTraceSDK.

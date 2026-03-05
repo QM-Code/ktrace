@@ -7,6 +7,7 @@ Trace logging library.
 ```bash
 ./kbuild.py
 ```
+
 SDK output:
 - `build/latest/sdk/include`
 - `build/latest/sdk/lib`
@@ -23,11 +24,13 @@ SDK output:
 
 ./demo/executable/build/latest/test
 ```
+
 Demos:
+- Bootstrap compile/link check: `demo/bootstrap/`
 - Libraries: `demo/libraries/{alpha,beta,gamma}`
 - Executable: `demo/executable/`
 
-Demo builds are orchestrated by the root `kbuild.py`
+Demo builds are orchestrated by the root `kbuild.py`.
 
 Demo libraries demonstrate how other libraries can implement and expose ktrace.
 

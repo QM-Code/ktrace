@@ -29,6 +29,7 @@
   },
   "build": {
     "demos": [
+      "bootstrap",
       "libraries/alpha",
       "libraries/beta",
       "libraries/gamma",
@@ -36,6 +37,7 @@
     ],
     "defaults": {
       "demos": [
+        "bootstrap",
         "libraries/alpha",
         "libraries/beta",
         "libraries/gamma",

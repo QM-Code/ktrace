@@ -1,12 +1,3 @@
-# Alpha SDK Demo
+# Alpha Demo Library
 
-Build and install `AlphaSDK`:
-
-Run from the repository root directory:
-
-```bash
-./kbuild.py --build-demos libraries/alpha
-```
-
-Output:
-- `demo/libraries/alpha/build/latest/sdk`
+Exists for CI and as a minimal reference for integrating a library with KTraceSDK.
