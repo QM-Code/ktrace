@@ -6,88 +6,12 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
-#include <cstddef>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace {
-
-bool startsWith(const std::string_view value, const std::string_view prefix) {
-    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
-}
-
-std::string normalizeTraceRootName(std::string_view trace_root) {
-    std::string root = ktrace::detail::trimWhitespace(std::string(trace_root));
-    if (root.empty()) {
-        throw std::invalid_argument("trace root must not be empty");
-    }
-    if (startsWith(root, "--")) {
-        if (root.size() == 2) {
-            throw std::invalid_argument("trace root '--' is invalid");
-        }
-        root.erase(0, 2);
-        return root;
-    }
-    if (root[0] == '-') {
-        throw std::invalid_argument("trace root '" + root + "' must begin with '--' or no dashes");
-    }
-    return root;
-}
-
-std::string buildTraceRootOption(std::string_view trace_root) {
-    return std::string("--") + normalizeTraceRootName(trace_root);
-}
-
-bool hasUsableValueToken(const int index,
-                         const int argc,
-                         char** argv,
-                         const std::vector<bool>* consumed = nullptr) {
-    if (index + 1 >= argc || argv == nullptr) {
-        return false;
-    }
-    if (consumed != nullptr &&
-        static_cast<std::size_t>(index + 1) < consumed->size() &&
-        (*consumed)[static_cast<std::size_t>(index + 1)]) {
-        return false;
-    }
-    const char* raw = argv[index + 1];
-    if (raw == nullptr) {
-        return false;
-    }
-    const std::string_view value(raw);
-    if (value.empty()) {
-        return false;
-    }
-    return value[0] != '-';
-}
-
-void enableSelectorListOrThrow(const std::string_view option,
-                               const std::string_view raw_value,
-                               const std::string_view local_namespace) {
-    const std::string selectors = ktrace::detail::trimWhitespace(std::string(raw_value));
-    if (selectors.empty()) {
-        throw std::invalid_argument("option '" + std::string(option) + "' requires one or more selectors");
-    }
-    ktrace::EnableChannels(selectors, local_namespace);
-    KTRACE("api.cli", "option '{}' enabled selectors '{}'", option, selectors);
-}
-
-void printTraceHelp(const std::string& root) {
-    std::cout
-        << "\nTrace logging options:\n"
-        << "  " << root << " <selector>         Enable trace channel(s) (may pass more than once)\n"
-        << "  " << root << "-examples           Show selector examples\n"
-        << "  " << root << "-namespaces         Show initialized trace namespaces\n"
-        << "  " << root << "-channels           Show initialized trace channels\n"
-        << "  " << root << "-colors             Show available trace colors\n"
-        << "  " << root << "-filenames          Include source filename in trace output\n"
-        << "  " << root << "-line-numbers       Include source line number (requires filenames)\n"
-        << "  " << root << "-function-names     Include function name (requires filenames)\n"
-        << "  " << root << "-timestamps         Include timestamps in trace output\n"
-        << "  " << root << "-help               Show this help\n\n";
-}
 
 void printTraceExamples(const std::string& root) {
     std::cout
@@ -178,23 +102,6 @@ void printTraceColors() {
     std::cout << "\n";
 }
 
-void compactArgv(int& argc, char** argv, const std::vector<bool>& consumed) {
-    if (argc <= 0 || argv == nullptr) {
-        return;
-    }
-
-    int write_index = 1;
-    for (int read_index = 1; read_index < argc; ++read_index) {
-        if (!consumed[static_cast<std::size_t>(read_index)]) {
-            argv[write_index++] = argv[read_index];
-        }
-    }
-    if (write_index < argc) {
-        argv[write_index] = nullptr;
-    }
-    argc = write_index;
-}
-
 void processCliArgs(int& argc,
                     char** argv,
                     std::string_view trace_root,
@@ -204,9 +111,12 @@ void processCliArgs(int& argc,
     }
 
     ktrace::detail::ensureInternalTraceChannelsRegistered();
-    const std::string root_name = normalizeTraceRootName(trace_root);
-    const std::string root = std::string("--") + root_name;
-    const std::string root_help = root + "-help";
+    ktrace::OutputOptions output_options{};
+    bool saw_output_option = false;
+
+    kcli::Parser cli;
+    cli.Initialize(argc, argv, trace_root);
+    const std::string root = std::string("--") + cli.GetRoot();
     const std::string root_examples = root + "-examples";
     const std::string root_namespaces = root + "-namespaces";
     const std::string root_channels = root + "-channels";
@@ -216,54 +126,23 @@ void processCliArgs(int& argc,
     const std::string root_function_names = root + "-function-names";
     const std::string root_timestamps = root + "-timestamps";
 
-    ktrace::OutputOptions output_options{};
-    bool saw_output_option = false;
-
     KTRACE("api",
            "processing CLI options (enable api.cli for details): {} arg(s), root '{}'",
            argc,
            root);
 
-    std::vector<bool> consumed(static_cast<std::size_t>(argc), false);
-
-    // Preserve legacy root behavior for selectors: --trace <selector>
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] == nullptr) {
-            continue;
-        }
-
-        const std::string arg = ktrace::detail::trimWhitespace(std::string(argv[i]));
-        if (arg != root) {
-            continue;
-        }
-
-        consumed[static_cast<std::size_t>(i)] = true;
-        if (!hasUsableValueToken(i, argc, argv, &consumed)) {
-            printTraceHelp(root);
-            KTRACE("api", "cli: '{}' with no value, showed help", root);
-            continue;
-        }
-
-        consumed[static_cast<std::size_t>(i + 1)] = true;
-        try {
-            enableSelectorListOrThrow(root, argv[++i], local_namespace);
-        } catch (const std::exception& ex) {
-            spdlog::error("\nTrace option error: {}", ex.what());
-            printTraceExamples(root);
-        }
-    }
-
-    compactArgv(argc, argv, consumed);
-
-    kcli::Parser cli;
-    cli.Initialize(argc, argv, root_name);
-
-    cli.Implement("help",
-                  [&](const kcli::HandlerContext&) {
-                      printTraceHelp(root);
-                      KTRACE("api.cli", "handled '{}'", root_help);
-                  },
-                  "Show trace CLI help.");
+    cli.SetRootValueHandler(
+        [&](const kcli::HandlerContext&, std::string_view value) {
+            try {
+                ktrace::EnableChannels(value, local_namespace);
+                KTRACE("api.cli", "option '{}' enabled selectors '{}'", root, value);
+            } catch (const std::exception& ex) {
+                spdlog::error("\nTrace option error: {}", ex.what());
+                printTraceExamples(root);
+            }
+        },
+        "<selector>",
+        "Enable trace channel(s) (may pass more than once)");
 
     cli.Implement("examples",
                   [&](const kcli::HandlerContext&) {
@@ -325,23 +204,7 @@ void processCliArgs(int& argc,
                   },
                   "Include timestamps in trace output.");
 
-    std::vector<std::string> unknown_options;
-    cli.SetUnknownOptionHandler(
-        [&](std::string_view option) {
-            unknown_options.emplace_back(option);
-        });
-
-    const kcli::ProcessResult result = cli.Process();
-
-    if (!unknown_options.empty()) {
-        for (const std::string& unknown : unknown_options) {
-            spdlog::error("\nTrace option error: unknown trace option '{}'", unknown);
-            printTraceHelp(root);
-        }
-    } else if (!result) {
-        spdlog::error("\nTrace option error: {}", result.error_message);
-        printTraceHelp(root);
-    }
+    (void)cli.Process();
 
     if (saw_output_option) {
         ktrace::SetOutputOptions(output_options);
@@ -359,13 +222,8 @@ void ProcessCLI(int& argc,
     try {
         processCliArgs(argc, argv, trace_root, local_namespace);
     } catch (const std::exception& ex) {
-        std::string root = "--trace";
-        try {
-            root = buildTraceRootOption(trace_root);
-        } catch (...) {
-        }
         spdlog::error("\nTrace option error: {}", ex.what());
-        printTraceExamples(root);
+        printTraceExamples("--trace");
     }
 }
 

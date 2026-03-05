@@ -57,12 +57,15 @@ case "$test_case" in
     unknown_option)
         output="$(run_case --trace-f)"
         require_contains "$output" "Trace option error: unknown trace option '--trace-f'"
-        require_contains "$output" "Trace logging options:"
+        require_contains "$output" "Use --trace to list available options."
+        require_not_contains "$output" "--trace-help"
+        require_not_contains "$output" "Trace logging options:"
         require_not_contains "$output" "Trace selector examples:"
         ;;
     blank_trace)
         output="$(run_case --trace)"
-        require_contains "$output" "Trace logging options:"
+        require_contains "$output" "Available --trace-* options:"
+        require_not_contains "$output" "--trace-help"
         require_not_contains "$output" "Trace option error:"
         require_not_contains "$output" "Trace selector examples:"
         ;;

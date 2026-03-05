@@ -23,19 +23,20 @@ The executable demo defines CLI behavior checks in:
 When `BUILD_TESTING=ON`, `CMakeLists.txt` registers these CTest tests:
 
 1. `demo_cli_unknown_trace_option_shows_help`
-   - Purpose: ensure unknown `--trace-*` options show help output.
+   - Purpose: ensure unknown `--trace-*` options show usage hint output.
    - Command under test: `./test --trace-f`
    - Required output:
      - `Trace option error: unknown trace option '--trace-f'`
-     - `Trace logging options:`
+     - `Use --trace to list available options.`
    - Must not include:
+     - `Trace logging options:`
      - `Trace selector examples:`
 
 2. `demo_cli_blank_trace_shows_help`
    - Purpose: ensure blank `--trace` prints help.
    - Command under test: `./test --trace`
    - Required output:
-     - `Trace logging options:`
+     - `Available --trace-* options:`
    - Must not include:
      - `Trace option error:`
      - `Trace selector examples:`
