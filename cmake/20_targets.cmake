@@ -30,7 +30,10 @@ target_include_directories(ktrace_sdk
         ${PROJECT_SOURCE_DIR}/src
 )
 
-target_link_libraries(ktrace_sdk PUBLIC spdlog::spdlog)
+target_link_libraries(ktrace_sdk PUBLIC
+    kcli::sdk
+    spdlog::spdlog
+)
 
 set_target_properties(ktrace_sdk PROPERTIES
     OUTPUT_NAME ktrace

@@ -12,6 +12,11 @@
 		"configure_by_default": true,
 		"sdk": {
 			"package_name": "KTraceSDK"
+		},
+		"dependencies": {
+			"KcliSDK": {
+				"prefix": "../kcli/build/{version}/sdk"
+			}
 		}
 	},
 	"vcpkg": {

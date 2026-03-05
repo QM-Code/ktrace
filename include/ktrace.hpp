@@ -30,7 +30,7 @@ void Initialize();
 // Processes and consumes all argv entries that begin with trace_root (for example "--trace*").
 void ProcessCLI(int& argc,
                 char** argv,
-                std::string_view trace_root = "--trace",
+                std::string_view trace_root = "trace",
                 std::string_view local_namespace = KTRACE_NAMESPACE);
 std::vector<std::string> GetNamespaces();
 std::vector<std::string> GetChannels(std::string_view trace_namespace);

@@ -24,7 +24,7 @@ int main(int argc, char** argv) {
 
 	// Process the CLI
 	// Must happen after enabling external library tracing
-	ktrace::ProcessCLI(argc,argv,"--trace");
+	ktrace::ProcessCLI(argc,argv,"trace");
     KTRACE("app", "cli processing enabled, use --trace for options");
 
 	// Test external trace logging.
