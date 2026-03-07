@@ -14,6 +14,19 @@ if(NOT KTRACE_BUILD_STATIC AND NOT KTRACE_BUILD_SHARED)
     message(FATAL_ERROR "ktrace requires at least one of KTRACE_BUILD_STATIC or KTRACE_BUILD_SHARED to be ON.")
 endif()
 
+function(ktools_apply_runtime_rpath target_name)
+    if(NOT TARGET "${target_name}")
+        return()
+    endif()
+    if(NOT DEFINED KTOOLS_RUNTIME_RPATH_DIRS OR KTOOLS_RUNTIME_RPATH_DIRS STREQUAL "")
+        return()
+    endif()
+    set_target_properties("${target_name}" PROPERTIES
+        BUILD_RPATH "${KTOOLS_RUNTIME_RPATH_DIRS}"
+        INSTALL_RPATH "${KTOOLS_RUNTIME_RPATH_DIRS}"
+    )
+endfunction()
+
 set(_ktrace_kcli_static_dep kcli::sdk_static)
 if(NOT TARGET kcli::sdk_static)
     set(_ktrace_kcli_static_dep kcli::sdk)
@@ -76,6 +89,7 @@ if(KTRACE_BUILD_SHARED)
         EXPORT_NAME sdk_shared
         POSITION_INDEPENDENT_CODE ON
     )
+    ktools_apply_runtime_rpath(ktrace_sdk_shared)
 endif()
 
 if(TARGET ktrace_sdk_shared)

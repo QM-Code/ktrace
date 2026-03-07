@@ -16,6 +16,19 @@ if(NOT KTOOLS_DEMO_BUILD_STATIC AND NOT KTOOLS_DEMO_BUILD_SHARED)
     message(FATAL_ERROR "Demo executable requires at least one of KTOOLS_DEMO_BUILD_STATIC or KTOOLS_DEMO_BUILD_SHARED to be ON.")
 endif()
 
+function(ktools_apply_runtime_rpath target_name)
+    if(NOT TARGET "${target_name}")
+        return()
+    endif()
+    if(NOT DEFINED KTOOLS_RUNTIME_RPATH_DIRS OR KTOOLS_RUNTIME_RPATH_DIRS STREQUAL "")
+        return()
+    endif()
+    set_target_properties("${target_name}" PROPERTIES
+        BUILD_RPATH "${KTOOLS_RUNTIME_RPATH_DIRS}"
+        INSTALL_RPATH "${KTOOLS_RUNTIME_RPATH_DIRS}"
+    )
+endfunction()
+
 if(NOT TARGET ktrace::sdk_shared)
     find_package(KTraceSDK CONFIG REQUIRED)
 endif()
@@ -86,6 +99,7 @@ if(KTOOLS_DEMO_BUILD_SHARED)
     set_target_properties(ktrace_demo_executable PROPERTIES
         OUTPUT_NAME test
     )
+    ktools_apply_runtime_rpath(ktrace_demo_executable)
 endif()
 
 if(KTOOLS_DEMO_BUILD_STATIC)
