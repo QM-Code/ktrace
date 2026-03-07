@@ -25,6 +25,37 @@ const char* resolveCategoryColorCode(std::string_view trace_namespace, std::stri
     return "";
 }
 
+const char* resolveSeverityColorCode(ktrace::detail::LogSeverity severity) {
+    ktrace::detail::initializeColorSupport();
+
+    auto& state = ktrace::detail::getTraceState();
+    if (!state.color_enabled) {
+        return "";
+    }
+
+    switch (severity) {
+        case ktrace::detail::LogSeverity::info:
+            return "\x1b[36m";
+        case ktrace::detail::LogSeverity::warning:
+            return "\x1b[33m";
+        case ktrace::detail::LogSeverity::error:
+            return "\x1b[31m";
+    }
+    return "";
+}
+
+std::string_view severityLabel(ktrace::detail::LogSeverity severity) {
+    switch (severity) {
+        case ktrace::detail::LogSeverity::info:
+            return "info";
+        case ktrace::detail::LogSeverity::warning:
+            return "warning";
+        case ktrace::detail::LogSeverity::error:
+            return "error";
+    }
+    return "info";
+}
+
 void appendCompactTimestamp(std::string& out) {
     using clock = std::chrono::system_clock;
     const auto now = clock::now();
@@ -143,6 +174,82 @@ std::string buildTraceMessagePrefix(std::string_view trace_namespace,
         out.append(color);
     }
     out.append(category);
+    if (has_color) {
+        out.append("\x1b[0m");
+    }
+    out.push_back(']');
+
+    if (filenames_enabled) {
+        const std::string_view source_label = formatSourceLabel(source_file);
+        out.push_back(' ');
+        if (state.color_enabled) {
+            out.append("\x1b[38;5;245m");
+        }
+        out.push_back('[');
+        out.append(source_label.begin(), source_label.end());
+        if (line_numbers_enabled && source_line > 0) {
+            out.push_back(':');
+            out.append(std::to_string(source_line));
+        }
+        if (function_names_enabled && !function_name.empty()) {
+            out.push_back(':');
+            out.append(function_name.begin(), function_name.end());
+        }
+        out.push_back(']');
+        if (state.color_enabled) {
+            out.append("\x1b[0m");
+        }
+    }
+    return out;
+}
+
+std::string buildLogMessagePrefix(std::string_view trace_namespace,
+                                  LogSeverity severity,
+                                  std::string_view source_file,
+                                  int source_line,
+                                  std::string_view function_name) {
+    const std::string trace_namespace_label(trace_namespace);
+    const std::string_view severity_text = severityLabel(severity);
+    const char* color = resolveSeverityColorCode(severity);
+    const bool has_color = color && color[0] != '\0';
+
+    auto& state = getTraceState();
+    const bool filenames_enabled = state.filenames_enabled.load(std::memory_order_relaxed);
+    const bool line_numbers_enabled = state.line_numbers_enabled.load(std::memory_order_relaxed);
+    const bool function_names_enabled = state.function_names_enabled.load(std::memory_order_relaxed);
+
+    std::string out;
+    out.reserve(trace_namespace_label.size() + severity_text.size() + source_file.size() +
+                function_name.size() + 24);
+    if (!trace_namespace_label.empty()) {
+        if (state.color_enabled) {
+            out.append("\x1b[38;5;250m");
+        }
+        out.push_back('[');
+        out.append(trace_namespace_label);
+        out.push_back(']');
+        if (state.color_enabled) {
+            out.append("\x1b[0m");
+        }
+        out.push_back(' ');
+    }
+
+    if (state.timestamps_enabled.load(std::memory_order_relaxed)) {
+        if (state.color_enabled) {
+            out.append("\x1b[38;5;245m");
+        }
+        appendCompactTimestamp(out);
+        if (state.color_enabled) {
+            out.append("\x1b[0m");
+        }
+        out.push_back(' ');
+    }
+
+    out.push_back('[');
+    if (has_color) {
+        out.append(color);
+    }
+    out.append(severity_text.begin(), severity_text.end());
     if (has_color) {
         out.append("\x1b[0m");
     }

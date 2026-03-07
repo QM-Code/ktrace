@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <mutex>
+#include <source_location>
 #include <spdlog/fmt/fmt.h>
 #include <string>
 #include <string_view>
@@ -57,6 +58,9 @@ void ClearEnabledChannels();
 
 namespace detail {
 
+enum class LogSeverity;
+struct LogTextWithSource;
+
 bool ShouldTraceBridge(std::string_view trace_namespace,
                        std::string_view category);
 void RegisterChannelBridge(std::string_view trace_namespace,
@@ -70,6 +74,42 @@ void TraceChecked(std::string_view trace_namespace,
                   int source_line,
                   std::string_view function_name,
                   std::string_view message);
+void LogChecked(std::string_view trace_namespace,
+                LogSeverity severity,
+                std::string_view source_file,
+                int source_line,
+                std::string_view function_name,
+                std::string_view message);
+
+} // namespace detail
+
+namespace detail {
+
+enum class LogSeverity {
+    info,
+    warning,
+    error,
+};
+
+struct LogTextWithSource {
+    std::string_view text;
+    std::source_location source_location;
+
+    constexpr LogTextWithSource(
+        const char* format_text,
+        const std::source_location& location = std::source_location::current())
+        : text(format_text), source_location(location) {}
+
+    constexpr LogTextWithSource(
+        std::string_view format_text,
+        const std::source_location& location = std::source_location::current())
+        : text(format_text), source_location(location) {}
+
+    LogTextWithSource(
+        const std::string& format_text,
+        const std::source_location& location = std::source_location::current())
+        : text(format_text), source_location(location) {}
+};
 
 } // namespace detail
 
@@ -120,5 +160,42 @@ inline void RegisterChannel(std::string_view channel, ColorId color) {
                                            fmt::format((format_text), ##__VA_ARGS__)); \
         }                                                                         \
     } while (0)
+
+namespace log {
+
+template <typename... Args>
+inline void Info(detail::LogTextWithSource format_text, Args&&... args) {
+    ::ktrace::detail::LogChecked(KTRACE_NAMESPACE,
+                                 ::ktrace::detail::LogSeverity::info,
+                                 format_text.source_location.file_name(),
+                                 static_cast<int>(format_text.source_location.line()),
+                                 format_text.source_location.function_name(),
+                                 fmt::format(
+                                     fmt::runtime(format_text.text), std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+inline void Warn(detail::LogTextWithSource format_text, Args&&... args) {
+    ::ktrace::detail::LogChecked(KTRACE_NAMESPACE,
+                                 ::ktrace::detail::LogSeverity::warning,
+                                 format_text.source_location.file_name(),
+                                 static_cast<int>(format_text.source_location.line()),
+                                 format_text.source_location.function_name(),
+                                 fmt::format(
+                                     fmt::runtime(format_text.text), std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+inline void Error(detail::LogTextWithSource format_text, Args&&... args) {
+    ::ktrace::detail::LogChecked(KTRACE_NAMESPACE,
+                                 ::ktrace::detail::LogSeverity::error,
+                                 format_text.source_location.file_name(),
+                                 static_cast<int>(format_text.source_location.line()),
+                                 format_text.source_location.function_name(),
+                                 fmt::format(
+                                     fmt::runtime(format_text.text), std::forward<Args>(args)...));
+}
+
+} // namespace log
 
 } // namespace ktrace

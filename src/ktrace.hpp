@@ -23,11 +23,15 @@ struct Selector {
     bool include_top_level = false;
 };
 
+struct SelectorResolution {
+    std::vector<std::string> channel_keys;
+    std::vector<std::string> unmatched_selectors;
+};
+
 struct State {
-    std::mutex selector_mutex;
-    std::vector<Selector> enabled_selectors;
-    std::vector<Selector> disabled_selectors;
-    std::atomic<bool> selector_enabled{false};
+    std::mutex enabled_channels_mutex;
+    std::unordered_set<std::string> enabled_channel_keys;
+    std::atomic<bool> has_enabled_channels{false};
 
     std::atomic<bool> filenames_enabled{false};
     std::atomic<bool> line_numbers_enabled{false};
@@ -48,6 +52,8 @@ struct State {
 
 State& getTraceState();
 
+std::string makeQualifiedChannelKey(std::string_view trace_namespace,
+                                    std::string_view channel);
 std::string trimWhitespace(const std::string& value);
 bool isSelectorIdentifierChar(char c);
 bool isSelectorIdentifier(std::string_view token);
@@ -55,13 +61,22 @@ bool isValidChannelPath(std::string_view channel);
 int splitChannelPath(std::string_view category, std::array<std::string_view, 3>& out);
 bool matchesSelectorSegment(const std::string& pattern, std::string_view value);
 
+bool isRegisteredTraceChannel(std::string_view trace_namespace, std::string_view channel);
 const std::array<std::string_view, 256>& colorNames();
 const char* ansiColorCode(ColorId color);
 void initializeColorSupport();
+std::string buildLogMessagePrefix(std::string_view trace_namespace,
+                                  LogSeverity severity,
+                                  std::string_view source_file,
+                                  int source_line,
+                                  std::string_view function_name);
 
 std::vector<Selector> parseSelectorList(const std::string& list,
                                         std::string_view local_namespace,
                                         std::vector<std::string>& invalid_tokens);
+SelectorResolution resolveSelectorsToChannelKeys(const std::vector<Selector>& selectors);
+SelectorResolution resolveSelectorExpressionOrThrow(std::string_view selectors_csv,
+                                                    std::string_view local_namespace);
 bool matchesSelector(const Selector& selector,
                      std::string_view trace_namespace,
                      std::string_view category);

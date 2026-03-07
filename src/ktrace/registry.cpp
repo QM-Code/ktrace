@@ -7,6 +7,28 @@
 
 namespace ktrace {
 
+namespace detail {
+
+bool isRegisteredTraceChannel(std::string_view trace_namespace, std::string_view channel) {
+    const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
+    const std::string channel_name = trimWhitespace(std::string(channel));
+    if (!isSelectorIdentifier(trace_namespace_name) || !isValidChannelPath(channel_name)) {
+        return false;
+    }
+
+    auto& state = getTraceState();
+    std::lock_guard<std::mutex> lock(state.registry_mutex);
+    const auto namespace_it = state.channels_by_namespace.find(trace_namespace_name);
+    if (namespace_it == state.channels_by_namespace.end()) {
+        return false;
+    }
+
+    return std::find(namespace_it->second.begin(), namespace_it->second.end(), channel_name) !=
+           namespace_it->second.end();
+}
+
+} // namespace detail
+
 std::vector<std::string> GetNamespaces() {
     detail::ensureInternalTraceChannelsRegistered();
     std::vector<std::string> namespaces;

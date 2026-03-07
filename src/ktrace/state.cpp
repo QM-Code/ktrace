@@ -11,6 +11,22 @@ State& getTraceState() {
     return state;
 }
 
+std::string makeQualifiedChannelKey(std::string_view trace_namespace,
+                                    std::string_view channel) {
+    const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
+    const std::string channel_name = trimWhitespace(std::string(channel));
+    if (trace_namespace_name.empty() || channel_name.empty()) {
+        return {};
+    }
+
+    std::string key;
+    key.reserve(trace_namespace_name.size() + channel_name.size() + 1);
+    key.append(trace_namespace_name);
+    key.push_back('.');
+    key.append(channel_name);
+    return key;
+}
+
 std::string trimWhitespace(const std::string& value) {
     size_t start = 0;
     while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0) {
@@ -102,27 +118,26 @@ bool matchesSelectorSegment(const std::string& pattern, const std::string_view v
 }
 
 bool isTraceChannelEnabled(std::string_view trace_namespace, std::string_view channel) {
-    if (channel.empty()) {
+    if (!isValidChannelPath(channel)) {
         return false;
     }
 
     auto& state = getTraceState();
-    if (!state.selector_enabled.load(std::memory_order_relaxed)) {
+    if (!state.has_enabled_channels.load(std::memory_order_relaxed)) {
         return false;
     }
 
-    std::lock_guard<std::mutex> lock(state.selector_mutex);
-    for (const Selector& selector : state.disabled_selectors) {
-        if (matchesSelector(selector, trace_namespace, channel)) {
-            return false;
-        }
+    if (!isRegisteredTraceChannel(trace_namespace, channel)) {
+        return false;
     }
-    for (const Selector& selector : state.enabled_selectors) {
-        if (matchesSelector(selector, trace_namespace, channel)) {
-            return true;
-        }
+
+    const std::string key = makeQualifiedChannelKey(trace_namespace, channel);
+    if (key.empty()) {
+        return false;
     }
-    return false;
+
+    std::lock_guard<std::mutex> lock(state.enabled_channels_mutex);
+    return state.enabled_channel_keys.find(key) != state.enabled_channel_keys.end();
 }
 
 } // namespace ktrace::detail

@@ -55,6 +55,14 @@ Trace CLI examples:
 
 This is generally done in `CMakeLists.txt`, though it can also be done at source level.
 
+Always-visible operational logging:
+- `ktrace::log::Info("message")`
+- `ktrace::log::Warn("message")`
+- `ktrace::log::Error("message")`
+- `ktrace::log::Warn("configuration file '{}' was not found", path)`
+- these are independent of trace-channel enablement
+- they use the same namespace/timestamp/source formatting options as trace output
+
 ## Channel Expression Forms
 
 Single-selector APIs:
@@ -65,8 +73,10 @@ List APIs:
 - `EnableChannels(...)`
 - `DisableChannels(...)`
 - list APIs accept selector patterns such as `*`, `{}`, and CSV
+- list APIs resolve selectors against the channels currently registered at call time
 - leading-dot selectors in list APIs resolve against current `KTRACE_NAMESPACE`
 - empty/whitespace selector lists are rejected
+- unregistered channels remain disabled and do not emit, even if a selector pattern would otherwise match
 
 Examples:
 - `ktrace::EnableChannel(".abc");`

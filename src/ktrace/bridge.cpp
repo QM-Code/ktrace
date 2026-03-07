@@ -44,6 +44,32 @@ std::string makeLoggerKey(std::string_view trace_namespace, std::string_view cat
     return key;
 }
 
+std::string makeLogLoggerKey(std::string_view trace_namespace,
+                             ktrace::detail::LogSeverity severity) {
+    const std::string namespace_name = ktrace::detail::trimWhitespace(std::string(trace_namespace));
+    if (namespace_name.empty()) {
+        return {};
+    }
+
+    std::string key;
+    key.reserve(namespace_name.size() + 20);
+    key.append("ktrace.log.");
+    key.append(namespace_name);
+    key.push_back('.');
+    switch (severity) {
+        case ktrace::detail::LogSeverity::info:
+            key.append("info");
+            break;
+        case ktrace::detail::LogSeverity::warning:
+            key.append("warning");
+            break;
+        case ktrace::detail::LogSeverity::error:
+            key.append("error");
+            break;
+    }
+    return key;
+}
+
 spdlog::logger* getLogger(const std::string& key) {
     if (key.empty()) {
         return nullptr;
@@ -67,6 +93,18 @@ spdlog::logger* getLogger(const std::string& key) {
     created->set_pattern("%v");
     spdlog::register_logger(created);
     return created.get();
+}
+
+spdlog::level::level_enum logSeverityToSpdlog(ktrace::detail::LogSeverity severity) {
+    switch (severity) {
+        case ktrace::detail::LogSeverity::info:
+            return spdlog::level::info;
+        case ktrace::detail::LogSeverity::warning:
+            return spdlog::level::warn;
+        case ktrace::detail::LogSeverity::error:
+            return spdlog::level::err;
+    }
+    return spdlog::level::info;
 }
 
 void registerChannelImpl(std::string_view trace_namespace, std::string_view channel) {
@@ -157,6 +195,22 @@ void TraceChecked(std::string_view trace_namespace,
         const auto prefix = buildTraceMessagePrefix(
             trace_namespace_name, category, source_file, source_line, function_name);
         logger->trace("{} {}", prefix, message);
+    }
+}
+
+void LogChecked(std::string_view trace_namespace,
+                LogSeverity severity,
+                std::string_view source_file,
+                int source_line,
+                std::string_view function_name,
+                std::string_view message) {
+    const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
+    const std::string logger_key = makeLogLoggerKey(trace_namespace_name, severity);
+
+    if (auto* logger = getLogger(logger_key)) {
+        const auto prefix = buildLogMessagePrefix(
+            trace_namespace_name, severity, source_file, source_line, function_name);
+        logger->log(logSeverityToSpdlog(severity), "{} {}", prefix, message);
     }
 }
 

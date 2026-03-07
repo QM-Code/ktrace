@@ -2,6 +2,8 @@
 
 #include "../ktrace.hpp"
 
+#include <algorithm>
+#include <sstream>
 #include <unordered_set>
 
 namespace {
@@ -250,6 +252,106 @@ std::vector<Selector> parseSelectorList(const std::string& list,
            selectors.size(),
            invalid_tokens.size());
     return selectors;
+}
+
+namespace {
+
+std::string formatSelector(const Selector& selector) {
+    std::string text;
+    if (selector.any_namespace) {
+        text.push_back('*');
+    } else {
+        text.append(selector.trace_namespace);
+    }
+    text.push_back('.');
+    for (int i = 0; i < selector.channel_depth; ++i) {
+        if (i > 0) {
+            text.push_back('.');
+        }
+        text.append(selector.channel_tokens[static_cast<std::size_t>(i)]);
+    }
+    return text;
+}
+
+} // namespace
+
+SelectorResolution resolveSelectorsToChannelKeys(const std::vector<Selector>& selectors) {
+    SelectorResolution result;
+    if (selectors.empty()) {
+        return result;
+    }
+
+    std::unordered_set<std::string> seen;
+    std::vector<bool> matched(selectors.size(), false);
+    auto& state = getTraceState();
+    std::lock_guard<std::mutex> lock(state.registry_mutex);
+
+    for (const auto& entry : state.channels_by_namespace) {
+        const std::string& trace_namespace = entry.first;
+        const std::vector<std::string>& channels = entry.second;
+        for (const std::string& channel : channels) {
+            for (std::size_t i = 0; i < selectors.size(); ++i) {
+                if (!matchesSelector(selectors[i], trace_namespace, channel)) {
+                    continue;
+                }
+                matched[i] = true;
+                const std::string key = makeQualifiedChannelKey(trace_namespace, channel);
+                if (!key.empty() && seen.insert(key).second) {
+                    result.channel_keys.push_back(key);
+                }
+            }
+        }
+    }
+
+    std::unordered_set<std::string> unmatched_seen;
+    for (std::size_t i = 0; i < selectors.size(); ++i) {
+        if (matched[i]) {
+            continue;
+        }
+        const std::string selector_text = formatSelector(selectors[i]);
+        if (unmatched_seen.insert(selector_text).second) {
+            result.unmatched_selectors.push_back(selector_text);
+        }
+    }
+
+    return result;
+}
+
+SelectorResolution resolveSelectorExpressionOrThrow(std::string_view selectors_csv,
+                                                    std::string_view local_namespace) {
+    const std::string selector_text = trimWhitespace(std::string(selectors_csv));
+    if (selector_text.empty()) {
+        throw std::invalid_argument("EnableChannels requires one or more selectors");
+    }
+
+    std::vector<std::string> invalid_tokens;
+    const std::vector<Selector> selectors =
+        parseSelectorList(selector_text, local_namespace, invalid_tokens);
+    if (!invalid_tokens.empty()) {
+        const auto formatInvalidToken = [](const std::string& token) -> std::string {
+            const std::size_t reason_pos = token.find(" (");
+            if (reason_pos != std::string::npos) {
+                return "'" + token.substr(0, reason_pos) + "'" + token.substr(reason_pos);
+            }
+            return "'" + token + "'";
+        };
+
+        std::ostringstream message;
+        message << "Invalid trace selector";
+        if (invalid_tokens.size() > 1) {
+            message << "s";
+        }
+        message << ": ";
+        for (std::size_t i = 0; i < invalid_tokens.size(); ++i) {
+            if (i > 0) {
+                message << ", ";
+            }
+            message << formatInvalidToken(invalid_tokens[i]);
+        }
+        throw std::runtime_error(message.str());
+    }
+
+    return resolveSelectorsToChannelKeys(selectors);
 }
 
 bool matchesSelector(const Selector& selector,

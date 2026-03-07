@@ -3,10 +3,10 @@
 #include "../ktrace.hpp"
 
 #include <kcli.hpp>
-#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <iostream>
+#include <source_location>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -129,7 +129,14 @@ void processCliArgs(int& argc,
                 ktrace::EnableChannels(value, local_namespace);
                 KTRACE("api.cli", "option '{}' enabled selectors '{}'", root, value);
             } catch (const std::exception& ex) {
-                spdlog::error("\nTrace option error: {}", ex.what());
+                const std::source_location location = std::source_location::current();
+                ktrace::detail::LogChecked(
+                    local_namespace,
+                    ktrace::detail::LogSeverity::error,
+                    location.file_name(),
+                    static_cast<int>(location.line()),
+                    location.function_name(),
+                    fmt::format("Trace option error: {}", ex.what()));
                 printTraceExamples(root);
             }
         },
@@ -164,29 +171,22 @@ void processCliArgs(int& argc,
                   },
                   "Show available trace colors.");
 
-    cli.Implement("filenames",
+    cli.Implement("files",
                   [&](const kcli::HandlerContext& context) {
                       output_options.filenames = true;
-                      saw_output_option = true;
-                      KTRACE("api.cli", "enabled '{}' output option", context.option);
-                  },
-                  "Include source filename in trace output.");
-
-    cli.Implement("line-numbers",
-                  [&](const kcli::HandlerContext& context) {
                       output_options.line_numbers = true;
                       saw_output_option = true;
                       KTRACE("api.cli", "enabled '{}' output option", context.option);
                   },
-                  "Include source line number in trace output.");
+                  "Include source file and line in trace output.");
 
-    cli.Implement("function-names",
+    cli.Implement("functions",
                   [&](const kcli::HandlerContext& context) {
                       output_options.function_names = true;
                       saw_output_option = true;
                       KTRACE("api.cli", "enabled '{}' output option", context.option);
                   },
-                  "Include function name in trace output.");
+                  "Include function names in trace output (requires --trace-files).");
 
     cli.Implement("timestamps",
                   [&](const kcli::HandlerContext& context) {
@@ -200,6 +200,19 @@ void processCliArgs(int& argc,
 
     if (saw_output_option) {
         ktrace::SetOutputOptions(output_options);
+    }
+
+    if (output_options.function_names && !output_options.filenames) {
+        const std::source_location location = std::source_location::current();
+        ktrace::detail::LogChecked(
+            local_namespace,
+            ktrace::detail::LogSeverity::warning,
+            location.file_name(),
+            static_cast<int>(location.line()),
+            location.function_name(),
+            fmt::format("--{}-functions requires --{}-files to be operational",
+                        trace_root,
+                        trace_root));
     }
 }
 
