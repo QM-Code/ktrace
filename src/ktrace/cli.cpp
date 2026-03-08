@@ -114,89 +114,92 @@ void processCliArgs(int& argc,
     ktrace::OutputOptions output_options{};
     bool saw_output_option = false;
 
-    kcli::Parser cli;
-    cli.Initialize(argc, argv, trace_root);
-    const std::string root = std::string("--") + cli.GetRoot();
+    std::string root_name(trace_root);
+    if (root_name.rfind("--", 0) == 0) {
+        root_name.erase(0, 2);
+    }
+    const std::string root = std::string("--") + root_name;
 
     KTRACE("api",
            "processing CLI options (enable api.cli for details): {} arg(s), root '{}'",
            argc,
            root);
 
-    cli.SetRootValueHandler(
-        [&](const kcli::HandlerContext&, std::string_view value) {
-            try {
-                ktrace::EnableChannels(value, local_namespace);
-                KTRACE("api.cli", "option '{}' enabled selectors '{}'", root, value);
-            } catch (const std::exception& ex) {
-                const std::source_location location = std::source_location::current();
-                ktrace::detail::LogChecked(
-                    local_namespace,
-                    ktrace::detail::LogSeverity::error,
-                    location.file_name(),
-                    static_cast<int>(location.line()),
-                    location.function_name(),
-                    fmt::format("Trace option error: {}", ex.what()));
-                printTraceExamples(root);
-            }
-        },
-        "<selector>",
-        "Enable trace channel(s) (may pass more than once)");
+    kcli::Initialize(argc,
+                     argv,
+                     {.root = trace_root, .failure_mode = kcli::FailureMode::Throw});
 
-    cli.Implement("examples",
-                  [&](const kcli::HandlerContext& context) {
-                      printTraceExamples(root);
-                      KTRACE("api.cli", "handled '{}'", context.option);
-                  },
-                  "Show selector examples.");
+    kcli::SetRootValueHandler([&](const kcli::HandlerContext&, std::string_view value) {
+        try {
+            ktrace::EnableChannels(value, local_namespace);
+            KTRACE("api.cli", "option '{}' enabled selectors '{}'", root, value);
+        } catch (const std::exception& ex) {
+            const std::source_location location = std::source_location::current();
+            ktrace::detail::LogChecked(
+                local_namespace,
+                ktrace::detail::LogSeverity::error,
+                location.file_name(),
+                static_cast<int>(location.line()),
+                location.function_name(),
+                fmt::format("Trace option error: {}", ex.what()));
+            printTraceExamples(root);
+        }
+    });
 
-    cli.Implement("namespaces",
-                  [&](const kcli::HandlerContext& context) {
-                      printTraceNamespaces();
-                      KTRACE("api.cli", "handled '{}'", context.option);
-                  },
-                  "Show initialized trace namespaces.");
+    kcli::SetHandler("-examples",
+                     [&](const kcli::HandlerContext& context) {
+                         printTraceExamples(root);
+                         KTRACE("api.cli", "handled '{}'", context.option);
+                     },
+                     "Show selector examples.");
 
-    cli.Implement("channels",
-                  [&](const kcli::HandlerContext& context) {
-                      printTraceChannels();
-                      KTRACE("api.cli", "handled '{}'", context.option);
-                  },
-                  "Show initialized trace channels.");
+    kcli::SetHandler("-namespaces",
+                     [&](const kcli::HandlerContext& context) {
+                         printTraceNamespaces();
+                         KTRACE("api.cli", "handled '{}'", context.option);
+                     },
+                     "Show initialized trace namespaces.");
 
-    cli.Implement("colors",
-                  [&](const kcli::HandlerContext& context) {
-                      printTraceColors();
-                      KTRACE("api.cli", "handled '{}'", context.option);
-                  },
-                  "Show available trace colors.");
+    kcli::SetHandler("-channels",
+                     [&](const kcli::HandlerContext& context) {
+                         printTraceChannels();
+                         KTRACE("api.cli", "handled '{}'", context.option);
+                     },
+                     "Show initialized trace channels.");
 
-    cli.Implement("files",
-                  [&](const kcli::HandlerContext& context) {
-                      output_options.filenames = true;
-                      output_options.line_numbers = true;
-                      saw_output_option = true;
-                      KTRACE("api.cli", "enabled '{}' output option", context.option);
-                  },
-                  "Include source file and line in trace output.");
+    kcli::SetHandler("-colors",
+                     [&](const kcli::HandlerContext& context) {
+                         printTraceColors();
+                         KTRACE("api.cli", "handled '{}'", context.option);
+                     },
+                     "Show available trace colors.");
 
-    cli.Implement("functions",
-                  [&](const kcli::HandlerContext& context) {
-                      output_options.function_names = true;
-                      saw_output_option = true;
-                      KTRACE("api.cli", "enabled '{}' output option", context.option);
-                  },
-                  "Include function names in trace output (requires --trace-files).");
+    kcli::SetHandler("-files",
+                     [&](const kcli::HandlerContext& context) {
+                         output_options.filenames = true;
+                         output_options.line_numbers = true;
+                         saw_output_option = true;
+                         KTRACE("api.cli", "enabled '{}' output option", context.option);
+                     },
+                     "Include source file and line in trace output.");
 
-    cli.Implement("timestamps",
-                  [&](const kcli::HandlerContext& context) {
-                      output_options.timestamps = true;
-                      saw_output_option = true;
-                      KTRACE("api.cli", "enabled '{}' output option", context.option);
-                  },
-                  "Include timestamps in trace output.");
+    kcli::SetHandler("-functions",
+                     [&](const kcli::HandlerContext& context) {
+                         output_options.function_names = true;
+                         saw_output_option = true;
+                         KTRACE("api.cli", "enabled '{}' output option", context.option);
+                     },
+                     "Include function names in trace output (requires --trace-files).");
 
-    (void)cli.Process();
+    kcli::SetHandler("-timestamps",
+                     [&](const kcli::HandlerContext& context) {
+                         output_options.timestamps = true;
+                         saw_output_option = true;
+                         KTRACE("api.cli", "enabled '{}' output option", context.option);
+                     },
+                     "Include timestamps in trace output.");
+
+    (void)kcli::Process();
 
     if (saw_output_option) {
         ktrace::SetOutputOptions(output_options);
@@ -211,8 +214,8 @@ void processCliArgs(int& argc,
             static_cast<int>(location.line()),
             location.function_name(),
             fmt::format("--{}-functions requires --{}-files to be operational",
-                        trace_root,
-                        trace_root));
+                        root_name,
+                        root_name));
     }
 }
 
