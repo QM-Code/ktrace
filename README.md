@@ -5,7 +5,7 @@ Trace logging library.
 ## Build SDK
 
 ```bash
-./kbuild.py
+./kbuild.py --build-latest
 ```
 
 SDK output:
@@ -17,36 +17,36 @@ SDK output:
 
 ```bash
 # Builds SDK plus kbuild.json "build.defaults.demos".
-./kbuild.py
+./kbuild.py --build-latest
 
 # Explicit demo-only run (uses build.demos when no args are provided).
 ./kbuild.py --build-demos
 
-./demo/executable/build/latest/test
+./demo/exe/core/build/latest/test
 ```
 
 Demos:
 - Bootstrap compile/link check: `demo/bootstrap/`
-- Libraries: `demo/libraries/{alpha,beta,gamma}`
-- Executable: `demo/executable/`
+- SDKs: `demo/sdk/{alpha,beta,gamma}`
+- Executables: `demo/exe/{core,omega}`
 
 Demo builds are orchestrated by the root `kbuild.py`.
 
 Demo libraries demonstrate how other libraries can implement and expose ktrace.
 
-The demo executable shows how an executable can enable ktrace locally and for imported libraries (assuming they were built around ktrace).
+The core demo shows local tracing plus imported SDK integration. The omega demo adds the fuller selector and output-format coverage.
 
 Trace CLI examples:
 
 ```bash
-./demo/executable/build/latest/test --trace
-./demo/executable/build/latest/test --trace '.*'
-./demo/executable/build/latest/test --trace '*.*'
-./demo/executable/build/latest/test --trace '*.*.*.*'
-./demo/executable/build/latest/test --trace '*.{net,io}'
-./demo/executable/build/latest/test --trace-namespaces
-./demo/executable/build/latest/test --trace-channels
-./demo/executable/build/latest/test --trace-colors
+./demo/exe/core/build/latest/test --trace
+./demo/exe/core/build/latest/test --trace '.*'
+./demo/exe/omega/build/latest/test --trace '*.*'
+./demo/exe/omega/build/latest/test --trace '*.*.*.*'
+./demo/exe/omega/build/latest/test --trace '*.{net,io}'
+./demo/exe/omega/build/latest/test --trace-namespaces
+./demo/exe/omega/build/latest/test --trace-channels
+./demo/exe/omega/build/latest/test --trace-colors
 ```
 
 ## Install

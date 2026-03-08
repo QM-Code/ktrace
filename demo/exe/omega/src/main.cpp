@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
 
     // Enable and test a channel.
     ktrace::EnableChannel(".app");
-    KTRACE("app", "executable initialized local trace channels");
+    KTRACE("app", "omega initialized local trace channels");
 
     // Enable external library tracing.
     ktrace::Initialize();
@@ -27,12 +27,12 @@ int main(int argc, char** argv) {
 
     // Exercise imported SDK trace logging.
     KTRACE("app", "testing external tracing, use --trace '*.*' to view top-level channels");
-    KTRACE("deep.branch.leaf", "executable trace test on channel 'deep.branch.leaf'");
+    KTRACE("deep.branch.leaf", "omega trace test on channel 'deep.branch.leaf'");
     ktrace::demo::alpha::TestTraceLoggingChannels();
     ktrace::demo::beta::TestTraceLoggingChannels();
     ktrace::demo::gamma::TestTraceLoggingChannels();
 
-    KTRACE("orchestrator", "executable completed imported SDK trace checks");
+    KTRACE("orchestrator", "omega completed imported SDK trace checks");
 
     return 0;
 }

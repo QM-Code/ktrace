@@ -89,40 +89,40 @@ case "$test_case" in
         ;;
     bad_selector)
         output="$(run_case --trace "*")"
-        require_contains "$output" "[executable] [error] Trace option error: Invalid trace selector: '*' (did you mean '.*'?)"
+        require_contains "$output" "[omega] [error] Trace option error: Invalid trace selector: '*' (did you mean '.*'?)"
         require_contains "$output" "Trace selector examples:"
         require_not_contains "$output" "Trace logging options:"
         ;;
     exact_selector_warning)
         output="$(run_case --trace ".missing")"
-        require_contains "$output" "[executable] [warning] enable ignored channel selector 'executable.missing' because it matched no registered channels"
+        require_contains "$output" "[omega] [warning] enable ignored channel selector 'omega.missing' because it matched no registered channels"
         require_not_contains "$output" "Trace option error:"
         ;;
     wildcard_selector_warning)
         output="$(run_case --trace "missing.*")"
-        require_contains "$output" "[executable] [warning] enable ignored channel selector 'missing.*' because it matched no registered channels"
+        require_contains "$output" "[omega] [warning] enable ignored channel selector 'missing.*' because it matched no registered channels"
         require_not_contains "$output" "Trace option error:"
         ;;
     timestamps_option)
         output="$(run_case --trace ".app" --trace-timestamps)"
-        require_regex "$output" "\\[executable\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] cli processing enabled, use --trace for options"
-        require_regex "$output" "\\[executable\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
+        require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] cli processing enabled, use --trace for options"
+        require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
         ;;
     files_option)
         output="$(run_case --trace ".app" --trace-files)"
-        require_regex "$output" "\\[executable\\] \\[app\\] \\[main:[0-9]+\\] cli processing enabled, use --trace for options"
-        require_regex "$output" "\\[executable\\] \\[app\\] \\[main:[0-9]+\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
+        require_regex "$output" "\\[omega\\] \\[app\\] \\[main:[0-9]+\\] cli processing enabled, use --trace for options"
+        require_regex "$output" "\\[omega\\] \\[app\\] \\[main:[0-9]+\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
         ;;
     functions_option)
         output="$(run_case --trace ".app" --trace-files --trace-functions)"
-        require_regex "$output" "\\[executable\\] \\[app\\] \\[main:[0-9]+:main\\] cli processing enabled, use --trace for options"
-        require_regex "$output" "\\[executable\\] \\[app\\] \\[main:[0-9]+:main\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
+        require_regex "$output" "\\[omega\\] \\[app\\] \\[main:[0-9]+:main\\] cli processing enabled, use --trace for options"
+        require_regex "$output" "\\[omega\\] \\[app\\] \\[main:[0-9]+:main\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
         require_not_contains "$output" "requires --trace-files to be operational"
         ;;
     functions_requires_files_warning)
         output="$(run_case --trace ".app" --trace-timestamps --trace-functions)"
-        require_regex "$output" "\\[executable\\] \\[[0-9]+\\.[0-9]{6}\\] \\[warning\\] --trace-functions requires --trace-files to be operational"
-        require_regex "$output" "\\[executable\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] cli processing enabled, use --trace for options"
+        require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[warning\\] --trace-functions requires --trace-files to be operational"
+        require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] cli processing enabled, use --trace for options"
         require_not_contains "$output" "[main:"
         ;;
     removed_lines_option)
@@ -133,7 +133,7 @@ case "$test_case" in
     wildcard_all_depth3)
         output="$(run_case --trace "*.*.*.*")"
         require_not_contains "$output" "Trace option error:"
-        require_contains "$output" "executable trace test on channel 'deep.branch.leaf'"
+        require_contains "$output" "omega trace test on channel 'deep.branch.leaf'"
         require_contains "$output" "alpha trace test on channel 'net'"
         require_contains "$output" "beta trace test on channel 'io'"
         require_contains "$output" "gamma trace test on channel 'physics'"

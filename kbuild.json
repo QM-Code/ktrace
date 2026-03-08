@@ -28,18 +28,20 @@
     "type": "shared",
     "demos": [
       "bootstrap",
-      "libraries/alpha",
-      "libraries/beta",
-      "libraries/gamma",
-      "executable"
+      "sdk/alpha",
+      "sdk/beta",
+      "sdk/gamma",
+      "exe/core",
+      "exe/omega"
     ],
     "defaults": {
       "demos": [
         "bootstrap",
-        "libraries/alpha",
-        "libraries/beta",
-        "libraries/gamma",
-        "executable"
+        "sdk/alpha",
+        "sdk/beta",
+        "sdk/gamma",
+        "exe/core",
+        "exe/omega"
       ]
     }
   }
