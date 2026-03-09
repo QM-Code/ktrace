@@ -2,24 +2,16 @@
 
 #include <ktrace.hpp>
 
-namespace {
-
-bool g_beta_trace_initialized = false;
-
-} // namespace
-
 namespace ktrace::demo::beta {
 
-void InitializeTraceLogging() {
-    if (!g_beta_trace_initialized) {
-        ktrace::RegisterChannel("io", ktrace::Color("MediumSpringGreen"));
-        ktrace::RegisterChannel("scheduler", ktrace::Color("Orange3"));
-        g_beta_trace_initialized = true;
-    }
+ktrace::TraceLogger GetTraceLogger() {
+    ktrace::TraceLogger logger;
+    logger.addChannel("io", ktrace::Color("MediumSpringGreen"));
+    logger.addChannel("scheduler", ktrace::Color("Orange3"));
+    return logger;
 }
 
 void TestTraceLoggingChannels() {
-    InitializeTraceLogging();
     KTRACE("io", "beta trace test on channel 'io'");
     KTRACE("scheduler", "beta trace test on channel 'scheduler'");
 }

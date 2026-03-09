@@ -11,15 +11,19 @@
 
 namespace {
 
-const char* resolveChannelColorCode(std::string_view trace_namespace, std::string_view channel) {
-    ktrace::detail::initializeColorSupport();
+std::once_flag g_color_init_once;
+bool g_color_enabled = false;
 
-    auto& state = ktrace::detail::getTraceState();
-    if (!state.color_enabled) {
+const char* resolveChannelColorCode(const ktrace::detail::LoggerData& logger_data,
+                                    std::string_view trace_namespace,
+                                    std::string_view channel) {
+    ktrace::detail::initializeColorSupport();
+    if (!g_color_enabled) {
         return "";
     }
 
-    if (const auto registered = ktrace::detail::resolveChannelColor(trace_namespace, channel)) {
+    if (const auto registered =
+            ktrace::detail::resolveChannelColor(logger_data, trace_namespace, channel)) {
         return ktrace::detail::ansiColorCode(*registered);
     }
     return "";
@@ -27,9 +31,7 @@ const char* resolveChannelColorCode(std::string_view trace_namespace, std::strin
 
 const char* resolveSeverityColorCode(ktrace::detail::LogSeverity severity) {
     ktrace::detail::initializeColorSupport();
-
-    auto& state = ktrace::detail::getTraceState();
-    if (!state.color_enabled) {
+    if (!g_color_enabled) {
         return "";
     }
 
@@ -61,7 +63,8 @@ void appendCompactTimestamp(std::string& out) {
     const auto now = clock::now();
     const auto since_epoch = now.time_since_epoch();
     const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(since_epoch);
-    auto micros = std::chrono::duration_cast<std::chrono::microseconds>(since_epoch - seconds).count();
+    auto micros =
+        std::chrono::duration_cast<std::chrono::microseconds>(since_epoch - seconds).count();
     auto sec_count = seconds.count();
     if (micros < 0) {
         --sec_count;
@@ -119,51 +122,55 @@ std::string_view formatSourceLabel(std::string_view source_path) {
 namespace ktrace::detail {
 
 void initializeColorSupport() {
-    auto& state = getTraceState();
-    std::call_once(state.color_init_once, [&state]() {
+    std::call_once(g_color_init_once, []() {
 #ifndef _WIN32
-        state.color_enabled = (isatty(fileno(stdout)) != 0);
+        g_color_enabled = (isatty(fileno(stdout)) != 0);
 #else
-        state.color_enabled = false;
+        g_color_enabled = false;
 #endif
     });
 }
 
-std::string buildTraceMessagePrefix(std::string_view trace_namespace,
+std::string buildTraceMessagePrefix(const LoggerData& logger_data,
+                                    std::string_view trace_namespace,
                                     std::string_view channel,
                                     std::string_view source_file,
                                     int source_line,
                                     std::string_view function_name) {
     const std::string trace_namespace_label(trace_namespace);
-    const char* color = resolveChannelColorCode(trace_namespace, channel);
+    const char* color = resolveChannelColorCode(logger_data, trace_namespace, channel);
     const bool has_color = color && color[0] != '\0';
 
-    auto& state = getTraceState();
-    const bool filenames_enabled = state.filenames_enabled.load(std::memory_order_relaxed);
-    const bool line_numbers_enabled = state.line_numbers_enabled.load(std::memory_order_relaxed);
-    const bool function_names_enabled = state.function_names_enabled.load(std::memory_order_relaxed);
+    const bool filenames_enabled = logger_data.filenames_enabled.load(std::memory_order_relaxed);
+    const bool line_numbers_enabled =
+        logger_data.line_numbers_enabled.load(std::memory_order_relaxed);
+    const bool function_names_enabled =
+        logger_data.function_names_enabled.load(std::memory_order_relaxed);
+    const bool timestamps_enabled =
+        logger_data.timestamps_enabled.load(std::memory_order_relaxed);
 
     std::string out;
-    out.reserve(channel.size() + source_file.size() + function_name.size() + trace_namespace_label.size() + 24);
+    out.reserve(channel.size() + source_file.size() + function_name.size() +
+                trace_namespace_label.size() + 24);
     if (!trace_namespace_label.empty()) {
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[38;5;250m");
         }
         out.push_back('[');
         out.append(trace_namespace_label);
         out.push_back(']');
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[0m");
         }
         out.push_back(' ');
     }
 
-    if (state.timestamps_enabled.load(std::memory_order_relaxed)) {
-        if (state.color_enabled) {
+    if (timestamps_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[38;5;245m");
         }
         appendCompactTimestamp(out);
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[0m");
         }
         out.push_back(' ');
@@ -182,7 +189,7 @@ std::string buildTraceMessagePrefix(std::string_view trace_namespace,
     if (filenames_enabled) {
         const std::string_view source_label = formatSourceLabel(source_file);
         out.push_back(' ');
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[38;5;245m");
         }
         out.push_back('[');
@@ -196,14 +203,15 @@ std::string buildTraceMessagePrefix(std::string_view trace_namespace,
             out.append(function_name.begin(), function_name.end());
         }
         out.push_back(']');
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[0m");
         }
     }
     return out;
 }
 
-std::string buildLogMessagePrefix(std::string_view trace_namespace,
+std::string buildLogMessagePrefix(const LoggerData& logger_data,
+                                  std::string_view trace_namespace,
                                   LogSeverity severity,
                                   std::string_view source_file,
                                   int source_line,
@@ -213,33 +221,36 @@ std::string buildLogMessagePrefix(std::string_view trace_namespace,
     const char* color = resolveSeverityColorCode(severity);
     const bool has_color = color && color[0] != '\0';
 
-    auto& state = getTraceState();
-    const bool filenames_enabled = state.filenames_enabled.load(std::memory_order_relaxed);
-    const bool line_numbers_enabled = state.line_numbers_enabled.load(std::memory_order_relaxed);
-    const bool function_names_enabled = state.function_names_enabled.load(std::memory_order_relaxed);
+    const bool filenames_enabled = logger_data.filenames_enabled.load(std::memory_order_relaxed);
+    const bool line_numbers_enabled =
+        logger_data.line_numbers_enabled.load(std::memory_order_relaxed);
+    const bool function_names_enabled =
+        logger_data.function_names_enabled.load(std::memory_order_relaxed);
+    const bool timestamps_enabled =
+        logger_data.timestamps_enabled.load(std::memory_order_relaxed);
 
     std::string out;
     out.reserve(trace_namespace_label.size() + severity_text.size() + source_file.size() +
                 function_name.size() + 24);
     if (!trace_namespace_label.empty()) {
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[38;5;250m");
         }
         out.push_back('[');
         out.append(trace_namespace_label);
         out.push_back(']');
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[0m");
         }
         out.push_back(' ');
     }
 
-    if (state.timestamps_enabled.load(std::memory_order_relaxed)) {
-        if (state.color_enabled) {
+    if (timestamps_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[38;5;245m");
         }
         appendCompactTimestamp(out);
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[0m");
         }
         out.push_back(' ');
@@ -258,7 +269,7 @@ std::string buildLogMessagePrefix(std::string_view trace_namespace,
     if (filenames_enabled) {
         const std::string_view source_label = formatSourceLabel(source_file);
         out.push_back(' ');
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[38;5;245m");
         }
         out.push_back('[');
@@ -272,7 +283,7 @@ std::string buildLogMessagePrefix(std::string_view trace_namespace,
             out.append(function_name.begin(), function_name.end());
         }
         out.push_back(']');
-        if (state.color_enabled) {
+        if (g_color_enabled) {
             out.append("\x1b[0m");
         }
     }

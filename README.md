@@ -1,6 +1,10 @@
 # Karma Trace Logging SDK
 
-Trace logging library.
+Trace logging SDK with:
+- channel-based trace output via `KTRACE(...)`
+- always-visible operational logging via `ktrace::Info/Warn/Error(...)`
+- a library-facing `TraceLogger` definition object
+- an executable-facing `Logger` runtime/orchestrator
 
 ## Build SDK
 
@@ -51,12 +55,15 @@ Trace CLI examples:
 
 ## CLI Integration
 
-Build the parser up front, add the ktrace inline parser, and wrap the single
-`parse(argc, argv)` call in a `try`/`catch` block:
+Activate a `ktrace::Logger`, add the global ktrace inline parser, and wrap the
+single `parse(argc, argv)` call in a `try`/`catch` block:
 
 ```cpp
+ktrace::Logger logger;
+logger.activate();
+
 kcli::PrimaryParser parser;
-parser.addInlineParser(ktrace::GetInlineParser("trace"));
+parser.addInlineParser(ktrace::GetInlineParser());
 
 try {
     parser.parse(argc, argv);
@@ -68,27 +75,82 @@ try {
 
 ## Install
 
-`KTRACE_NAMESPACE` must be defined by consumers before use.
+`KTRACE_NAMESPACE` must be defined by any target that emits ktrace logging.
 
-This is generally done in `CMakeLists.txt`, though it can also be done at source level.
+This is generally done in `CMakeLists.txt`:
+
+```cmake
+target_compile_definitions(my_target PRIVATE KTRACE_NAMESPACE="myapp")
+```
+
+`TraceLogger` depends on `KTRACE_NAMESPACE` and automatically binds to it. The
+trace macros and `ktrace::Info/Warn/Error(...)` also emit under that namespace.
+
+## API Model
+
+`TraceLogger` is the library-facing definition object. SDKs expose trace support
+by returning one from a helper such as `GetTraceLogger()`:
+
+```cpp
+ktrace::TraceLogger GetTraceLogger() {
+    ktrace::TraceLogger logger;
+    logger.addChannel("net", ktrace::Color("DeepSkyBlue1"));
+    logger.addChannel("cache", ktrace::Color("Gold3"));
+    return logger;
+}
+```
+
+Libraries that expose a `GetTraceLogger()`-style API do not need to include
+`ktrace.hpp` from their own public headers. A public header can forward-declare
+`ktrace::TraceLogger` instead. That keeps non-tracing consumers from inheriting
+the `KTRACE_NAMESPACE` requirement just by including the library header.
+
+The tradeoff is that any translation unit that actually materializes a
+`ktrace::TraceLogger` from that API must include `ktrace.hpp` itself.
+
+`Logger` is the executable-facing runtime. Executables compose one or more
+`TraceLogger`s into a single active process logger:
+
+```cpp
+ktrace::Logger logger;
+
+ktrace::TraceLogger tracer;
+tracer.addChannel("app", ktrace::Color("BrightCyan"));
+tracer.addChannel("startup", ktrace::Color("BrightYellow"));
+
+logger.addTraceLogger(tracer);
+logger.addTraceLogger(alpha::GetTraceLogger());
+logger.activate();
+```
+
+After activation:
+- `KTRACE(...)` and `KTRACE_CHANGED(...)` emit through the active `Logger`
+- `ktrace::Info/Warn/Error(...)` emit through the active `Logger`
+- `ktrace::GetInlineParser()` applies CLI changes to the active `Logger`
+
+## Logging APIs
+
+Channel-based trace output:
+- `KTRACE("channel", "message {}", value)`
+- `KTRACE_CHANGED("channel", key, "message")`
 
 Always-visible operational logging:
-- `ktrace::log::Info("message")`
-- `ktrace::log::Warn("message")`
-- `ktrace::log::Error("message")`
-- `ktrace::log::Warn("configuration file '{}' was not found", path)`
-- these are independent of trace-channel enablement
-- they use the same namespace/timestamp/source formatting options as trace output
+- `ktrace::Info("message")`
+- `ktrace::Warn("configuration file '{}' was not found", path)`
+- `ktrace::Error("fatal startup failure")`
+
+Operational logging is independent of channel enablement. It is still
+namespaced and uses the same formatting options as trace output.
 
 ## Channel Expression Forms
 
-Single-selector APIs:
+Single-selector APIs on `ktrace::Logger`:
 - `.channel[.sub[.sub]]` for a local channel in the current `KTRACE_NAMESPACE`
 - `namespace.channel[.sub[.sub]]` for an explicit namespace
 
-List APIs:
-- `EnableChannels(...)`
-- `DisableChannels(...)`
+List APIs on `ktrace::Logger`:
+- `enableChannels(...)`
+- `disableChannels(...)`
 - list APIs accept selector patterns such as `*`, `{}`, and CSV
 - list APIs resolve selectors against the channels currently registered at call time
 - leading-dot selectors in list APIs resolve against current `KTRACE_NAMESPACE`
@@ -96,11 +158,18 @@ List APIs:
 - unregistered channels remain disabled and do not emit, even if a selector pattern would otherwise match
 
 Examples:
-- `ktrace::EnableChannel(".abc");`
-- `ktrace::EnableChannel(".abc.xyz");`
-- `ktrace::EnableChannel("otherapp.channel");`
-- `ktrace::EnableChannels("alpha.*,{beta,gamma}.net.*");`
-- `ktrace::EnableChannels(".net.*,otherapp.scheduler.tick");`
+- `logger.enableChannel(".abc");`
+- `logger.enableChannel(".abc.xyz");`
+- `logger.enableChannel("otherapp.channel");`
+- `logger.enableChannels("alpha.*,{beta,gamma}.net.*");`
+- `logger.enableChannels(".net.*,otherapp.scheduler.tick");`
+
+Formatting options:
+- `--trace-files`
+- `--trace-functions`
+- `--trace-timestamps`
+
+These affect both `KTRACE(...)` output and `ktrace::Info/Warn/Error(...)`.
 
 ## Coding Agents
 

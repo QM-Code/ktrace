@@ -1,13 +1,12 @@
 #include <ktrace.hpp>
 
-#include <spdlog/logger.h>
-#include <spdlog/sinks/ostream_sink.h>
-#include <spdlog/spdlog.h>
-
-#include <memory>
-#include <sstream>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -21,40 +20,130 @@ void ExpectContains(const std::string& haystack, const std::string& needle) {
     }
 }
 
+void ExpectNotContains(const std::string& haystack, const std::string& needle) {
+    if (haystack.find(needle) != std::string::npos) {
+        Fail("expected output to not contain '" + needle + "', got:\n" + haystack);
+    }
+}
+
+void ExpectStartsWith(const std::string& haystack, const std::string& needle) {
+    if (haystack.rfind(needle, 0) != 0) {
+        Fail("expected output to start with '" + needle + "', got:\n" + haystack);
+    }
+}
+
+class StdoutCapture {
+public:
+    StdoutCapture() {
+#ifndef _WIN32
+        captured_ = std::tmpfile();
+        if (!captured_) {
+            Fail("failed to create capture file");
+        }
+
+        std::fflush(stdout);
+        original_stdout_fd_ = ::dup(fileno(stdout));
+        if (original_stdout_fd_ < 0) {
+            std::fclose(captured_);
+            Fail("failed to duplicate stdout");
+        }
+
+        if (::dup2(fileno(captured_), fileno(stdout)) < 0) {
+            ::close(original_stdout_fd_);
+            std::fclose(captured_);
+            Fail("failed to redirect stdout");
+        }
+#else
+        Fail("stdout capture is not implemented on Windows");
+#endif
+    }
+
+    ~StdoutCapture() {
+#ifndef _WIN32
+        restore();
+#endif
+    }
+
+    std::string finish() {
+#ifndef _WIN32
+        restore();
+
+        std::fflush(captured_);
+        if (std::fseek(captured_, 0, SEEK_SET) != 0) {
+            std::fclose(captured_);
+            captured_ = nullptr;
+            Fail("failed to rewind capture file");
+        }
+
+        std::string text;
+        char buffer[256];
+        while (true) {
+            const std::size_t count = std::fread(buffer, 1, sizeof(buffer), captured_);
+            if (count > 0) {
+                text.append(buffer, count);
+            }
+            if (count < sizeof(buffer)) {
+                break;
+            }
+        }
+
+        std::fclose(captured_);
+        captured_ = nullptr;
+        return text;
+#else
+        return {};
+#endif
+    }
+
+private:
+#ifndef _WIN32
+    void restore() {
+        if (original_stdout_fd_ >= 0) {
+            std::fflush(stdout);
+            ::dup2(original_stdout_fd_, fileno(stdout));
+            ::close(original_stdout_fd_);
+            original_stdout_fd_ = -1;
+        }
+    }
+
+    FILE* captured_ = nullptr;
+    int original_stdout_fd_ = -1;
+#endif
+};
+
 } // namespace
 
 int main() {
-    std::ostringstream output;
-    auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(output);
-    auto logger = std::make_shared<spdlog::logger>("ktrace_log_api_test", sink);
-    logger->set_level(spdlog::level::trace);
-    logger->set_pattern("%v");
-    spdlog::set_default_logger(logger);
-
-    ktrace::SetOutputOptions({
+    StdoutCapture capture;
+    ktrace::Logger trace_logger;
+    trace_logger.setOutputOptions({
         .filenames = true,
         .line_numbers = true,
         .function_names = false,
         .timestamps = false,
     });
+    trace_logger.activate();
 
     const int info_line = __LINE__ + 1;
-    ktrace::log::Info("info message");
+    ktrace::Info("info message");
     const int warn_line = __LINE__ + 1;
-    ktrace::log::Warn("warn value {}", 7);
+    ktrace::Warn("warn value {}", 7);
     const int error_line = __LINE__ + 1;
-    ktrace::log::Error(std::string("error message"));
+    ktrace::Error(std::string("error message"));
 
-    const std::string text = output.str();
-    ExpectContains(text, "[tests] [info] ");
-    ExpectContains(text, "[tests] [warning] ");
-    ExpectContains(text, "[tests] [error] ");
+    const std::string text = capture.finish();
+    ExpectStartsWith(text, "[tests] [info] ");
+    ExpectContains(text, "\n[tests] [warning] ");
+    ExpectContains(text, "\n[tests] [error] ");
     ExpectContains(text, "info message");
     ExpectContains(text, "warn value 7");
     ExpectContains(text, "error message");
     ExpectContains(text, "ktrace_log_api_test:" + std::to_string(info_line));
     ExpectContains(text, "ktrace_log_api_test:" + std::to_string(warn_line));
     ExpectContains(text, "ktrace_log_api_test:" + std::to_string(error_line));
+    ExpectNotContains(text, "[info] [tests] [info]");
+    ExpectNotContains(text, "[warning] [tests] [warning]");
+    ExpectNotContains(text, "[error] [tests] [error]");
 
     return 0;
 }

@@ -86,7 +86,7 @@ case "$test_case" in
             echo "Expected non-zero exit status for unknown trace option" >&2
             exit 1
         fi
-        require_contains "$output" "CLI error: unknown option --trace-f"
+        require_contains "$output" "[error] [cli] unknown option --trace-f"
         require_not_contains "$output" "Available --trace-* options:"
         ;;
     blank_trace)
@@ -125,8 +125,9 @@ case "$test_case" in
             exit 1
         fi
         require_not_contains "$output" "CLI error:"
+        require_regex "$output" "(^|\\n)\\[core\\] \\[app\\] cli processing enabled, use --trace for options($|\\n)"
         require_contains "$output" "testing imported tracing, use --trace '*.*' to view imported channels"
-        require_contains "$output" "alpha trace test on channel 'net'"
+        require_contains "$output" "[alpha] [net] testing..."
         ;;
     *)
         echo "Error: unknown case '$test_case'" >&2

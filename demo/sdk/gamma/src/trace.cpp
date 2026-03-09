@@ -2,24 +2,16 @@
 
 #include <ktrace.hpp>
 
-namespace {
-
-bool g_gamma_trace_initialized = false;
-
-} // namespace
-
 namespace ktrace::demo::gamma {
 
-void SystemStartup() {
-    if (!g_gamma_trace_initialized) {
-        ktrace::RegisterChannel("physics", ktrace::Color("MediumOrchid1"));
-        ktrace::RegisterChannel("metrics", ktrace::Color("LightSkyBlue1"));
-        g_gamma_trace_initialized = true;
-    }
+ktrace::TraceLogger GetTraceLogger() {
+    ktrace::TraceLogger logger;
+    logger.addChannel("physics", ktrace::Color("MediumOrchid1"));
+    logger.addChannel("metrics", ktrace::Color("LightSkyBlue1"));
+    return logger;
 }
 
 void TestTraceLoggingChannels() {
-    SystemStartup();
     KTRACE("physics", "gamma trace test on channel 'physics'");
     KTRACE("metrics", "gamma trace test on channel 'metrics'");
 }

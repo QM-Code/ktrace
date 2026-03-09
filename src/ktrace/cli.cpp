@@ -40,7 +40,8 @@ void _examples(const kcli::HandlerContext& context) {
 }
 
 void _namespaces(const kcli::HandlerContext&) {
-    std::vector<std::string> namespaces = ktrace::GetNamespaces();
+    const ktrace::Logger& logger = ktrace::detail::RequireActiveLogger();
+    std::vector<std::string> namespaces = logger.getNamespaces();
     if (namespaces.empty()) {
         std::cout << "No trace namespaces defined.\n\n";
         return;
@@ -58,7 +59,8 @@ void _namespaces(const kcli::HandlerContext&) {
 }
 
 void _channels(const kcli::HandlerContext&) {
-    std::vector<std::string> namespaces = ktrace::GetNamespaces();
+    const ktrace::Logger& logger = ktrace::detail::RequireActiveLogger();
+    std::vector<std::string> namespaces = logger.getNamespaces();
     std::sort(namespaces.begin(), namespaces.end());
 
     bool printed_any = false;
@@ -66,7 +68,7 @@ void _channels(const kcli::HandlerContext&) {
         if (trace_namespace.empty()) {
             continue;
         }
-        std::vector<std::string> channels = ktrace::GetChannels(trace_namespace);
+        std::vector<std::string> channels = logger.getChannels(trace_namespace);
         std::sort(channels.begin(), channels.end());
         for (const std::string& channel : channels) {
             if (channel.empty()) {
@@ -100,24 +102,27 @@ void _colors(const kcli::HandlerContext&) {
 }
 
 void _files(const kcli::HandlerContext&) {
-    ktrace::OutputOptions options = ktrace::detail::getRequestedOutputOptions();
+    ktrace::Logger& logger = ktrace::detail::RequireActiveLogger();
+    ktrace::OutputOptions options = logger.getOutputOptions();
     options.filenames = true;
     options.line_numbers = true;
-    ktrace::SetOutputOptions(options);
+    logger.setOutputOptions(options);
 }
 
 void _functions(const kcli::HandlerContext&) {
-    ktrace::OutputOptions options = ktrace::detail::getRequestedOutputOptions();
+    ktrace::Logger& logger = ktrace::detail::RequireActiveLogger();
+    ktrace::OutputOptions options = logger.getOutputOptions();
     options.filenames = true;
     options.line_numbers = true;
     options.function_names = true;
-    ktrace::SetOutputOptions(options);
+    logger.setOutputOptions(options);
 }
 
 void _timestamps(const kcli::HandlerContext&) {
-    ktrace::OutputOptions options = ktrace::detail::getRequestedOutputOptions();
+    ktrace::Logger& logger = ktrace::detail::RequireActiveLogger();
+    ktrace::OutputOptions options = logger.getOutputOptions();
     options.timestamps = true;
-    ktrace::SetOutputOptions(options);
+    logger.setOutputOptions(options);
 }
 
 } // namespace
@@ -125,15 +130,16 @@ void _timestamps(const kcli::HandlerContext&) {
 namespace ktrace {
 
 kcli::InlineParser GetInlineParser(std::string_view trace_root, std::string_view local_namespace) {
-    ktrace::detail::ensureInternalTraceChannelsRegistered();
-    const std::string trace_namespace = ktrace::detail::trimWhitespace(std::string(local_namespace));
-    const auto _ROOT = [trace_namespace](const kcli::HandlerContext&,std::string_view value) {
-        ktrace::EnableChannels(value, trace_namespace);
+    const std::string trace_namespace = detail::trimWhitespace(std::string(local_namespace));
+    const auto _ROOT = [trace_namespace](const kcli::HandlerContext&, std::string_view value) {
+        detail::RequireActiveLogger().enableChannels(value, trace_namespace);
     };
 
     kcli::InlineParser parser("trace");
-    if (!trace_root.empty()) { parser.setRoot(trace_root); }
-    parser.setRootValueHandler(_ROOT,"<channels>","Trace selected channels.");
+    if (!trace_root.empty()) {
+        parser.setRoot(trace_root);
+    }
+    parser.setRootValueHandler(_ROOT, "<channels>", "Trace selected channels.");
     parser.setHandler("-examples", _examples, "Show selector examples.");
     parser.setHandler("-namespaces", _namespaces, "Show initialized trace namespaces.");
     parser.setHandler("-channels", _channels, "Show initialized trace channels.");

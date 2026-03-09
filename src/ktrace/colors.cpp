@@ -275,12 +275,13 @@ const std::array<std::string_view, 256>& colorNames() {
     return kColorNames;
 }
 
-std::optional<ColorId> resolveChannelColor(std::string_view trace_namespace,
+std::optional<ColorId> resolveChannelColor(const LoggerData& logger_data,
+                                           std::string_view trace_namespace,
                                            std::string_view channel) {
-    auto& state = getTraceState();
-    std::lock_guard<std::mutex> lock(state.registry_mutex);
-    const auto ns_it = state.channel_colors_by_namespace.find(std::string(trace_namespace));
-    if (ns_it == state.channel_colors_by_namespace.end()) {
+    std::lock_guard<std::mutex> lock(logger_data.registry_mutex);
+    const auto ns_it =
+        logger_data.channel_colors_by_namespace.find(std::string(trace_namespace));
+    if (ns_it == logger_data.channel_colors_by_namespace.end()) {
         return std::nullopt;
     }
 

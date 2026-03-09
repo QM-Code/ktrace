@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace {
@@ -187,6 +188,23 @@ bool parseSelectorExpression(const std::string_view raw_token,
     return true;
 }
 
+std::string formatSelector(const ktrace::detail::Selector& selector) {
+    std::string text;
+    if (selector.any_namespace) {
+        text.push_back('*');
+    } else {
+        text.append(selector.trace_namespace);
+    }
+    text.push_back('.');
+    for (int i = 0; i < selector.channel_depth; ++i) {
+        if (i > 0) {
+            text.push_back('.');
+        }
+        text.append(selector.channel_tokens[static_cast<std::size_t>(i)]);
+    }
+    return text;
+}
+
 } // namespace
 
 namespace ktrace::detail {
@@ -194,7 +212,6 @@ namespace ktrace::detail {
 std::vector<Selector> parseSelectorList(const std::string& list,
                                         const std::string_view local_namespace,
                                         std::vector<std::string>& invalid_tokens) {
-    ensureInternalTraceChannelsRegistered();
     std::vector<Selector> selectors;
     std::unordered_set<std::string> invalid_seen;
 
@@ -226,13 +243,11 @@ std::vector<Selector> parseSelectorList(const std::string& list,
             continue;
         }
 
-        for (const std::string& expanded_token : expanded_tokens) {
-            Selector selector{};
+        for (const std::string& expanded : expanded_tokens) {
+            Selector selector;
             std::string parse_error;
-            if (!parseSelectorExpression(expanded_token, local_namespace, selector, parse_error)) {
-                const std::string reason = parse_error.empty()
-                                               ? expanded_token
-                                               : (expanded_token + " (" + parse_error + ")");
+            if (!parseSelectorExpression(expanded, local_namespace, selector, parse_error)) {
+                const std::string reason = expanded + " (" + parse_error + ")";
                 if (invalid_seen.insert(reason).second) {
                     invalid_tokens.push_back(reason);
                 }
@@ -243,39 +258,20 @@ std::vector<Selector> parseSelectorList(const std::string& list,
     }
 
     KTRACE("selector",
-           "parsed selectors (enable selector.parse for details): {} selector(s), {} invalid token(s)",
+           "parsed selector list '{}' into {} selector(s), {} invalid token(s)",
+           list,
            selectors.size(),
            invalid_tokens.size());
     KTRACE("selector.parse",
-           "parsed selector list '{}' -> {} selector(s), {} invalid token(s)",
+           "parsed selector list '{}' into {} selector(s), {} invalid token(s)",
            list,
            selectors.size(),
            invalid_tokens.size());
     return selectors;
 }
 
-namespace {
-
-std::string formatSelector(const Selector& selector) {
-    std::string text;
-    if (selector.any_namespace) {
-        text.push_back('*');
-    } else {
-        text.append(selector.trace_namespace);
-    }
-    text.push_back('.');
-    for (int i = 0; i < selector.channel_depth; ++i) {
-        if (i > 0) {
-            text.push_back('.');
-        }
-        text.append(selector.channel_tokens[static_cast<std::size_t>(i)]);
-    }
-    return text;
-}
-
-} // namespace
-
-SelectorResolution resolveSelectorsToChannelKeys(const std::vector<Selector>& selectors) {
+SelectorResolution resolveSelectorsToChannelKeys(const LoggerData& logger_data,
+                                                 const std::vector<Selector>& selectors) {
     SelectorResolution result;
     if (selectors.empty()) {
         return result;
@@ -283,10 +279,10 @@ SelectorResolution resolveSelectorsToChannelKeys(const std::vector<Selector>& se
 
     std::unordered_set<std::string> seen;
     std::vector<bool> matched(selectors.size(), false);
-    auto& state = getTraceState();
-    std::lock_guard<std::mutex> lock(state.registry_mutex);
 
-    for (const auto& entry : state.channels_by_namespace) {
+    std::lock_guard<std::mutex> lock(logger_data.registry_mutex);
+
+    for (const auto& entry : logger_data.channels_by_namespace) {
         const std::string& trace_namespace = entry.first;
         const std::vector<std::string>& channels = entry.second;
         for (const std::string& channel : channels) {
@@ -317,7 +313,8 @@ SelectorResolution resolveSelectorsToChannelKeys(const std::vector<Selector>& se
     return result;
 }
 
-SelectorResolution resolveSelectorExpressionOrThrow(std::string_view selectors_csv,
+SelectorResolution resolveSelectorExpressionOrThrow(const LoggerData& logger_data,
+                                                    std::string_view selectors_csv,
                                                     std::string_view local_namespace) {
     const std::string selector_text = trimWhitespace(std::string(selectors_csv));
     if (selector_text.empty()) {
@@ -351,7 +348,7 @@ SelectorResolution resolveSelectorExpressionOrThrow(std::string_view selectors_c
         throw std::runtime_error(message.str());
     }
 
-    return resolveSelectorsToChannelKeys(selectors);
+    return resolveSelectorsToChannelKeys(logger_data, selectors);
 }
 
 bool matchesSelector(const Selector& selector,
@@ -368,7 +365,8 @@ bool matchesSelector(const Selector& selector,
     }
 
     if (selector.channel_depth == 1) {
-        return channel_depth == 1 && matchesSelectorSegment(selector.channel_tokens[0], channel_parts[0]);
+        return channel_depth == 1 &&
+               matchesSelectorSegment(selector.channel_tokens[0], channel_parts[0]);
     }
 
     if (selector.channel_depth == 2) {
@@ -382,22 +380,20 @@ bool matchesSelector(const Selector& selector,
                matchesSelectorSegment(selector.channel_tokens[1], channel_parts[1]);
     }
 
-    if (selector.channel_depth == 3) {
-        const bool wildcard_all = selector.channel_tokens[0] == "*" &&
-                                 selector.channel_tokens[1] == "*" &&
-                                 selector.channel_tokens[2] == "*";
-        if (wildcard_all) {
-            return channel_depth >= 1 && channel_depth <= 3;
-        }
-        if (channel_depth != 3) {
-            return false;
-        }
-        return matchesSelectorSegment(selector.channel_tokens[0], channel_parts[0]) &&
-               matchesSelectorSegment(selector.channel_tokens[1], channel_parts[1]) &&
-               matchesSelectorSegment(selector.channel_tokens[2], channel_parts[2]);
+    const bool include_up_to_depth_three =
+        selector.channel_tokens[0] == "*" &&
+        selector.channel_tokens[1] == "*" &&
+        selector.channel_tokens[2] == "*";
+    if (include_up_to_depth_three) {
+        return channel_depth >= 1 && channel_depth <= 3;
     }
 
-    return false;
+    if (channel_depth != 3) {
+        return false;
+    }
+    return matchesSelectorSegment(selector.channel_tokens[0], channel_parts[0]) &&
+           matchesSelectorSegment(selector.channel_tokens[1], channel_parts[1]) &&
+           matchesSelectorSegment(selector.channel_tokens[2], channel_parts[2]);
 }
 
 } // namespace ktrace::detail

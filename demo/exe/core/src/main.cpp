@@ -4,17 +4,23 @@
 #include <iostream>
 
 int main(int argc, char** argv) {
-    ktrace::RegisterChannel("app", ktrace::Color("BrightCyan"));
-    ktrace::RegisterChannel("startup", ktrace::Color("BrightYellow"));
+    ktrace::Logger logger;
 
-    ktrace::EnableChannel(".app");
+    ktrace::TraceLogger tracer;
+    tracer.addChannel("app", ktrace::Color("BrightCyan"));
+    tracer.addChannel("startup", ktrace::Color("BrightYellow"));
+
+    ktrace::TraceLogger alphaTracer = ktrace::demo::alpha::GetTraceLogger();
+
+    logger.addTraceLogger(tracer);
+    logger.addTraceLogger(alphaTracer);
+    logger.activate();
+
+    logger.enableChannel(".app");
     KTRACE("app", "core initialized local trace channels");
 
-    ktrace::Initialize();
-    ktrace::demo::alpha::Init();
-
     kcli::PrimaryParser parser;
-    parser.addInlineParser(ktrace::GetInlineParser("trace"));
+    parser.addInlineParser(ktrace::GetInlineParser());
 
     try {
         parser.parse(argc, argv);

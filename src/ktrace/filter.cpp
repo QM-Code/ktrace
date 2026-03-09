@@ -52,10 +52,13 @@ ktrace::detail::Selector parseQualifiedChannelSelectorOrThrow(
 
 struct ExactChannelResolution {
     std::string key;
+    std::string trace_namespace;
+    std::string channel;
     bool registered = false;
 };
 
-ExactChannelResolution resolveExactChannelOrThrow(std::string_view qualified_channel,
+ExactChannelResolution resolveExactChannelOrThrow(const ktrace::detail::LoggerData& logger_data,
+                                                  std::string_view qualified_channel,
                                                   std::string_view local_namespace) {
     const ktrace::detail::Selector selector =
         parseQualifiedChannelSelectorOrThrow(qualified_channel, local_namespace);
@@ -70,71 +73,56 @@ ExactChannelResolution resolveExactChannelOrThrow(std::string_view qualified_cha
     }
 
     ExactChannelResolution result;
+    result.trace_namespace = selector.trace_namespace;
+    result.channel = channel;
     result.key = ktrace::detail::makeQualifiedChannelKey(selector.trace_namespace, channel);
-    result.registered = ktrace::detail::isRegisteredTraceChannel(selector.trace_namespace, channel);
+    result.registered =
+        ktrace::detail::isRegisteredTraceChannel(logger_data, selector.trace_namespace, channel);
     return result;
 }
 
-void enableChannelKeys(const std::vector<std::string>& channel_keys) {
+void enableChannelKeys(ktrace::detail::LoggerData& logger_data,
+                       const std::vector<std::string>& channel_keys) {
     if (channel_keys.empty()) {
         return;
     }
 
-    auto& state = ktrace::detail::getTraceState();
-    std::lock_guard<std::mutex> lock(state.enabled_channels_mutex);
+    std::lock_guard<std::mutex> lock(logger_data.enabled_channels_mutex);
     for (const std::string& key : channel_keys) {
         if (!key.empty()) {
-            state.enabled_channel_keys.insert(key);
+            logger_data.enabled_channel_keys.insert(key);
         }
     }
-    state.has_enabled_channels.store(!state.enabled_channel_keys.empty(), std::memory_order_relaxed);
+    logger_data.has_enabled_channels.store(
+        !logger_data.enabled_channel_keys.empty(), std::memory_order_relaxed);
 }
 
-void disableChannelKeys(const std::vector<std::string>& channel_keys) {
+void disableChannelKeys(ktrace::detail::LoggerData& logger_data,
+                        const std::vector<std::string>& channel_keys) {
     if (channel_keys.empty()) {
         return;
     }
 
-    auto& state = ktrace::detail::getTraceState();
-    std::lock_guard<std::mutex> lock(state.enabled_channels_mutex);
+    std::lock_guard<std::mutex> lock(logger_data.enabled_channels_mutex);
     for (const std::string& key : channel_keys) {
-        state.enabled_channel_keys.erase(key);
+        logger_data.enabled_channel_keys.erase(key);
     }
-    state.has_enabled_channels.store(!state.enabled_channel_keys.empty(), std::memory_order_relaxed);
-}
-
-void logUnmatchedSelectors(const std::vector<std::string>& unmatched_selectors,
-                          std::string_view action,
-                          std::string_view report_namespace) {
-    const std::source_location location = std::source_location::current();
-    for (const std::string& selector : unmatched_selectors) {
-        ktrace::detail::LogChecked(
-            report_namespace,
-            ktrace::detail::LogSeverity::warning,
-            location.file_name(),
-            static_cast<int>(location.line()),
-            location.function_name(),
-            fmt::format(
-                "{} ignored channel selector '{}' because it matched no registered channels",
-                action,
-                selector));
-    }
+    logger_data.has_enabled_channels.store(
+        !logger_data.enabled_channel_keys.empty(), std::memory_order_relaxed);
 }
 
 } // namespace
 
 namespace ktrace {
 
-void EnableChannel(std::string_view qualified_channel, std::string_view local_namespace) {
-    detail::ensureInternalTraceChannelsRegistered();
+void Logger::enableChannel(std::string_view qualified_channel, std::string_view local_namespace) {
     const std::string qualified = detail::trimWhitespace(std::string(qualified_channel));
     const ExactChannelResolution resolution =
-        resolveExactChannelOrThrow(qualified_channel, local_namespace);
+        resolveExactChannelOrThrow(*data_, qualified_channel, local_namespace);
     if (!resolution.registered) {
         const std::source_location location = std::source_location::current();
-        ktrace::detail::LogChecked(
+        log(detail::LogSeverity::warning,
             local_namespace,
-            ktrace::detail::LogSeverity::warning,
             location.file_name(),
             static_cast<int>(location.line()),
             location.function_name(),
@@ -142,17 +130,30 @@ void EnableChannel(std::string_view qualified_channel, std::string_view local_na
                         resolution.key));
         return;
     }
-    enableChannelKeys({resolution.key});
+
+    enableChannelKeys(*data_, {resolution.key});
     KTRACE("api.channels", "enabled channel '{}'", qualified);
 }
 
-void EnableChannels(std::string_view selectors_csv, std::string_view local_namespace) {
-    detail::ensureInternalTraceChannelsRegistered();
+void Logger::enableChannels(std::string_view selectors_csv,
+                            std::string_view local_namespace) {
     const std::string selector_text = detail::trimWhitespace(std::string(selectors_csv));
     const detail::SelectorResolution resolution =
-        detail::resolveSelectorExpressionOrThrow(selector_text, local_namespace);
-    enableChannelKeys(resolution.channel_keys);
-    logUnmatchedSelectors(resolution.unmatched_selectors, "enable", local_namespace);
+        detail::resolveSelectorExpressionOrThrow(*data_, selector_text, local_namespace);
+    enableChannelKeys(*data_, resolution.channel_keys);
+    {
+        const std::source_location location = std::source_location::current();
+        for (const std::string& selector : resolution.unmatched_selectors) {
+            log(detail::LogSeverity::warning,
+                local_namespace,
+                location.file_name(),
+                static_cast<int>(location.line()),
+                location.function_name(),
+                fmt::format(
+                    "enable ignored channel selector '{}' because it matched no registered channels",
+                    selector));
+        }
+    }
 
     KTRACE("api",
            "processing channels (enable api.channels for details): enabled {} channel(s), {} unmatched selector(s)",
@@ -165,9 +166,9 @@ void EnableChannels(std::string_view selectors_csv, std::string_view local_names
            resolution.unmatched_selectors.size());
 }
 
-bool ShouldTraceChannel(std::string_view qualified_channel, std::string_view local_namespace) {
+bool Logger::shouldTraceChannel(std::string_view qualified_channel,
+                                std::string_view local_namespace) const {
     try {
-        detail::ensureInternalTraceChannelsRegistered();
         const detail::Selector selector =
             parseQualifiedChannelSelectorOrThrow(qualified_channel, local_namespace);
 
@@ -179,22 +180,20 @@ bool ShouldTraceChannel(std::string_view qualified_channel, std::string_view loc
             }
             channel.append(selector.channel_tokens[static_cast<std::size_t>(i)]);
         }
-        return detail::isTraceChannelEnabled(selector.trace_namespace, channel);
+        return detail::isTraceChannelEnabled(*data_, selector.trace_namespace, channel);
     } catch (...) {
         return false;
     }
 }
 
-void DisableChannel(std::string_view qualified_channel, std::string_view local_namespace) {
-    detail::ensureInternalTraceChannelsRegistered();
+void Logger::disableChannel(std::string_view qualified_channel, std::string_view local_namespace) {
     const std::string qualified = detail::trimWhitespace(std::string(qualified_channel));
     const ExactChannelResolution resolution =
-        resolveExactChannelOrThrow(qualified_channel, local_namespace);
+        resolveExactChannelOrThrow(*data_, qualified_channel, local_namespace);
     if (!resolution.registered) {
         const std::source_location location = std::source_location::current();
-        ktrace::detail::LogChecked(
+        log(detail::LogSeverity::warning,
             local_namespace,
-            ktrace::detail::LogSeverity::warning,
             location.file_name(),
             static_cast<int>(location.line()),
             location.function_name(),
@@ -202,17 +201,30 @@ void DisableChannel(std::string_view qualified_channel, std::string_view local_n
                         resolution.key));
         return;
     }
-    disableChannelKeys({resolution.key});
+
+    disableChannelKeys(*data_, {resolution.key});
     KTRACE("api.channels", "disabled channel '{}'", qualified);
 }
 
-void DisableChannels(std::string_view selectors_csv, std::string_view local_namespace) {
-    detail::ensureInternalTraceChannelsRegistered();
+void Logger::disableChannels(std::string_view selectors_csv,
+                             std::string_view local_namespace) {
     const std::string selector_text = detail::trimWhitespace(std::string(selectors_csv));
     const detail::SelectorResolution resolution =
-        detail::resolveSelectorExpressionOrThrow(selector_text, local_namespace);
-    disableChannelKeys(resolution.channel_keys);
-    logUnmatchedSelectors(resolution.unmatched_selectors, "disable", local_namespace);
+        detail::resolveSelectorExpressionOrThrow(*data_, selector_text, local_namespace);
+    disableChannelKeys(*data_, resolution.channel_keys);
+    {
+        const std::source_location location = std::source_location::current();
+        for (const std::string& selector : resolution.unmatched_selectors) {
+            log(detail::LogSeverity::warning,
+                local_namespace,
+                location.file_name(),
+                static_cast<int>(location.line()),
+                location.function_name(),
+                fmt::format(
+                    "disable ignored channel selector '{}' because it matched no registered channels",
+                    selector));
+        }
+    }
 
     KTRACE("api",
            "processing channels (enable api.channels for details): disabled {} channel(s), {} unmatched selector(s)",
@@ -223,19 +235,6 @@ void DisableChannels(std::string_view selectors_csv, std::string_view local_name
            resolution.channel_keys.size(),
            selector_text,
            resolution.unmatched_selectors.size());
-}
-
-void ClearEnabledChannels() {
-    detail::ensureInternalTraceChannelsRegistered();
-    auto& state = detail::getTraceState();
-    {
-        std::lock_guard<std::mutex> lock(state.enabled_channels_mutex);
-        state.enabled_channel_keys.clear();
-        state.has_enabled_channels.store(false, std::memory_order_relaxed);
-    }
-    KTRACE("api",
-           "processing channels (enable api.channels for details): cleared enabled channels");
-    KTRACE("api.channels", "cleared all enabled channels");
 }
 
 } // namespace ktrace

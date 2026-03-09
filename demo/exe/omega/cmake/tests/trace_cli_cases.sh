@@ -94,7 +94,7 @@ case "$test_case" in
             echo "Expected non-zero exit status for unknown trace option" >&2
             exit 1
         fi
-        require_contains "$output" "CLI error: unknown option --trace-f"
+        require_contains "$output" "[error] [cli] unknown option --trace-f"
         require_not_contains "$output" "Available --trace-* options:"
         ;;
     blank_trace)
@@ -117,7 +117,7 @@ case "$test_case" in
             echo "Expected non-zero exit status for invalid selector" >&2
             exit 1
         fi
-        require_contains "$output" "CLI error: option '--trace': Invalid trace selector: '*' (did you mean '.*'?)"
+        require_contains "$output" "[error] [cli] option '--trace': Invalid trace selector: '*' (did you mean '.*'?)"
         require_not_contains "$output" "Trace selector examples:"
         ;;
     exact_selector_warning)
@@ -198,7 +198,7 @@ case "$test_case" in
             echo "Expected non-zero exit status for removed lines option" >&2
             exit 1
         fi
-        require_contains "$output" "CLI error: unknown option --trace-lines"
+        require_contains "$output" "[error] [cli] unknown option --trace-lines"
         require_not_contains "$output" "Trace selector examples:"
         ;;
     wildcard_all_depth3)
@@ -211,8 +211,10 @@ case "$test_case" in
             exit 1
         fi
         require_not_contains "$output" "CLI error:"
+        require_regex "$output" "(^|\\n)\\[omega\\] \\[app\\] omega initialized local trace channels($|\\n)"
+        require_regex "$output" "(^|\\n)\\[ktrace\\] \\[api\\] processing channels \\(enable api\\.channels for details\\): enabled [0-9]+ channel\\(s\\), 0 unmatched selector\\(s\\)($|\\n)"
         require_contains "$output" "omega trace test on channel 'deep.branch.leaf'"
-        require_contains "$output" "alpha trace test on channel 'net'"
+        require_contains "$output" "[alpha] [net] testing..."
         require_contains "$output" "beta trace test on channel 'io'"
         require_contains "$output" "gamma trace test on channel 'physics'"
         ;;
@@ -226,9 +228,9 @@ case "$test_case" in
             exit 1
         fi
         require_not_contains "$output" "CLI error:"
-        require_contains "$output" "alpha trace test on channel 'net'"
+        require_contains "$output" "[alpha] [net] testing..."
         require_contains "$output" "beta trace test on channel 'io'"
-        require_not_contains "$output" "alpha trace test on channel 'cache'"
+        require_not_contains "$output" "[alpha] [cache] testing..."
         require_not_contains "$output" "beta trace test on channel 'scheduler'"
         require_not_contains "$output" "gamma trace test on channel 'physics'"
         require_not_contains "$output" "gamma trace test on channel 'metrics'"

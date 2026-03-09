@@ -51,8 +51,15 @@ int main(int argc, char** argv) {
     ktrace::demo::alpha::TestTraceLoggingChannels();
     ktrace::demo::beta::TestTraceLoggingChannels();
     ktrace::demo::gamma::TestTraceLoggingChannels();
+    ktrace::demo::alpha::TestStandardLoggingChannels();
+    //ktrace::demo::beta::TestStandardLoggingChannels();
+    //ktrace::demo::gamma::TestStandardLoggingChannels();
 
     KTRACE("orchestrator", "omega completed imported SDK trace checks");
+
+    ktrace::Info("testing...");
+    ktrace::Warn("testing...");
+    ktrace::Error("testing...");
 
     return 0;
 }

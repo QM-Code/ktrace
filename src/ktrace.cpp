@@ -2,7 +2,70 @@
 
 #include "ktrace.hpp"
 
+#include <array>
+#include <cstdio>
 #include <stdexcept>
+#include <utility>
+
+namespace {
+
+struct InternalChannelConfig {
+    std::string_view channel;
+    ktrace::ColorId color;
+};
+
+constexpr std::array<InternalChannelConfig, 8> kInternalChannels = {{
+    {"api", 6u},
+    {"api.channels", ktrace::kDefaultColor},
+    {"api.cli", ktrace::kDefaultColor},
+    {"api.output", ktrace::kDefaultColor},
+    {"selector", 3u},
+    {"selector.parse", ktrace::kDefaultColor},
+    {"registry", 5u},
+    {"registry.query", ktrace::kDefaultColor},
+}};
+
+ktrace::TraceLogger makeInternalTraceLogger() {
+    ktrace::TraceLogger logger;
+    for (const InternalChannelConfig& config : kInternalChannels) {
+        logger.addChannel(config.channel, config.color);
+    }
+    return logger;
+}
+
+void emitLine(ktrace::detail::LoggerData& logger_data,
+              std::string_view prefix,
+              std::string_view message) {
+    std::lock_guard<std::mutex> lock(logger_data.output_mutex);
+    std::fwrite(prefix.data(), 1, prefix.size(), stdout);
+    std::fwrite(" ", 1, 1, stdout);
+    std::fwrite(message.data(), 1, message.size(), stdout);
+    std::fwrite("\n", 1, 1, stdout);
+    std::fflush(stdout);
+}
+
+} // namespace
+
+namespace ktrace::detail {
+
+std::unique_ptr<TraceLoggerData> MakeTraceLoggerData(std::string_view trace_namespace) {
+    auto data = std::make_unique<TraceLoggerData>();
+    data->trace_namespace = trimWhitespace(std::string(trace_namespace));
+    if (!isSelectorIdentifier(data->trace_namespace)) {
+        throw std::invalid_argument("invalid trace namespace '" + data->trace_namespace + "'");
+    }
+    return data;
+}
+
+TraceLoggerData CloneTraceLoggerData(const TraceLoggerData& data) {
+    return data;
+}
+
+std::unique_ptr<LoggerData> MakeLoggerData() {
+    return std::make_unique<LoggerData>();
+}
+
+} // namespace ktrace::detail
 
 namespace ktrace {
 
@@ -26,41 +89,89 @@ ColorId Color(std::string_view color_name) {
     throw std::invalid_argument("unknown trace color '" + token + "'");
 }
 
-void Initialize() {
-    detail::ensureInternalTraceChannelsRegistered();
+TraceLogger::TraceLogger(const TraceLogger& other)
+    : data_(std::make_unique<detail::TraceLoggerData>(detail::CloneTraceLoggerData(*other.data_))) {}
+
+TraceLogger::TraceLogger(std::string_view trace_namespace)
+    : data_(detail::MakeTraceLoggerData(trace_namespace)) {}
+
+TraceLogger& TraceLogger::operator=(const TraceLogger& other) {
+    if (this == &other) {
+        return *this;
+    }
+
+    *data_ = detail::CloneTraceLoggerData(*other.data_);
+    return *this;
 }
 
-OutputOptions detail::getRequestedOutputOptions() {
-    auto& state = getTraceState();
-    return {
-        .filenames = state.requested_filenames.load(std::memory_order_relaxed),
-        .line_numbers = state.requested_line_numbers.load(std::memory_order_relaxed),
-        .function_names = state.requested_function_names.load(std::memory_order_relaxed),
-        .timestamps = state.requested_timestamps.load(std::memory_order_relaxed),
-    };
+TraceLogger::TraceLogger(TraceLogger&& other) noexcept = default;
+
+TraceLogger& TraceLogger::operator=(TraceLogger&& other) noexcept = default;
+
+TraceLogger::~TraceLogger() = default;
+
+void TraceLogger::addChannel(std::string_view channel, ColorId color) {
+    detail::addChannelSpecOrThrow(*data_, channel, color);
 }
 
-void SetOutputOptions(const OutputOptions& options) {
-    detail::ensureInternalTraceChannelsRegistered();
-    const bool line_numbers_enabled = options.filenames && options.line_numbers;
-    const bool function_names_enabled = options.filenames && options.function_names;
+Logger::Logger()
+    : data_(detail::MakeLoggerData()) {
+    addTraceLogger(makeInternalTraceLogger());
+}
 
-    auto& state = detail::getTraceState();
-    state.requested_filenames.store(options.filenames, std::memory_order_relaxed);
-    state.requested_line_numbers.store(options.line_numbers, std::memory_order_relaxed);
-    state.requested_function_names.store(options.function_names, std::memory_order_relaxed);
-    state.requested_timestamps.store(options.timestamps, std::memory_order_relaxed);
-    state.filenames_enabled.store(options.filenames, std::memory_order_relaxed);
-    state.line_numbers_enabled.store(line_numbers_enabled, std::memory_order_relaxed);
-    state.function_names_enabled.store(function_names_enabled, std::memory_order_relaxed);
-    state.timestamps_enabled.store(options.timestamps, std::memory_order_relaxed);
+Logger::~Logger() {
+    if (detail::GetActiveLogger() == this) {
+        detail::SetActiveLogger(nullptr);
+    }
+}
+
+void Logger::addTraceLogger(const TraceLogger& logger) {
+    detail::mergeTraceLoggerOrThrow(*data_, *logger.data_);
+}
+
+void Logger::activate() {
+    detail::SetActiveLogger(this);
+}
+
+void Logger::setOutputOptions(const OutputOptions& options) {
+    detail::setOutputOptions(*data_, options);
     KTRACE("api", "updating output options (enable api.output for details)");
     KTRACE("api.output",
            "set output options: filenames={} line_numbers={} function_names={} timestamps={}",
-           options.filenames,
-           line_numbers_enabled,
-           function_names_enabled,
-           options.timestamps);
+           getOutputOptions().filenames,
+           getOutputOptions().line_numbers,
+           getOutputOptions().function_names,
+           getOutputOptions().timestamps);
+}
+
+OutputOptions Logger::getOutputOptions() const {
+    return detail::getOutputOptions(*data_);
+}
+
+bool Logger::shouldTrace(std::string_view trace_namespace, std::string_view channel) const {
+    return detail::isTraceChannelEnabled(*data_, trace_namespace, channel);
+}
+
+void Logger::trace(std::string_view trace_namespace,
+                   std::string_view channel,
+                   std::string_view source_file,
+                   int source_line,
+                   std::string_view function_name,
+                   std::string_view message) const {
+    const auto prefix = detail::buildTraceMessagePrefix(
+        *data_, trace_namespace, channel, source_file, source_line, function_name);
+    emitLine(*data_, prefix, message);
+}
+
+void Logger::log(detail::LogSeverity severity,
+                 std::string_view trace_namespace,
+                 std::string_view source_file,
+                 int source_line,
+                 std::string_view function_name,
+                 std::string_view message) const {
+    const auto prefix = detail::buildLogMessagePrefix(
+        *data_, trace_namespace, severity, source_file, source_line, function_name);
+    emitLine(*data_, prefix, message);
 }
 
 } // namespace ktrace

@@ -23,69 +23,91 @@ void ExpectFalse(const bool condition, const std::string& message) {
     }
 }
 
-void RegisterTestChannels() {
-    static bool registered = false;
-    if (registered) {
-        return;
-    }
-
-    ktrace::Initialize();
-    ktrace::RegisterChannel("net");
-    ktrace::RegisterChannel("cache");
-
-    ktrace::detail::RegisterChannelBridge("foreignns", "store", ktrace::kDefaultColor);
-    ktrace::detail::RegisterChannelBridge("foreignns", "store.requests", ktrace::kDefaultColor);
-
-    registered = true;
+void AddTestChannels(ktrace::Logger& logger) {
+    ktrace::TraceLogger tracer;
+    tracer.addChannel("net");
+    tracer.addChannel("cache");
+    tracer.addChannel("store");
+    tracer.addChannel("store.requests");
+    logger.addTraceLogger(tracer);
 }
 
 void VerifyExplicitOnOffSemantics() {
-    ktrace::ClearEnabledChannels();
+    ktrace::Logger logger;
+    AddTestChannels(logger);
 
-    ktrace::EnableChannels("tests.*");
-    ExpectTrue(ktrace::ShouldTraceChannel("tests.net"), "tests.net should be enabled by tests.*");
-    ExpectTrue(ktrace::ShouldTraceChannel("tests.cache"), "tests.cache should be enabled by tests.*");
+    logger.enableChannels("tests.*");
+    ExpectTrue(logger.shouldTraceChannel("tests.net"), "tests.net should be enabled by tests.*");
+    ExpectTrue(logger.shouldTraceChannel("tests.cache"), "tests.cache should be enabled by tests.*");
 
-    ktrace::DisableChannels("tests.*");
-    ExpectFalse(ktrace::ShouldTraceChannel("tests.net"), "tests.net should be disabled by tests.*");
-    ExpectFalse(ktrace::ShouldTraceChannel("tests.cache"), "tests.cache should be disabled by tests.*");
+    logger.disableChannels("tests.*");
+    ExpectFalse(logger.shouldTraceChannel("tests.net"), "tests.net should be disabled by tests.*");
+    ExpectFalse(logger.shouldTraceChannel("tests.cache"), "tests.cache should be disabled by tests.*");
 
-    ktrace::EnableChannel("tests.net");
-    ExpectTrue(ktrace::ShouldTraceChannel("tests.net"),
+    logger.enableChannel("tests.net");
+    ExpectTrue(logger.shouldTraceChannel("tests.net"),
                "explicit enable should turn tests.net back on after broad disable");
-    ExpectFalse(ktrace::ShouldTraceChannel("tests.cache"),
+    ExpectFalse(logger.shouldTraceChannel("tests.cache"),
                 "tests.cache should stay off after explicit enable of tests.net");
 
-    ktrace::DisableChannel("tests.net");
-    ExpectFalse(ktrace::ShouldTraceChannel("tests.net"),
+    logger.disableChannel("tests.net");
+    ExpectFalse(logger.shouldTraceChannel("tests.net"),
                 "explicit disable should turn tests.net back off");
 }
 
-void VerifyRegisteredNamespaceSemantics() {
-    ktrace::ClearEnabledChannels();
+void VerifyRegisteredChannelSemantics() {
+    ktrace::Logger logger;
+    AddTestChannels(logger);
 
-    ktrace::EnableChannels("*.*.*");
-    ExpectTrue(ktrace::detail::ShouldTraceBridge("foreignns", "store.requests"),
-               "foreignns.store.requests should trace when explicitly registered and enabled");
-    ExpectFalse(ktrace::detail::ShouldTraceBridge("tests", "store.requests"),
-                "tests.store.requests should not trace when only foreignns.store.requests is registered");
-    ExpectFalse(ktrace::detail::ShouldTraceBridge("tests", "bad name"),
+    logger.enableChannels("*.*.*");
+    ExpectTrue(logger.shouldTraceChannel("tests.store.requests"),
+               "tests.store.requests should trace when explicitly registered and enabled");
+    ExpectTrue(logger.shouldTraceChannel("tests.net"),
+               "tests.net should trace when *.*.* enables channels up to depth 2");
+    ExpectFalse(logger.shouldTraceChannel("tests.bad name"),
                 "invalid runtime channel names should not trace");
 
-    ktrace::EnableChannel("tests.store.requests");
-    ExpectFalse(ktrace::ShouldTraceChannel("tests.store.requests"),
-                "EnableChannel should ignore unregistered exact channels");
+    logger.enableChannel("tests.missing.child");
+    ExpectFalse(logger.shouldTraceChannel("tests.missing.child"),
+                "enableChannel should ignore unregistered exact channels");
 
-    ktrace::EnableChannels("tests.store.requests");
-    ExpectFalse(ktrace::ShouldTraceChannel("tests.store.requests"),
-                "EnableChannels should ignore unresolved exact selectors");
+    logger.enableChannels("tests.missing.child");
+    ExpectFalse(logger.shouldTraceChannel("tests.missing.child"),
+                "enableChannels should ignore unresolved exact selectors");
+}
+
+void VerifyTraceLoggerMergeSemantics() {
+    ktrace::Logger logger;
+
+    ktrace::TraceLogger first;
+    first.addChannel("net");
+    logger.addTraceLogger(first);
+
+    ktrace::TraceLogger duplicate;
+    duplicate.addChannel("net");
+    logger.addTraceLogger(duplicate);
+
+    ktrace::TraceLogger explicit_color;
+    explicit_color.addChannel("net", ktrace::Color("Gold3"));
+    logger.addTraceLogger(explicit_color);
+
+    ktrace::TraceLogger conflicting_color;
+    conflicting_color.addChannel("net", ktrace::Color("Orange3"));
+
+    bool threw = false;
+    try {
+        logger.addTraceLogger(conflicting_color);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    ExpectTrue(threw, "conflicting explicit channel colors should be rejected");
 }
 
 } // namespace
 
 int main() {
-    RegisterTestChannels();
     VerifyExplicitOnOffSemantics();
-    VerifyRegisteredNamespaceSemantics();
+    VerifyRegisteredChannelSemantics();
+    VerifyTraceLoggerMergeSemantics();
     return 0;
 }
