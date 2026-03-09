@@ -33,6 +33,11 @@ struct State {
     std::unordered_set<std::string> enabled_channel_keys;
     std::atomic<bool> has_enabled_channels{false};
 
+    std::atomic<bool> requested_filenames{false};
+    std::atomic<bool> requested_line_numbers{false};
+    std::atomic<bool> requested_function_names{false};
+    std::atomic<bool> requested_timestamps{false};
+
     std::atomic<bool> filenames_enabled{false};
     std::atomic<bool> line_numbers_enabled{false};
     std::atomic<bool> function_names_enabled{false};
@@ -70,6 +75,7 @@ std::string buildLogMessagePrefix(std::string_view trace_namespace,
                                   std::string_view source_file,
                                   int source_line,
                                   std::string_view function_name);
+OutputOptions getRequestedOutputOptions();
 
 std::vector<Selector> parseSelectorList(const std::string& list,
                                         std::string_view local_namespace,

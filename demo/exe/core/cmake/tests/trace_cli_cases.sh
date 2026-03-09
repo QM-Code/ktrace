@@ -26,7 +26,7 @@ fi
 require_contains() {
     local output="$1"
     local needle="$2"
-    if ! grep -Fq "$needle" <<<"$output"; then
+    if ! grep -Fq -- "$needle" <<<"$output"; then
         echo "Expected output to contain: $needle" >&2
         echo "--- output begin ---" >&2
         echo "$output" >&2
@@ -38,7 +38,7 @@ require_contains() {
 require_not_contains() {
     local output="$1"
     local needle="$2"
-    if grep -Fq "$needle" <<<"$output"; then
+    if grep -Fq -- "$needle" <<<"$output"; then
         echo "Expected output to not contain: $needle" >&2
         echo "--- output begin ---" >&2
         echo "$output" >&2
@@ -50,7 +50,7 @@ require_not_contains() {
 require_regex() {
     local output="$1"
     local pattern="$2"
-    if ! grep -Eq "$pattern" <<<"$output"; then
+    if ! grep -Eq -- "$pattern" <<<"$output"; then
         echo "Expected output to match regex: $pattern" >&2
         echo "--- output begin ---" >&2
         echo "$output" >&2
@@ -61,32 +61,70 @@ require_regex() {
 
 run_case() {
     local -a args=("$@")
-    "$binary" "${args[@]}" 2>&1 || true
+    local output
+    set +e
+    output="$("$binary" "${args[@]}" 2>&1)"
+    local status=$?
+    set -e
+    echo "$status"$'\n'"$output"
 }
+
+run_and_split() {
+    local payload
+    payload="$(run_case "$@")"
+    status="$(head -n1 <<<"$payload")"
+    output="$(tail -n +2 <<<"$payload")"
+}
+
+status=0
+output=""
 
 case "$test_case" in
     unknown_option)
-        output="$(run_case --trace-f)"
-        require_contains "$output" "unknown option --trace-f (use --trace to list options)"
-        require_not_contains "$output" "--trace-help"
-        require_not_contains "$output" "Trace logging options:"
-        require_not_contains "$output" "Trace selector examples:"
+        run_and_split --trace-f
+        if [[ "$status" -eq 0 ]]; then
+            echo "Expected non-zero exit status for unknown trace option" >&2
+            exit 1
+        fi
+        require_contains "$output" "CLI error: unknown option --trace-f"
+        require_not_contains "$output" "Available --trace-* options:"
         ;;
     blank_trace)
-        output="$(run_case --trace)"
+        run_and_split --trace
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for bare trace root" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
         require_contains "$output" "Available --trace-* options:"
-        require_not_contains "$output" "--trace-help"
-        require_not_contains "$output" "Trace option error:"
+        require_contains "$output" "--trace <channels>"
+        require_not_contains "$output" "CLI error:"
         require_not_contains "$output" "Trace selector examples:"
         ;;
     timestamps_option)
-        output="$(run_case --trace ".app" --trace-timestamps)"
+        run_and_split --trace ".app" --trace-timestamps
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for timestamps option" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
         require_regex "$output" "\\[core\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] cli processing enabled, use --trace for options"
-        require_not_contains "$output" "Trace option error:"
+        require_not_contains "$output" "CLI error:"
         ;;
     imported_selector)
-        output="$(run_case --trace "*.*")"
-        require_not_contains "$output" "Trace option error:"
+        run_and_split --trace "*.*"
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for imported selector" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
+        require_not_contains "$output" "CLI error:"
         require_contains "$output" "testing imported tracing, use --trace '*.*' to view imported channels"
         require_contains "$output" "alpha trace test on channel 'net'"
         ;;

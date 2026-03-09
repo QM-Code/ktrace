@@ -3,6 +3,8 @@
 #include <gamma/sdk.hpp>
 #include <ktrace.hpp>
 
+#include <iostream>
+
 int main(int argc, char** argv) {
     // Register channels.
     ktrace::RegisterChannel("app", ktrace::Color("BrightCyan"));
@@ -21,8 +23,17 @@ int main(int argc, char** argv) {
     ktrace::demo::beta::InitializeTraceLogging();
     ktrace::demo::gamma::SystemStartup();
 
-    // Process the CLI (must happen after enabling external library tracing).
-    ktrace::ProcessCLI(argc, argv, "trace");
+    // Build and run the CLI parser after all trace channels are registered.
+    kcli::PrimaryParser parser;
+    parser.addInlineParser(ktrace::GetInlineParser("trace"));
+
+    try {
+        parser.parse(argc, argv);
+    } catch (const kcli::CliError& ex) {
+        std::cerr << "CLI error: " << ex.what() << "\n";
+        return 2;
+    }
+
     KTRACE("app", "cli processing enabled, use --trace for options");
 
     // Exercise imported SDK trace logging.

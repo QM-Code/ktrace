@@ -49,6 +49,23 @@ Trace CLI examples:
 ./demo/exe/omega/build/latest/test --trace-colors
 ```
 
+## CLI Integration
+
+Build the parser up front, add the ktrace inline parser, and wrap the single
+`parse(argc, argv)` call in a `try`/`catch` block:
+
+```cpp
+kcli::PrimaryParser parser;
+parser.addInlineParser(ktrace::GetInlineParser("trace"));
+
+try {
+    parser.parse(argc, argv);
+} catch (const kcli::CliError& ex) {
+    std::cerr << "CLI error: " << ex.what() << "\n";
+    return 2;
+}
+```
+
 ## Install
 
 `KTRACE_NAMESPACE` must be defined by consumers before use.

@@ -59,10 +59,10 @@ add_test(
 )
 
 add_test(
-    NAME demo_cli_functions_require_files_warning
+    NAME demo_cli_functions_with_timestamps_option
     COMMAND ${KTRACE_TRACE_CLI_CASES_SCRIPT}
             $<TARGET_FILE:ktrace_demo_omega>
-            functions_requires_files_warning
+            functions_with_timestamps
 )
 
 add_test(

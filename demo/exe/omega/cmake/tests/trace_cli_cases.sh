@@ -12,7 +12,7 @@ usage() {
     echo "  timestamps_option"
     echo "  files_option"
     echo "  functions_option"
-    echo "  functions_requires_files_warning"
+    echo "  functions_with_timestamps"
     echo "  removed_lines_option"
     echo "  wildcard_all_depth3"
     echo "  brace_selector"
@@ -34,7 +34,7 @@ fi
 require_contains() {
     local output="$1"
     local needle="$2"
-    if ! grep -Fq "$needle" <<<"$output"; then
+    if ! grep -Fq -- "$needle" <<<"$output"; then
         echo "Expected output to contain: $needle" >&2
         echo "--- output begin ---" >&2
         echo "$output" >&2
@@ -46,7 +46,7 @@ require_contains() {
 require_not_contains() {
     local output="$1"
     local needle="$2"
-    if grep -Fq "$needle" <<<"$output"; then
+    if grep -Fq -- "$needle" <<<"$output"; then
         echo "Expected output to not contain: $needle" >&2
         echo "--- output begin ---" >&2
         echo "$output" >&2
@@ -58,7 +58,7 @@ require_not_contains() {
 require_regex() {
     local output="$1"
     local pattern="$2"
-    if ! grep -Eq "$pattern" <<<"$output"; then
+    if ! grep -Eq -- "$pattern" <<<"$output"; then
         echo "Expected output to match regex: $pattern" >&2
         echo "--- output begin ---" >&2
         echo "$output" >&2
@@ -69,78 +69,163 @@ require_regex() {
 
 run_case() {
     local -a args=("$@")
-    "$binary" "${args[@]}" 2>&1 || true
+    local output
+    set +e
+    output="$("$binary" "${args[@]}" 2>&1)"
+    local status=$?
+    set -e
+    echo "$status"$'\n'"$output"
 }
+
+run_and_split() {
+    local payload
+    payload="$(run_case "$@")"
+    status="$(head -n1 <<<"$payload")"
+    output="$(tail -n +2 <<<"$payload")"
+}
+
+status=0
+output=""
 
 case "$test_case" in
     unknown_option)
-        output="$(run_case --trace-f)"
-        require_contains "$output" "unknown option --trace-f (use --trace to list options)"
-        require_not_contains "$output" "--trace-help"
-        require_not_contains "$output" "Trace logging options:"
-        require_not_contains "$output" "Trace selector examples:"
+        run_and_split --trace-f
+        if [[ "$status" -eq 0 ]]; then
+            echo "Expected non-zero exit status for unknown trace option" >&2
+            exit 1
+        fi
+        require_contains "$output" "CLI error: unknown option --trace-f"
+        require_not_contains "$output" "Available --trace-* options:"
         ;;
     blank_trace)
-        output="$(run_case --trace)"
+        run_and_split --trace
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for bare trace root" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
         require_contains "$output" "Available --trace-* options:"
-        require_not_contains "$output" "--trace-help"
-        require_not_contains "$output" "Trace option error:"
+        require_contains "$output" "--trace <channels>"
+        require_not_contains "$output" "CLI error:"
         require_not_contains "$output" "Trace selector examples:"
         ;;
     bad_selector)
-        output="$(run_case --trace "*")"
-        require_contains "$output" "[omega] [error] Trace option error: Invalid trace selector: '*' (did you mean '.*'?)"
-        require_contains "$output" "Trace selector examples:"
-        require_not_contains "$output" "Trace logging options:"
+        run_and_split --trace "*"
+        if [[ "$status" -eq 0 ]]; then
+            echo "Expected non-zero exit status for invalid selector" >&2
+            exit 1
+        fi
+        require_contains "$output" "CLI error: option '--trace': Invalid trace selector: '*' (did you mean '.*'?)"
+        require_not_contains "$output" "Trace selector examples:"
         ;;
     exact_selector_warning)
-        output="$(run_case --trace ".missing")"
+        run_and_split --trace ".missing"
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for unmatched exact selector" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
         require_contains "$output" "[omega] [warning] enable ignored channel selector 'omega.missing' because it matched no registered channels"
-        require_not_contains "$output" "Trace option error:"
+        require_not_contains "$output" "CLI error:"
         ;;
     wildcard_selector_warning)
-        output="$(run_case --trace "missing.*")"
+        run_and_split --trace "missing.*"
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for unmatched wildcard selector" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
         require_contains "$output" "[omega] [warning] enable ignored channel selector 'missing.*' because it matched no registered channels"
-        require_not_contains "$output" "Trace option error:"
+        require_not_contains "$output" "CLI error:"
         ;;
     timestamps_option)
-        output="$(run_case --trace ".app" --trace-timestamps)"
+        run_and_split --trace ".app" --trace-timestamps
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for timestamps option" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
         require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] cli processing enabled, use --trace for options"
         require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
         ;;
     files_option)
-        output="$(run_case --trace ".app" --trace-files)"
+        run_and_split --trace ".app" --trace-files
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for files option" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
         require_regex "$output" "\\[omega\\] \\[app\\] \\[main:[0-9]+\\] cli processing enabled, use --trace for options"
         require_regex "$output" "\\[omega\\] \\[app\\] \\[main:[0-9]+\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
         ;;
     functions_option)
-        output="$(run_case --trace ".app" --trace-files --trace-functions)"
+        run_and_split --trace ".app" --trace-functions
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for functions option" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
         require_regex "$output" "\\[omega\\] \\[app\\] \\[main:[0-9]+:main\\] cli processing enabled, use --trace for options"
         require_regex "$output" "\\[omega\\] \\[app\\] \\[main:[0-9]+:main\\] testing external tracing, use --trace '\\*\\.\\*' to view top-level channels"
-        require_not_contains "$output" "requires --trace-files to be operational"
         ;;
-    functions_requires_files_warning)
-        output="$(run_case --trace ".app" --trace-timestamps --trace-functions)"
-        require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[warning\\] --trace-functions requires --trace-files to be operational"
-        require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] cli processing enabled, use --trace for options"
-        require_not_contains "$output" "[main:"
+    functions_with_timestamps)
+        run_and_split --trace ".app" --trace-timestamps --trace-functions
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for functions with timestamps" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
+        require_regex "$output" "\\[omega\\] \\[[0-9]+\\.[0-9]{6}\\] \\[app\\] \\[main:[0-9]+:main\\] cli processing enabled, use --trace for options"
+        require_not_contains "$output" "CLI error:"
         ;;
     removed_lines_option)
-        output="$(run_case --trace ".app" --trace-lines)"
-        require_contains "$output" "unknown option --trace-lines (use --trace to list options)"
-        require_not_contains "$output" "Trace option error:"
+        run_and_split --trace ".app" --trace-lines
+        if [[ "$status" -eq 0 ]]; then
+            echo "Expected non-zero exit status for removed lines option" >&2
+            exit 1
+        fi
+        require_contains "$output" "CLI error: unknown option --trace-lines"
+        require_not_contains "$output" "Trace selector examples:"
         ;;
     wildcard_all_depth3)
-        output="$(run_case --trace "*.*.*.*")"
-        require_not_contains "$output" "Trace option error:"
+        run_and_split --trace "*.*.*.*"
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for wildcard depth3 selector" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
+        require_not_contains "$output" "CLI error:"
         require_contains "$output" "omega trace test on channel 'deep.branch.leaf'"
         require_contains "$output" "alpha trace test on channel 'net'"
         require_contains "$output" "beta trace test on channel 'io'"
         require_contains "$output" "gamma trace test on channel 'physics'"
         ;;
     brace_selector)
-        output="$(run_case --trace "*.{net,io}")"
-        require_not_contains "$output" "Trace option error:"
+        run_and_split --trace "*.{net,io}"
+        if [[ "$status" -ne 0 ]]; then
+            echo "Expected zero exit status for brace selector" >&2
+            echo "--- output begin ---" >&2
+            echo "$output" >&2
+            echo "--- output end ---" >&2
+            exit 1
+        fi
+        require_not_contains "$output" "CLI error:"
         require_contains "$output" "alpha trace test on channel 'net'"
         require_contains "$output" "beta trace test on channel 'io'"
         require_not_contains "$output" "alpha trace test on channel 'cache'"

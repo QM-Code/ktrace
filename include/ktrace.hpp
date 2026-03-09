@@ -4,6 +4,8 @@
 #error "KTRACE_NAMESPACE must be defined for trace logging."
 #endif
 
+#include <kcli.hpp>
+
 #include <cstdint>
 #include <mutex>
 #include <source_location>
@@ -28,11 +30,12 @@ struct OutputOptions {
 ColorId Color(std::string_view color_name);
 void SetOutputOptions(const OutputOptions& options);
 void Initialize();
-// Processes and consumes all argv entries that begin with trace_root (for example "--trace*").
-void ProcessCLI(int& argc,
-                char** argv,
-                std::string_view trace_root = "trace",
-                std::string_view local_namespace = KTRACE_NAMESPACE);
+// Builds the inline parser for trace_root (for example "--trace" / "--trace-*").
+kcli::InlineParser GetInlineParser(std::string_view trace_root,
+                                   std::string_view local_namespace);
+inline kcli::InlineParser GetInlineParser(std::string_view trace_root = "trace") {
+    return GetInlineParser(trace_root, KTRACE_NAMESPACE);
+}
 std::vector<std::string> GetNamespaces();
 std::vector<std::string> GetChannels(std::string_view trace_namespace);
 
