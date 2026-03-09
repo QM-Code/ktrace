@@ -2,24 +2,16 @@
 
 #include <ktrace.hpp>
 
-namespace {
-
-bool g_alpha_trace_initialized = false;
-
-} // namespace
-
 namespace ktrace::demo::alpha {
 
-void Init() {
-    if (!g_alpha_trace_initialized) {
-        ktrace::RegisterChannel("net", ktrace::Color("DeepSkyBlue1"));
-        ktrace::RegisterChannel("cache", ktrace::Color("Gold3"));
-        g_alpha_trace_initialized = true;
-    }
+ktrace::TraceLogger GetTraceLogger() {
+    ktrace::TraceLogger logger;
+    logger.addChannel("net", ktrace::Color("DeepSkyBlue1"));
+    logger.addChannel("cache", ktrace::Color("Gold3"));
+    return logger;
 }
 
 void TestTraceLoggingChannels() {
-    Init();
     KTRACE("net", "alpha trace test on channel 'net'");
     KTRACE("cache", "alpha trace test on channel 'cache'");
 }

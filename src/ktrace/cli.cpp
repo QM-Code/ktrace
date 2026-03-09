@@ -124,23 +124,16 @@ void _timestamps(const kcli::HandlerContext&) {
 
 namespace ktrace {
 
-kcli::InlineParser GetInlineParser(std::string_view trace_root,
-                                   std::string_view local_namespace) {
+kcli::InlineParser GetInlineParser(std::string_view trace_root, std::string_view local_namespace) {
     ktrace::detail::ensureInternalTraceChannelsRegistered();
-    const std::string trace_namespace = ktrace::detail::trimWhitespace(
-        std::string(local_namespace));
-    const auto _ROOT = [trace_namespace](const kcli::HandlerContext&,
-                                         std::string_view value) {
+    const std::string trace_namespace = ktrace::detail::trimWhitespace(std::string(local_namespace));
+    const auto _ROOT = [trace_namespace](const kcli::HandlerContext&,std::string_view value) {
         ktrace::EnableChannels(value, trace_namespace);
     };
 
     kcli::InlineParser parser("trace");
-    if (!trace_root.empty()) {
-        parser.setRoot(trace_root);
-    }
-    parser.setRootValueHandler(_ROOT,
-                               "<channels>",
-                               "Trace selected channels.");
+    if (!trace_root.empty()) { parser.setRoot(trace_root); }
+    parser.setRootValueHandler(_ROOT,"<channels>","Trace selected channels.");
     parser.setHandler("-examples", _examples, "Show selector examples.");
     parser.setHandler("-namespaces", _namespaces, "Show initialized trace namespaces.");
     parser.setHandler("-channels", _channels, "Show initialized trace channels.");

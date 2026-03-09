@@ -6,26 +6,35 @@
 #include <iostream>
 
 int main(int argc, char** argv) {
-    // Register channels.
-    ktrace::RegisterChannel("app", ktrace::Color("BrightCyan"));
-    ktrace::RegisterChannel("orchestrator", ktrace::Color("BrightYellow"));
-    ktrace::RegisterChannel("deep");
-    ktrace::RegisterChannel("deep.branch");
-    ktrace::RegisterChannel("deep.branch.leaf", ktrace::Color("LightSalmon1"));
+    ktrace::Logger logger;
+
+    ktrace::TraceLogger tracer;
+    tracer.addChannel("app", ktrace::Color("BrightCyan"));
+    tracer.addChannel("orchestrator", ktrace::Color("BrightYellow"));
+    tracer.addChannel("deep");
+    tracer.addChannel("deep.branch");
+    tracer.addChannel("deep.branch.leaf", ktrace::Color("LightSalmon1"));
+
+    logger.addTraceLogger(tracer);
+
+    ktrace::TraceLogger alphaTracer = ktrace::demo::alpha::GetTraceLogger();
+    ktrace::TraceLogger betaTracer = ktrace::demo::beta::GetTraceLogger();
+    ktrace::TraceLogger gammaTracer = ktrace::demo::gamma::GetTraceLogger();
+
+    logger.addTraceLogger(alphaTracer);
+    logger.addTraceLogger(betaTracer);
+    logger.addTraceLogger(gammaTracer);
+
+    logger.activate();
 
     // Enable and test a channel.
-    ktrace::EnableChannel(".app");
+    logger.enableChannel(".app");
     KTRACE("app", "omega initialized local trace channels");
-
-    // Enable external library tracing.
-    ktrace::Initialize();
-    ktrace::demo::alpha::Init();
-    ktrace::demo::beta::InitializeTraceLogging();
-    ktrace::demo::gamma::SystemStartup();
+    logger.disableChannel(".app");
 
     // Build and run the CLI parser after all trace channels are registered.
     kcli::PrimaryParser parser;
-    parser.addInlineParser(ktrace::GetInlineParser("trace"));
+    parser.addInlineParser(ktrace::GetInlineParser());
 
     try {
         parser.parse(argc, argv);
