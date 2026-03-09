@@ -86,21 +86,21 @@ bool isValidChannelPath(const std::string_view channel) {
     return true;
 }
 
-int splitChannelPath(std::string_view category, std::array<std::string_view, 3>& out) {
-    if (category.empty()) {
+int splitChannelPath(std::string_view channel, std::array<std::string_view, 3>& out) {
+    if (channel.empty()) {
         return 0;
     }
     size_t start = 0;
     int depth = 0;
-    while (start <= category.size()) {
+    while (start <= channel.size()) {
         if (depth >= 3) {
             return -1;
         }
-        const std::size_t dot = category.find('.', start);
+        const std::size_t dot = channel.find('.', start);
         const std::string_view token =
             (dot == std::string_view::npos)
-                ? category.substr(start)
-                : category.substr(start, dot - start);
+                ? channel.substr(start)
+                : channel.substr(start, dot - start);
         if (token.empty()) {
             return -1;
         }

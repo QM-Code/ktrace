@@ -28,19 +28,19 @@ constexpr std::array<InternalChannelConfig, 8> kInternalChannels = {{
     {"registry.query", ktrace::kDefaultColor},
 }};
 
-std::string makeLoggerKey(std::string_view trace_namespace, std::string_view category) {
+std::string makeLoggerKey(std::string_view trace_namespace, std::string_view channel) {
     const std::string namespace_name = ktrace::detail::trimWhitespace(std::string(trace_namespace));
-    const std::string category_name = ktrace::detail::trimWhitespace(std::string(category));
-    if (namespace_name.empty() || category_name.empty()) {
+    const std::string channel_name = ktrace::detail::trimWhitespace(std::string(channel));
+    if (namespace_name.empty() || channel_name.empty()) {
         return {};
     }
 
     std::string key;
-    key.reserve(namespace_name.size() + category_name.size() + 8);
+    key.reserve(namespace_name.size() + channel_name.size() + 8);
     key.append("ktrace.");
     key.append(namespace_name);
     key.push_back('.');
-    key.append(category_name);
+    key.append(channel_name);
     return key;
 }
 
@@ -158,9 +158,9 @@ void ensureInternalTraceChannelsRegistered() {
     });
 }
 
-bool ShouldTraceBridge(std::string_view trace_namespace, std::string_view category) {
+bool ShouldTraceBridge(std::string_view trace_namespace, std::string_view channel) {
     const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
-    return isTraceChannelEnabled(trace_namespace_name, category);
+    return isTraceChannelEnabled(trace_namespace_name, channel);
 }
 
 void RegisterChannelBridge(std::string_view trace_namespace,
@@ -183,17 +183,17 @@ void RegisterChannelBridge(std::string_view trace_namespace,
 }
 
 void TraceChecked(std::string_view trace_namespace,
-                  std::string_view category,
+                  std::string_view channel,
                   std::string_view source_file,
                   int source_line,
                   std::string_view function_name,
                   std::string_view message) {
     const std::string trace_namespace_name = trimWhitespace(std::string(trace_namespace));
-    const std::string logger_key = makeLoggerKey(trace_namespace_name, category);
+    const std::string logger_key = makeLoggerKey(trace_namespace_name, channel);
 
     if (auto* logger = getLogger(logger_key)) {
         const auto prefix = buildTraceMessagePrefix(
-            trace_namespace_name, category, source_file, source_line, function_name);
+            trace_namespace_name, channel, source_file, source_line, function_name);
         logger->trace("{} {}", prefix, message);
     }
 }

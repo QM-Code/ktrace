@@ -11,7 +11,7 @@
 
 namespace {
 
-const char* resolveCategoryColorCode(std::string_view trace_namespace, std::string_view category) {
+const char* resolveChannelColorCode(std::string_view trace_namespace, std::string_view channel) {
     ktrace::detail::initializeColorSupport();
 
     auto& state = ktrace::detail::getTraceState();
@@ -19,7 +19,7 @@ const char* resolveCategoryColorCode(std::string_view trace_namespace, std::stri
         return "";
     }
 
-    if (const auto registered = ktrace::detail::resolveChannelColor(trace_namespace, category)) {
+    if (const auto registered = ktrace::detail::resolveChannelColor(trace_namespace, channel)) {
         return ktrace::detail::ansiColorCode(*registered);
     }
     return "";
@@ -130,12 +130,12 @@ void initializeColorSupport() {
 }
 
 std::string buildTraceMessagePrefix(std::string_view trace_namespace,
-                                    std::string_view category,
+                                    std::string_view channel,
                                     std::string_view source_file,
                                     int source_line,
                                     std::string_view function_name) {
     const std::string trace_namespace_label(trace_namespace);
-    const char* color = resolveCategoryColorCode(trace_namespace, category);
+    const char* color = resolveChannelColorCode(trace_namespace, channel);
     const bool has_color = color && color[0] != '\0';
 
     auto& state = getTraceState();
@@ -144,7 +144,7 @@ std::string buildTraceMessagePrefix(std::string_view trace_namespace,
     const bool function_names_enabled = state.function_names_enabled.load(std::memory_order_relaxed);
 
     std::string out;
-    out.reserve(category.size() + source_file.size() + function_name.size() + trace_namespace_label.size() + 24);
+    out.reserve(channel.size() + source_file.size() + function_name.size() + trace_namespace_label.size() + 24);
     if (!trace_namespace_label.empty()) {
         if (state.color_enabled) {
             out.append("\x1b[38;5;250m");
@@ -173,7 +173,7 @@ std::string buildTraceMessagePrefix(std::string_view trace_namespace,
     if (has_color) {
         out.append(color);
     }
-    out.append(category);
+    out.append(channel);
     if (has_color) {
         out.append("\x1b[0m");
     }

@@ -276,7 +276,7 @@ const std::array<std::string_view, 256>& colorNames() {
 }
 
 std::optional<ColorId> resolveChannelColor(std::string_view trace_namespace,
-                                           std::string_view category) {
+                                           std::string_view channel) {
     auto& state = getTraceState();
     std::lock_guard<std::mutex> lock(state.registry_mutex);
     const auto ns_it = state.channel_colors_by_namespace.find(std::string(trace_namespace));
@@ -284,7 +284,7 @@ std::optional<ColorId> resolveChannelColor(std::string_view trace_namespace,
         return std::nullopt;
     }
 
-    std::string key(category);
+    std::string key(channel);
     while (!key.empty()) {
         const auto it = ns_it->second.find(key);
         if (it != ns_it->second.end()) {

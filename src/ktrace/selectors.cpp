@@ -356,13 +356,13 @@ SelectorResolution resolveSelectorExpressionOrThrow(std::string_view selectors_c
 
 bool matchesSelector(const Selector& selector,
                      const std::string_view trace_namespace,
-                     const std::string_view category) {
+                     const std::string_view channel) {
     if (!selector.any_namespace && trace_namespace != selector.trace_namespace) {
         return false;
     }
 
     std::array<std::string_view, 3> channel_parts{};
-    const int channel_depth = splitChannelPath(category, channel_parts);
+    const int channel_depth = splitChannelPath(channel, channel_parts);
     if (channel_depth <= 0) {
         return false;
     }

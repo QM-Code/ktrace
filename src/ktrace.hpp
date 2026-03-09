@@ -58,7 +58,7 @@ std::string trimWhitespace(const std::string& value);
 bool isSelectorIdentifierChar(char c);
 bool isSelectorIdentifier(std::string_view token);
 bool isValidChannelPath(std::string_view channel);
-int splitChannelPath(std::string_view category, std::array<std::string_view, 3>& out);
+int splitChannelPath(std::string_view channel, std::array<std::string_view, 3>& out);
 bool matchesSelectorSegment(const std::string& pattern, std::string_view value);
 
 bool isRegisteredTraceChannel(std::string_view trace_namespace, std::string_view channel);
@@ -79,14 +79,14 @@ SelectorResolution resolveSelectorExpressionOrThrow(std::string_view selectors_c
                                                     std::string_view local_namespace);
 bool matchesSelector(const Selector& selector,
                      std::string_view trace_namespace,
-                     std::string_view category);
+                     std::string_view channel);
 bool isTraceChannelEnabled(std::string_view trace_namespace, std::string_view channel);
 void ensureInternalTraceChannelsRegistered();
 
 std::optional<ColorId> resolveChannelColor(std::string_view trace_namespace,
-                                           std::string_view category);
+                                           std::string_view channel);
 std::string buildTraceMessagePrefix(std::string_view trace_namespace,
-                                    std::string_view category,
+                                    std::string_view channel,
                                     std::string_view source_file,
                                     int source_line,
                                     std::string_view function_name);

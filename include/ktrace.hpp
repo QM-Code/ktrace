@@ -62,14 +62,14 @@ enum class LogSeverity;
 struct LogTextWithSource;
 
 bool ShouldTraceBridge(std::string_view trace_namespace,
-                       std::string_view category);
+                       std::string_view channel);
 void RegisterChannelBridge(std::string_view trace_namespace,
                            std::string_view channel,
                            ColorId color);
 // Internal bridge for KTRACE/KTRACE_CHANGED. Do not call directly.
 // Use KTRACE/KTRACE_CHANGED for trace logging.
 void TraceChecked(std::string_view trace_namespace,
-                  std::string_view category,
+                  std::string_view channel,
                   std::string_view source_file,
                   int source_line,
                   std::string_view function_name,
@@ -121,13 +121,13 @@ inline void RegisterChannel(std::string_view channel, ColorId color) {
     detail::RegisterChannelBridge(KTRACE_NAMESPACE, channel, color);
 }
 
-#define KTRACE(cat, format_text, ...)                                            \
+#define KTRACE(channel, format_text, ...)                                        \
     do {                                                                          \
-        auto&& ktrace_category_expr_ = (cat);                                     \
+        auto&& ktrace_channel_expr_ = (channel);                                  \
         if (::ktrace::detail::ShouldTraceBridge(KTRACE_NAMESPACE,                 \
-                                                ktrace_category_expr_)) {         \
+                                                ktrace_channel_expr_)) {          \
             ::ktrace::detail::TraceChecked(KTRACE_NAMESPACE,                      \
-                                           ktrace_category_expr_,                  \
+                                           ktrace_channel_expr_,                   \
                                            __FILE__,                               \
                                            __LINE__,                               \
                                            __func__,                               \
@@ -135,9 +135,9 @@ inline void RegisterChannel(std::string_view channel, ColorId color) {
         }                                                                         \
     } while (0)
 
-#define KTRACE_CHANGED(cat, key_expr, format_text, ...)                      \
+#define KTRACE_CHANGED(channel, key_expr, format_text, ...)                       \
     do {                                                                          \
-        auto&& ktrace_category_expr_ = (cat);                                     \
+        auto&& ktrace_channel_expr_ = (channel);                                  \
         static std::string last_key;                                              \
         static std::mutex last_key_mutex;                                         \
         std::string next_key = (key_expr);                                        \
@@ -151,9 +151,9 @@ inline void RegisterChannel(std::string_view channel, ColorId color) {
         }                                                                         \
         if (key_changed &&                                                         \
             ::ktrace::detail::ShouldTraceBridge(KTRACE_NAMESPACE,                 \
-                                                ktrace_category_expr_)) {         \
+                                                ktrace_channel_expr_)) {          \
             ::ktrace::detail::TraceChecked(KTRACE_NAMESPACE,                      \
-                                           ktrace_category_expr_,                  \
+                                           ktrace_channel_expr_,                   \
                                            __FILE__,                               \
                                            __LINE__,                               \
                                            __func__,                               \
