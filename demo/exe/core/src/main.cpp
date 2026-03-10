@@ -1,8 +1,6 @@
 #include <alpha/sdk.hpp>
 #include <ktrace.hpp>
 
-#include <iostream>
-
 int main(int argc, char** argv) {
     ktrace::Logger logger;
 
@@ -19,15 +17,10 @@ int main(int argc, char** argv) {
     logger.enableChannel(".app");
     KTRACE("app", "core initialized local trace channels");
 
-    kcli::PrimaryParser parser;
+    kcli::Parser parser;
     parser.addInlineParser(ktrace::GetInlineParser());
 
-    try {
-        parser.parse(argc, argv);
-    } catch (const kcli::CliError& ex) {
-        std::cerr << "CLI error: " << ex.what() << "\n";
-        return 2;
-    }
+    parser.parseOrExit(argc, argv);
 
     KTRACE("app", "cli processing enabled, use --trace for options");
 

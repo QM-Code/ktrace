@@ -55,22 +55,17 @@ Trace CLI examples:
 
 ## CLI Integration
 
-Activate a `ktrace::Logger`, add the global ktrace inline parser, and wrap the
-single `parse(argc, argv)` call in a `try`/`catch` block:
+Activate a `ktrace::Logger`, add the global ktrace inline parser, and use the
+single `parseOrExit(argc, argv)` call:
 
 ```cpp
 ktrace::Logger logger;
 logger.activate();
 
-kcli::PrimaryParser parser;
+kcli::Parser parser;
 parser.addInlineParser(ktrace::GetInlineParser());
 
-try {
-    parser.parse(argc, argv);
-} catch (const kcli::CliError& ex) {
-    std::cerr << "CLI error: " << ex.what() << "\n";
-    return 2;
-}
+parser.parseOrExit(argc, argv);
 ```
 
 ## Install

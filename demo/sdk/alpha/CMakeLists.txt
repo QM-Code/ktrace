@@ -25,7 +25,6 @@ function(ktools_apply_runtime_rpath target_name)
     endif()
     set_target_properties("${target_name}" PROPERTIES
         BUILD_RPATH "${KTOOLS_RUNTIME_RPATH_DIRS}"
-        INSTALL_RPATH "${KTOOLS_RUNTIME_RPATH_DIRS}"
     )
 endfunction()
 
