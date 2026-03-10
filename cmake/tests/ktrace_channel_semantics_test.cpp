@@ -24,7 +24,7 @@ void ExpectFalse(const bool condition, const std::string& message) {
 }
 
 void AddTestChannels(ktrace::Logger& logger) {
-    ktrace::TraceLogger tracer;
+    ktrace::TraceLogger tracer("tests");
     tracer.addChannel("net");
     tracer.addChannel("cache");
     tracer.addChannel("store");
@@ -79,19 +79,19 @@ void VerifyRegisteredChannelSemantics() {
 void VerifyTraceLoggerMergeSemantics() {
     ktrace::Logger logger;
 
-    ktrace::TraceLogger first;
+    ktrace::TraceLogger first("tests");
     first.addChannel("net");
     logger.addTraceLogger(first);
 
-    ktrace::TraceLogger duplicate;
+    ktrace::TraceLogger duplicate("tests");
     duplicate.addChannel("net");
     logger.addTraceLogger(duplicate);
 
-    ktrace::TraceLogger explicit_color;
+    ktrace::TraceLogger explicit_color("tests");
     explicit_color.addChannel("net", ktrace::Color("Gold3"));
     logger.addTraceLogger(explicit_color);
 
-    ktrace::TraceLogger conflicting_color;
+    ktrace::TraceLogger conflicting_color("tests");
     conflicting_color.addChannel("net", ktrace::Color("Orange3"));
 
     bool threw = false;

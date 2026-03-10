@@ -1,6 +1,5 @@
 set(KTRACE_SOURCES
     ${PROJECT_SOURCE_DIR}/src/ktrace.cpp
-    ${PROJECT_SOURCE_DIR}/src/ktrace/bridge.cpp
     ${PROJECT_SOURCE_DIR}/src/ktrace/cli.cpp
     ${PROJECT_SOURCE_DIR}/src/ktrace/colors.cpp
     ${PROJECT_SOURCE_DIR}/src/ktrace/filter.cpp
@@ -52,9 +51,6 @@ if(KTRACE_BUILD_STATIC)
         ${_ktrace_kcli_static_dep}
     )
 
-    # Internal trace macros require a compile-time namespace string.
-    target_compile_definitions(ktrace_sdk_static PRIVATE KTRACE_NAMESPACE="ktrace")
-
     set_target_properties(ktrace_sdk_static PROPERTIES
         OUTPUT_NAME ktrace
         EXPORT_NAME sdk_static
@@ -77,9 +73,6 @@ if(KTRACE_BUILD_SHARED)
     target_link_libraries(ktrace_sdk_shared PUBLIC
         ${_ktrace_kcli_shared_dep}
     )
-
-    # Internal trace macros require a compile-time namespace string.
-    target_compile_definitions(ktrace_sdk_shared PRIVATE KTRACE_NAMESPACE="ktrace")
 
     set_target_properties(ktrace_sdk_shared PROPERTIES
         OUTPUT_NAME ktrace

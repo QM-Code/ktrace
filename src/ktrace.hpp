@@ -5,6 +5,7 @@
 #include <array>
 #include <atomic>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -22,6 +23,10 @@ struct ChannelSpec {
 struct TraceLoggerData {
     std::string trace_namespace{};
     std::vector<ChannelSpec> channels{};
+    mutable std::mutex attached_logger_mutex;
+    std::weak_ptr<LoggerData> attached_logger{};
+    mutable std::mutex changed_keys_mutex;
+    std::unordered_map<std::string, std::string> changed_keys{};
 };
 
 struct Selector {
@@ -53,15 +58,11 @@ struct LoggerData {
     std::unordered_map<std::string, std::vector<std::string>> channels_by_namespace;
     std::unordered_map<std::string, std::unordered_map<std::string, ColorId>>
         channel_colors_by_namespace;
+    std::vector<std::shared_ptr<TraceLoggerData>> attached_trace_loggers{};
 };
 
-std::unique_ptr<TraceLoggerData> MakeTraceLoggerData(std::string_view trace_namespace);
-TraceLoggerData CloneTraceLoggerData(const TraceLoggerData& data);
-std::unique_ptr<LoggerData> MakeLoggerData();
-
-Logger* GetActiveLogger();
-Logger& RequireActiveLogger();
-void SetActiveLogger(Logger* logger);
+std::shared_ptr<TraceLoggerData> MakeTraceLoggerData(std::string_view trace_namespace);
+std::shared_ptr<LoggerData> MakeLoggerData();
 
 std::string makeQualifiedChannelKey(std::string_view trace_namespace,
                                     std::string_view channel);
@@ -71,11 +72,20 @@ bool isSelectorIdentifier(std::string_view token);
 bool isValidChannelPath(std::string_view channel);
 int splitChannelPath(std::string_view channel, std::array<std::string_view, 3>& out);
 bool matchesSelectorSegment(const std::string& pattern, std::string_view value);
+void emitLine(LoggerData& logger_data, std::string_view prefix, std::string_view message);
 
 void addChannelSpecOrThrow(TraceLoggerData& data,
                            std::string_view channel,
                            ColorId color);
 void mergeTraceLoggerOrThrow(LoggerData& logger_data, const TraceLoggerData& trace_logger);
+void retainTraceLogger(LoggerData& logger_data, const std::shared_ptr<TraceLoggerData>& trace_logger);
+void ensureTraceLoggerCanAttach(const TraceLoggerData& trace_logger,
+                                const std::shared_ptr<LoggerData>& logger_data);
+void attachTraceLoggerOrThrow(TraceLoggerData& trace_logger,
+                              const std::shared_ptr<LoggerData>& logger_data);
+std::shared_ptr<LoggerData> getAttachedLogger(const TraceLoggerData& trace_logger);
+std::string makeTraceChangedSiteKey(std::string_view channel,
+                                    const std::source_location& source_location);
 
 std::vector<std::string> getNamespaces(const LoggerData& logger_data);
 std::vector<std::string> getChannels(const LoggerData& logger_data,

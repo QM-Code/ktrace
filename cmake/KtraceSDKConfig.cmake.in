@@ -3,7 +3,7 @@
 include(CMakeFindDependencyMacro)
 find_dependency(KcliSDK CONFIG REQUIRED)
 
-include("${CMAKE_CURRENT_LIST_DIR}/KTraceSDKTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/KtraceSDKTargets.cmake")
 
 if(NOT TARGET ktrace::sdk)
     if(TARGET ktrace::sdk_shared)
@@ -19,4 +19,4 @@ if(NOT TARGET ktrace::sdk)
     endif()
 endif()
 
-check_required_components(KTraceSDK)
+check_required_components(KtraceSDK)

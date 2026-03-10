@@ -1,6 +1,6 @@
 # Omega Demo
 
-Full-featured trace showcase for KTraceSDK plus the demo SDKs.
+Full-featured trace showcase for KtraceSDK plus the demo SDKs.
 
 This demo exercises the full rewritten API:
 - local executable channels plus imported SDK `TraceLogger`s

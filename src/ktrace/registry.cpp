@@ -134,6 +134,19 @@ void mergeTraceLoggerOrThrow(LoggerData& logger_data, const TraceLoggerData& tra
     }
 }
 
+void retainTraceLogger(LoggerData& logger_data, const std::shared_ptr<TraceLoggerData>& trace_logger) {
+    std::lock_guard<std::mutex> lock(logger_data.registry_mutex);
+    const auto already_retained =
+        std::find_if(logger_data.attached_trace_loggers.begin(),
+                     logger_data.attached_trace_loggers.end(),
+                     [&trace_logger](const std::shared_ptr<TraceLoggerData>& candidate) {
+                         return candidate.get() == trace_logger.get();
+                     }) != logger_data.attached_trace_loggers.end();
+    if (!already_retained) {
+        logger_data.attached_trace_loggers.push_back(trace_logger);
+    }
+}
+
 std::vector<std::string> getNamespaces(const LoggerData& logger_data) {
     std::vector<std::string> namespaces;
     {
@@ -145,11 +158,7 @@ std::vector<std::string> getNamespaces(const LoggerData& logger_data) {
             }
         }
     }
-
     std::sort(namespaces.begin(), namespaces.end());
-    KTRACE("registry",
-           "querying registry (enable registry.query for details): {} namespace(s)",
-           namespaces.size());
     return namespaces;
 }
 
@@ -169,12 +178,7 @@ std::vector<std::string> getChannels(const LoggerData& logger_data,
         }
         channels = it->second;
     }
-
     std::sort(channels.begin(), channels.end());
-    KTRACE("registry.query",
-           "returned {} channel(s) for namespace '{}'",
-           channels.size(),
-           trace_namespace_name);
     return channels;
 }
 

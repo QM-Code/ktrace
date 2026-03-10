@@ -1,9 +1,5 @@
 #pragma once
 
-#ifndef KTRACE_NAMESPACE
-#error "KTRACE_NAMESPACE must be defined for trace logging."
-#endif
-
 #include <kcli.hpp>
 
 #include <cstdint>
@@ -98,44 +94,55 @@ std::string FormatMessage(std::string_view format_text, Args&&... args) {
     return FormatMessagePacked(format_text, formatted_args);
 }
 
-bool ShouldTraceActive(std::string_view trace_namespace, std::string_view channel);
-void TraceActive(std::string_view trace_namespace,
-                 std::string_view channel,
-                 std::string_view source_file,
-                 int source_line,
-                 std::string_view function_name,
-                 std::string_view message);
-void LogActive(std::string_view trace_namespace,
-               LogSeverity severity,
-               std::string_view source_file,
-               int source_line,
-               std::string_view function_name,
-               std::string_view message);
-
 } // namespace detail
 
 class TraceLogger {
 public:
-    TraceLogger();
-
-    TraceLogger(const TraceLogger& other);
-    TraceLogger& operator=(const TraceLogger& other);
-    TraceLogger(TraceLogger&& other) noexcept;
-    TraceLogger& operator=(TraceLogger&& other) noexcept;
-    ~TraceLogger();
-
-    void addChannel(std::string_view channel, ColorId color = kDefaultColor);
-
-private:
     explicit TraceLogger(std::string_view trace_namespace);
 
-    std::unique_ptr<detail::TraceLoggerData> data_;
+    TraceLogger(const TraceLogger&) = default;
+    TraceLogger& operator=(const TraceLogger&) = default;
+    TraceLogger(TraceLogger&&) noexcept = default;
+    TraceLogger& operator=(TraceLogger&&) noexcept = default;
+    ~TraceLogger() = default;
+
+    void addChannel(std::string_view channel, ColorId color = kDefaultColor);
+    const std::string& getNamespace() const;
+    bool shouldTraceChannel(std::string_view channel) const;
+
+    template <typename... Args>
+    void trace(std::string_view channel, detail::TextWithSource format_text, Args&&... args) const;
+
+    template <typename Key, typename... Args>
+    void traceChanged(std::string_view channel,
+                      Key&& key_expr,
+                      detail::TextWithSource format_text,
+                      Args&&... args) const;
+
+    template <typename... Args>
+    void info(detail::TextWithSource format_text, Args&&... args) const;
+
+    template <typename... Args>
+    void warn(detail::TextWithSource format_text, Args&&... args) const;
+
+    template <typename... Args>
+    void error(detail::TextWithSource format_text, Args&&... args) const;
+
+private:
+    std::shared_ptr<detail::TraceLoggerData> data_;
+
+    void traceFormatted(std::string_view channel,
+                        const std::source_location& source_location,
+                        std::string message) const;
+    bool updateChangedKey(std::string_view channel,
+                          const std::source_location& source_location,
+                          std::string key) const;
+    void logFormatted(detail::LogSeverity severity,
+                      const std::source_location& source_location,
+                      std::string message) const;
 
     friend class Logger;
 };
-
-inline TraceLogger::TraceLogger()
-    : TraceLogger(KTRACE_NAMESPACE) {}
 
 class Logger {
 public:
@@ -144,29 +151,41 @@ public:
     Logger& operator=(const Logger&) = delete;
     Logger(Logger&&) = delete;
     Logger& operator=(Logger&&) = delete;
-    ~Logger();
+    ~Logger() = default;
 
     void addTraceLogger(const TraceLogger& logger);
-    void activate();
 
     void enableChannel(std::string_view qualified_channel,
-                       std::string_view local_namespace = KTRACE_NAMESPACE);
+                       std::string_view local_namespace = {});
+    void enableChannel(const TraceLogger& local_trace_logger,
+                       std::string_view qualified_channel);
     void enableChannels(std::string_view selectors_csv,
-                        std::string_view local_namespace = KTRACE_NAMESPACE);
+                        std::string_view local_namespace = {});
+    void enableChannels(const TraceLogger& local_trace_logger,
+                        std::string_view selectors_csv);
     bool shouldTraceChannel(std::string_view qualified_channel,
-                            std::string_view local_namespace = KTRACE_NAMESPACE) const;
+                            std::string_view local_namespace = {}) const;
+    bool shouldTraceChannel(const TraceLogger& local_trace_logger,
+                            std::string_view qualified_channel) const;
     void disableChannel(std::string_view qualified_channel,
-                        std::string_view local_namespace = KTRACE_NAMESPACE);
+                        std::string_view local_namespace = {});
+    void disableChannel(const TraceLogger& local_trace_logger,
+                        std::string_view qualified_channel);
     void disableChannels(std::string_view selectors_csv,
-                         std::string_view local_namespace = KTRACE_NAMESPACE);
+                         std::string_view local_namespace = {});
+    void disableChannels(const TraceLogger& local_trace_logger,
+                         std::string_view selectors_csv);
 
     void setOutputOptions(const OutputOptions& options);
     OutputOptions getOutputOptions() const;
     std::vector<std::string> getNamespaces() const;
     std::vector<std::string> getChannels(std::string_view trace_namespace) const;
+    kcli::InlineParser makeInlineParser(const TraceLogger& local_trace_logger,
+                                        std::string_view trace_root = "trace");
 
 private:
-    std::unique_ptr<detail::LoggerData> data_;
+    std::shared_ptr<detail::LoggerData> data_;
+    TraceLogger internal_trace_;
 
     bool shouldTrace(std::string_view trace_namespace, std::string_view channel) const;
     void trace(std::string_view trace_namespace,
@@ -181,99 +200,82 @@ private:
              int source_line,
              std::string_view function_name,
              std::string_view message) const;
-
-    friend bool detail::ShouldTraceActive(std::string_view trace_namespace, std::string_view channel);
-    friend void detail::TraceActive(std::string_view trace_namespace,
-                                    std::string_view channel,
-                                    std::string_view source_file,
-                                    int source_line,
-                                    std::string_view function_name,
-                                    std::string_view message);
-    friend void detail::LogActive(std::string_view trace_namespace,
-                                  detail::LogSeverity severity,
-                                  std::string_view source_file,
-                                  int source_line,
-                                  std::string_view function_name,
-                                  std::string_view message);
 };
 
-kcli::InlineParser GetInlineParser(std::string_view trace_root,
-                                   std::string_view local_namespace);
-inline kcli::InlineParser GetInlineParser(std::string_view trace_root = "trace") {
-    return GetInlineParser(trace_root, KTRACE_NAMESPACE);
+template <typename... Args>
+inline void TraceLogger::trace(std::string_view channel,
+                               detail::TextWithSource format_text,
+                               Args&&... args) const {
+    traceFormatted(channel,
+                   format_text.source_location,
+                   ::ktrace::detail::FormatMessage(format_text.text,
+                                                   std::forward<Args>(args)...));
 }
 
-#define KTRACE(channel, format_text, ...)                                         \
-    do {                                                                          \
-        auto&& ktrace_channel_expr_ = (channel);                                  \
-        if (::ktrace::detail::ShouldTraceActive(KTRACE_NAMESPACE,                 \
-                                                ktrace_channel_expr_)) {          \
-            ::ktrace::detail::TraceActive(KTRACE_NAMESPACE,                       \
-                                          ktrace_channel_expr_,                   \
-                                          __FILE__,                               \
-                                          __LINE__,                               \
-                                          __func__,                               \
-                                          ::ktrace::detail::FormatMessage((format_text), ##__VA_ARGS__)); \
-        }                                                                         \
-    } while (0)
+template <typename Key, typename... Args>
+inline void TraceLogger::traceChanged(std::string_view channel,
+                                      Key&& key_expr,
+                                      detail::TextWithSource format_text,
+                                      Args&&... args) const {
+    if (!updateChangedKey(channel,
+                          format_text.source_location,
+                          ::ktrace::detail::FormatArgument(std::forward<Key>(key_expr)))) {
+        return;
+    }
 
-#define KTRACE_CHANGED(channel, key_expr, format_text, ...)                       \
-    do {                                                                          \
-        auto&& ktrace_channel_expr_ = (channel);                                  \
-        static std::string last_key;                                              \
-        static std::mutex last_key_mutex;                                         \
-        std::string next_key = (key_expr);                                        \
-        bool key_changed = false;                                                 \
-        {                                                                         \
-            std::lock_guard<std::mutex> lock(last_key_mutex);                     \
-            if (next_key != last_key) {                                           \
-                last_key = std::move(next_key);                                   \
-                key_changed = true;                                               \
-            }                                                                     \
-        }                                                                         \
-        if (key_changed &&                                                        \
-            ::ktrace::detail::ShouldTraceActive(KTRACE_NAMESPACE,                 \
-                                                ktrace_channel_expr_)) {          \
-            ::ktrace::detail::TraceActive(KTRACE_NAMESPACE,                       \
-                                          ktrace_channel_expr_,                   \
-                                          __FILE__,                               \
-                                          __LINE__,                               \
-                                          __func__,                               \
-                                          ::ktrace::detail::FormatMessage((format_text), ##__VA_ARGS__)); \
-        }                                                                         \
-    } while (0)
-
-template <typename... Args>
-inline void Info(detail::TextWithSource format_text, Args&&... args) {
-    ::ktrace::detail::LogActive(
-        KTRACE_NAMESPACE,
-        ::ktrace::detail::LogSeverity::info,
-        format_text.source_location.file_name(),
-        static_cast<int>(format_text.source_location.line()),
-        format_text.source_location.function_name(),
-        ::ktrace::detail::FormatMessage(format_text.text, std::forward<Args>(args)...));
+    traceFormatted(channel,
+                   format_text.source_location,
+                   ::ktrace::detail::FormatMessage(format_text.text,
+                                                   std::forward<Args>(args)...));
 }
 
 template <typename... Args>
-inline void Warn(detail::TextWithSource format_text, Args&&... args) {
-    ::ktrace::detail::LogActive(
-        KTRACE_NAMESPACE,
-        ::ktrace::detail::LogSeverity::warning,
-        format_text.source_location.file_name(),
-        static_cast<int>(format_text.source_location.line()),
-        format_text.source_location.function_name(),
-        ::ktrace::detail::FormatMessage(format_text.text, std::forward<Args>(args)...));
+inline void TraceLogger::info(detail::TextWithSource format_text, Args&&... args) const {
+    logFormatted(::ktrace::detail::LogSeverity::info,
+                 format_text.source_location,
+                 ::ktrace::detail::FormatMessage(format_text.text,
+                                                 std::forward<Args>(args)...));
 }
 
 template <typename... Args>
-inline void Error(detail::TextWithSource format_text, Args&&... args) {
-    ::ktrace::detail::LogActive(
-        KTRACE_NAMESPACE,
-        ::ktrace::detail::LogSeverity::error,
-        format_text.source_location.file_name(),
-        static_cast<int>(format_text.source_location.line()),
-        format_text.source_location.function_name(),
-        ::ktrace::detail::FormatMessage(format_text.text, std::forward<Args>(args)...));
+inline void TraceLogger::warn(detail::TextWithSource format_text, Args&&... args) const {
+    logFormatted(::ktrace::detail::LogSeverity::warning,
+                 format_text.source_location,
+                 ::ktrace::detail::FormatMessage(format_text.text,
+                                                 std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+inline void TraceLogger::error(detail::TextWithSource format_text, Args&&... args) const {
+    logFormatted(::ktrace::detail::LogSeverity::error,
+                 format_text.source_location,
+                 ::ktrace::detail::FormatMessage(format_text.text,
+                                                 std::forward<Args>(args)...));
+}
+
+inline void Logger::enableChannel(const TraceLogger& local_trace_logger,
+                                  std::string_view qualified_channel) {
+    enableChannel(qualified_channel, local_trace_logger.getNamespace());
+}
+
+inline void Logger::enableChannels(const TraceLogger& local_trace_logger,
+                                   std::string_view selectors_csv) {
+    enableChannels(selectors_csv, local_trace_logger.getNamespace());
+}
+
+inline bool Logger::shouldTraceChannel(const TraceLogger& local_trace_logger,
+                                       std::string_view qualified_channel) const {
+    return shouldTraceChannel(qualified_channel, local_trace_logger.getNamespace());
+}
+
+inline void Logger::disableChannel(const TraceLogger& local_trace_logger,
+                                   std::string_view qualified_channel) {
+    disableChannel(qualified_channel, local_trace_logger.getNamespace());
+}
+
+inline void Logger::disableChannels(const TraceLogger& local_trace_logger,
+                                    std::string_view selectors_csv) {
+    disableChannels(selectors_csv, local_trace_logger.getNamespace());
 }
 
 } // namespace ktrace

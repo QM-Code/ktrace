@@ -4,30 +4,50 @@
 
 #include <algorithm>
 #include <cctype>
-#include <stdexcept>
-
-namespace {
-
-std::atomic<ktrace::Logger*> g_active_logger{nullptr};
-
-} // namespace
 
 namespace ktrace::detail {
 
-Logger* GetActiveLogger() {
-    return g_active_logger.load(std::memory_order_acquire);
-}
-
-Logger& RequireActiveLogger() {
-    Logger* logger = GetActiveLogger();
-    if (logger == nullptr) {
-        throw std::runtime_error("activate a ktrace::Logger before using trace runtime APIs");
+void ensureTraceLoggerCanAttach(const TraceLoggerData& trace_logger,
+                                const std::shared_ptr<LoggerData>& logger_data) {
+    std::lock_guard<std::mutex> lock(trace_logger.attached_logger_mutex);
+    if (const auto attached = trace_logger.attached_logger.lock()) {
+        if (attached.get() != logger_data.get()) {
+            throw std::invalid_argument("trace logger is already attached to another logger");
+        }
     }
-    return *logger;
 }
 
-void SetActiveLogger(Logger* logger) {
-    g_active_logger.store(logger, std::memory_order_release);
+void attachTraceLoggerOrThrow(TraceLoggerData& trace_logger,
+                              const std::shared_ptr<LoggerData>& logger_data) {
+    std::lock_guard<std::mutex> lock(trace_logger.attached_logger_mutex);
+    if (const auto attached = trace_logger.attached_logger.lock()) {
+        if (attached.get() != logger_data.get()) {
+            throw std::invalid_argument("trace logger is already attached to another logger");
+        }
+    }
+    trace_logger.attached_logger = logger_data;
+}
+
+std::shared_ptr<LoggerData> getAttachedLogger(const TraceLoggerData& trace_logger) {
+    std::lock_guard<std::mutex> lock(trace_logger.attached_logger_mutex);
+    return trace_logger.attached_logger.lock();
+}
+
+std::string makeTraceChangedSiteKey(std::string_view channel,
+                                    const std::source_location& source_location) {
+    std::string key;
+    key.reserve(channel.size() + std::char_traits<char>::length(source_location.file_name()) +
+                std::char_traits<char>::length(source_location.function_name()) + 48);
+    key.append(source_location.file_name());
+    key.push_back(':');
+    key.append(std::to_string(source_location.line()));
+    key.push_back(':');
+    key.append(std::to_string(source_location.column()));
+    key.push_back(':');
+    key.append(source_location.function_name());
+    key.push_back(':');
+    key.append(channel);
+    return key;
 }
 
 std::string makeQualifiedChannelKey(std::string_view trace_namespace,

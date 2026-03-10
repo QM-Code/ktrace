@@ -11,7 +11,7 @@
     "minimum_version": "3.20",
     "tests": true,
     "sdk": {
-      "package_name": "KTraceSDK"
+      "package_name": "KtraceSDK"
     },
     "dependencies": {
       "KcliSDK": {

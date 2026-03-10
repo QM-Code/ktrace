@@ -29,7 +29,7 @@ function(ktools_apply_runtime_rpath target_name)
 endfunction()
 
 if(NOT TARGET ktrace::sdk_shared)
-    find_package(KTraceSDK CONFIG REQUIRED)
+    find_package(KtraceSDK CONFIG REQUIRED)
 endif()
 if(NOT TARGET alpha::sdk_shared)
     find_package(AlphaSDK CONFIG REQUIRED)
@@ -86,8 +86,6 @@ if(KTOOLS_DEMO_BUILD_SHARED)
         src/main.cpp
     )
 
-    target_compile_definitions(ktrace_demo_omega PRIVATE KTRACE_NAMESPACE="omega")
-
     target_link_libraries(ktrace_demo_omega PRIVATE
         ${_ktrace_demo_shared_sdk_dep}
         ${_ktrace_demo_shared_alpha_dep}
@@ -105,8 +103,6 @@ if(KTOOLS_DEMO_BUILD_STATIC)
     add_executable(ktrace_demo_omega_static
         src/main.cpp
     )
-
-    target_compile_definitions(ktrace_demo_omega_static PRIVATE KTRACE_NAMESPACE="omega")
 
     target_link_libraries(ktrace_demo_omega_static PRIVATE
         ${_ktrace_demo_static_sdk_dep}

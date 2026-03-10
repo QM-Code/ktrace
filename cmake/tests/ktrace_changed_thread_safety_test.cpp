@@ -7,12 +7,22 @@
 
 namespace {
 
+ktrace::TraceLogger GetTraceLogger() {
+    static ktrace::TraceLogger logger("tests");
+    static const bool initialized = []() {
+        logger.addChannel("changed");
+        return true;
+    }();
+    (void)initialized;
+    return logger;
+}
+
 std::string MakeChangeKey(const int thread_index, const int iteration) {
     return std::to_string(thread_index) + ":" + std::to_string(iteration & 1);
 }
 
 void EmitChangedTrace(const int thread_index, const int iteration) {
-    KTRACE_CHANGED("changed", MakeChangeKey(thread_index, iteration), "changed");
+    GetTraceLogger().traceChanged("changed", MakeChangeKey(thread_index, iteration), "changed");
 }
 
 } // namespace
@@ -20,6 +30,10 @@ void EmitChangedTrace(const int thread_index, const int iteration) {
 int main() {
     constexpr int kThreadCount = 8;
     constexpr int kIterationsPerThread = 20000;
+
+    ktrace::Logger logger;
+    logger.addTraceLogger(GetTraceLogger());
+    logger.enableChannel("tests.changed");
 
     std::atomic<int> ready_threads{0};
     std::atomic<bool> start{false};

@@ -219,8 +219,6 @@ std::vector<Selector> parseSelectorList(const std::string& list,
     std::string split_error;
     if (!splitByTopLevelCommas(list, selector_tokens, split_error)) {
         invalid_tokens.push_back(split_error);
-        KTRACE("selector", "parsing selectors failed (enable selector.parse for details)");
-        KTRACE("selector.parse", "failed to parse selector list '{}' ({})", list, split_error);
         return selectors;
     }
 
@@ -257,16 +255,6 @@ std::vector<Selector> parseSelectorList(const std::string& list,
         }
     }
 
-    KTRACE("selector",
-           "parsed selector list '{}' into {} selector(s), {} invalid token(s)",
-           list,
-           selectors.size(),
-           invalid_tokens.size());
-    KTRACE("selector.parse",
-           "parsed selector list '{}' into {} selector(s), {} invalid token(s)",
-           list,
-           selectors.size(),
-           invalid_tokens.size());
     return selectors;
 }
 

@@ -115,21 +115,22 @@ private:
 
 int main() {
     StdoutCapture capture;
-    ktrace::Logger trace_logger;
-    trace_logger.setOutputOptions({
+    ktrace::Logger logger;
+    ktrace::TraceLogger trace("tests");
+    logger.addTraceLogger(trace);
+    logger.setOutputOptions({
         .filenames = true,
         .line_numbers = true,
         .function_names = false,
         .timestamps = false,
     });
-    trace_logger.activate();
 
     const int info_line = __LINE__ + 1;
-    ktrace::Info("info message");
+    trace.info("info message");
     const int warn_line = __LINE__ + 1;
-    ktrace::Warn("warn value {}", 7);
+    trace.warn("warn value {}", 7);
     const int error_line = __LINE__ + 1;
-    ktrace::Error(std::string("error message"));
+    trace.error(std::string("error message"));
 
     const std::string text = capture.finish();
     ExpectStartsWith(text, "[tests] [info] ");

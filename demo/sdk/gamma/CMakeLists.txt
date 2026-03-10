@@ -29,7 +29,7 @@ function(ktools_apply_runtime_rpath target_name)
 endfunction()
 
 if(NOT TARGET ktrace::sdk_shared)
-    find_package(KTraceSDK CONFIG REQUIRED)
+    find_package(KtraceSDK CONFIG REQUIRED)
 endif()
 include(CMakePackageConfigHelpers)
 
@@ -51,8 +51,6 @@ if(KTOOLS_DEMO_BUILD_STATIC)
     )
     add_library(gamma::sdk_static ALIAS gamma_sdk_static)
 
-    target_compile_definitions(gamma_sdk_static PRIVATE KTRACE_NAMESPACE="gamma")
-
     target_include_directories(gamma_sdk_static
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -73,8 +71,6 @@ if(KTOOLS_DEMO_BUILD_SHARED)
         src/trace.cpp
     )
     add_library(gamma::sdk_shared ALIAS gamma_sdk_shared)
-
-    target_compile_definitions(gamma_sdk_shared PRIVATE KTRACE_NAMESPACE="gamma")
 
     target_include_directories(gamma_sdk_shared
         PUBLIC

@@ -136,28 +136,28 @@ void VerifyFormatMessage() {
 void VerifyPublicLoggingOutput() {
     StdoutCapture capture;
     ktrace::Logger logger;
-    logger.activate();
+    ktrace::TraceLogger trace("tests");
+    logger.addTraceLogger(trace);
 
-    ktrace::Warn("escaped {{}} {}", 7);
+    trace.warn("escaped {{}} {}", 7);
 
     const std::string text = capture.finish();
     ExpectContains(text, "escaped {} 7");
 }
 
-void VerifyTraceMacroOutput() {
+void VerifyTraceLoggerOutput() {
     StdoutCapture capture;
     ktrace::Logger logger;
 
-    ktrace::TraceLogger tracer;
+    ktrace::TraceLogger tracer("tests");
     tracer.addChannel("trace");
     logger.addTraceLogger(tracer);
     logger.enableChannel("tests.trace");
-    logger.activate();
 
-    KTRACE("trace", "macro {} {{ok}}", 42);
+    tracer.trace("trace", "member {} {{ok}}", 42);
 
     const std::string text = capture.finish();
-    ExpectContains(text, "macro 42 {ok}");
+    ExpectContains(text, "member 42 {ok}");
 }
 
 } // namespace
@@ -165,6 +165,6 @@ void VerifyTraceMacroOutput() {
 int main() {
     VerifyFormatMessage();
     VerifyPublicLoggingOutput();
-    VerifyTraceMacroOutput();
+    VerifyTraceLoggerOutput();
     return 0;
 }

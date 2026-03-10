@@ -117,6 +117,25 @@ std::string_view formatSourceLabel(std::string_view source_path) {
     return source_path;
 }
 
+std::string_view formatFunctionLabel(std::string_view function_name) {
+    const std::size_t paren = function_name.find('(');
+    if (paren != std::string_view::npos) {
+        function_name = function_name.substr(0, paren);
+    }
+
+    const std::size_t scope = function_name.rfind("::");
+    if (scope != std::string_view::npos) {
+        function_name.remove_prefix(scope + 2);
+    }
+
+    const std::size_t space = function_name.find_last_of(' ');
+    if (space != std::string_view::npos) {
+        function_name.remove_prefix(space + 1);
+    }
+
+    return function_name;
+}
+
 } // namespace
 
 namespace ktrace::detail {
@@ -198,9 +217,10 @@ std::string buildTraceMessagePrefix(const LoggerData& logger_data,
             out.push_back(':');
             out.append(std::to_string(source_line));
         }
-        if (function_names_enabled && !function_name.empty()) {
+        const std::string_view function_label = formatFunctionLabel(function_name);
+        if (function_names_enabled && !function_label.empty()) {
             out.push_back(':');
-            out.append(function_name.begin(), function_name.end());
+            out.append(function_label.begin(), function_label.end());
         }
         out.push_back(']');
         if (g_color_enabled) {
@@ -278,9 +298,10 @@ std::string buildLogMessagePrefix(const LoggerData& logger_data,
             out.push_back(':');
             out.append(std::to_string(source_line));
         }
-        if (function_names_enabled && !function_name.empty()) {
+        const std::string_view function_label = formatFunctionLabel(function_name);
+        if (function_names_enabled && !function_label.empty()) {
             out.push_back(':');
-            out.append(function_name.begin(), function_name.end());
+            out.append(function_label.begin(), function_label.end());
         }
         out.push_back(']');
         if (g_color_enabled) {

@@ -25,31 +25,26 @@ constexpr std::array<InternalChannelConfig, 8> kInternalChannels = {{
     {"registry.query", ktrace::kDefaultColor},
 }};
 
-ktrace::TraceLogger makeInternalTraceLogger() {
-    ktrace::TraceLogger logger;
+void configureInternalTraceLogger(ktrace::TraceLogger& logger) {
     for (const InternalChannelConfig& config : kInternalChannels) {
         logger.addChannel(config.channel, config.color);
     }
-    return logger;
 }
 
-void emitLine(ktrace::detail::LoggerData& logger_data,
-              std::string_view prefix,
-              std::string_view message) {
-    std::lock_guard<std::mutex> lock(logger_data.output_mutex);
-    std::fwrite(prefix.data(), 1, prefix.size(), stdout);
-    std::fwrite(" ", 1, 1, stdout);
-    std::fwrite(message.data(), 1, message.size(), stdout);
-    std::fwrite("\n", 1, 1, stdout);
-    std::fflush(stdout);
+std::string normalizeChannelOrThrow(const std::string_view channel) {
+    const std::string channel_name = ktrace::detail::trimWhitespace(std::string(channel));
+    if (!ktrace::detail::isValidChannelPath(channel_name)) {
+        throw std::invalid_argument("invalid trace channel '" + channel_name + "'");
+    }
+    return channel_name;
 }
 
 } // namespace
 
 namespace ktrace::detail {
 
-std::unique_ptr<TraceLoggerData> MakeTraceLoggerData(std::string_view trace_namespace) {
-    auto data = std::make_unique<TraceLoggerData>();
+std::shared_ptr<TraceLoggerData> MakeTraceLoggerData(std::string_view trace_namespace) {
+    auto data = std::make_shared<TraceLoggerData>();
     data->trace_namespace = trimWhitespace(std::string(trace_namespace));
     if (!isSelectorIdentifier(data->trace_namespace)) {
         throw std::invalid_argument("invalid trace namespace '" + data->trace_namespace + "'");
@@ -57,12 +52,17 @@ std::unique_ptr<TraceLoggerData> MakeTraceLoggerData(std::string_view trace_name
     return data;
 }
 
-TraceLoggerData CloneTraceLoggerData(const TraceLoggerData& data) {
-    return data;
+std::shared_ptr<LoggerData> MakeLoggerData() {
+    return std::make_shared<LoggerData>();
 }
 
-std::unique_ptr<LoggerData> MakeLoggerData() {
-    return std::make_unique<LoggerData>();
+void emitLine(LoggerData& logger_data, std::string_view prefix, std::string_view message) {
+    std::lock_guard<std::mutex> lock(logger_data.output_mutex);
+    std::fwrite(prefix.data(), 1, prefix.size(), stdout);
+    std::fwrite(" ", 1, 1, stdout);
+    std::fwrite(message.data(), 1, message.size(), stdout);
+    std::fwrite("\n", 1, 1, stdout);
+    std::fflush(stdout);
 }
 
 std::string FormatMessagePacked(std::string_view format_text,
@@ -140,59 +140,107 @@ ColorId Color(std::string_view color_name) {
     throw std::invalid_argument("unknown trace color '" + token + "'");
 }
 
-TraceLogger::TraceLogger(const TraceLogger& other)
-    : data_(std::make_unique<detail::TraceLoggerData>(detail::CloneTraceLoggerData(*other.data_))) {}
-
 TraceLogger::TraceLogger(std::string_view trace_namespace)
     : data_(detail::MakeTraceLoggerData(trace_namespace)) {}
-
-TraceLogger& TraceLogger::operator=(const TraceLogger& other) {
-    if (this == &other) {
-        return *this;
-    }
-
-    *data_ = detail::CloneTraceLoggerData(*other.data_);
-    return *this;
-}
-
-TraceLogger::TraceLogger(TraceLogger&& other) noexcept = default;
-
-TraceLogger& TraceLogger::operator=(TraceLogger&& other) noexcept = default;
-
-TraceLogger::~TraceLogger() = default;
 
 void TraceLogger::addChannel(std::string_view channel, ColorId color) {
     detail::addChannelSpecOrThrow(*data_, channel, color);
 }
 
-Logger::Logger()
-    : data_(detail::MakeLoggerData()) {
-    addTraceLogger(makeInternalTraceLogger());
+const std::string& TraceLogger::getNamespace() const {
+    return data_->trace_namespace;
 }
 
-Logger::~Logger() {
-    if (detail::GetActiveLogger() == this) {
-        detail::SetActiveLogger(nullptr);
+bool TraceLogger::shouldTraceChannel(std::string_view channel) const {
+    try {
+        const std::string channel_name = normalizeChannelOrThrow(channel);
+        if (const auto logger = detail::getAttachedLogger(*data_)) {
+            return detail::isTraceChannelEnabled(*logger, data_->trace_namespace, channel_name);
+        }
+    } catch (...) {
+        return false;
     }
+    return false;
+}
+
+void TraceLogger::traceFormatted(std::string_view channel,
+                                 const std::source_location& source_location,
+                                 std::string message) const {
+    const std::string channel_name = normalizeChannelOrThrow(channel);
+    const auto logger = detail::getAttachedLogger(*data_);
+    if (!logger) {
+        return;
+    }
+    if (!detail::isTraceChannelEnabled(*logger, data_->trace_namespace, channel_name)) {
+        return;
+    }
+
+    const auto prefix = detail::buildTraceMessagePrefix(
+        *logger,
+        data_->trace_namespace,
+        channel_name,
+        source_location.file_name(),
+        static_cast<int>(source_location.line()),
+        source_location.function_name());
+    detail::emitLine(*logger, prefix, message);
+}
+
+bool TraceLogger::updateChangedKey(std::string_view channel,
+                                   const std::source_location& source_location,
+                                   std::string key) const {
+    const std::string channel_name = normalizeChannelOrThrow(channel);
+    const std::string site_key = detail::makeTraceChangedSiteKey(channel_name, source_location);
+
+    std::lock_guard<std::mutex> lock(data_->changed_keys_mutex);
+    std::string& previous = data_->changed_keys[site_key];
+    if (key == previous) {
+        return false;
+    }
+    previous = std::move(key);
+    return true;
+}
+
+void TraceLogger::logFormatted(detail::LogSeverity severity,
+                               const std::source_location& source_location,
+                               std::string message) const {
+    const auto logger = detail::getAttachedLogger(*data_);
+    if (!logger) {
+        return;
+    }
+
+    const auto prefix = detail::buildLogMessagePrefix(
+        *logger,
+        data_->trace_namespace,
+        severity,
+        source_location.file_name(),
+        static_cast<int>(source_location.line()),
+        source_location.function_name());
+    detail::emitLine(*logger, prefix, message);
+}
+
+Logger::Logger()
+    : data_(detail::MakeLoggerData()),
+      internal_trace_("ktrace") {
+    configureInternalTraceLogger(internal_trace_);
+    addTraceLogger(internal_trace_);
 }
 
 void Logger::addTraceLogger(const TraceLogger& logger) {
+    detail::ensureTraceLoggerCanAttach(*logger.data_, data_);
     detail::mergeTraceLoggerOrThrow(*data_, *logger.data_);
-}
-
-void Logger::activate() {
-    detail::SetActiveLogger(this);
+    detail::retainTraceLogger(*data_, logger.data_);
+    detail::attachTraceLoggerOrThrow(*logger.data_, data_);
 }
 
 void Logger::setOutputOptions(const OutputOptions& options) {
     detail::setOutputOptions(*data_, options);
-    KTRACE("api", "updating output options (enable api.output for details)");
-    KTRACE("api.output",
-           "set output options: filenames={} line_numbers={} function_names={} timestamps={}",
-           getOutputOptions().filenames,
-           getOutputOptions().line_numbers,
-           getOutputOptions().function_names,
-           getOutputOptions().timestamps);
+    internal_trace_.trace("api", "updating output options (enable api.output for details)");
+    internal_trace_.trace("api.output",
+                          "set output options: filenames={} line_numbers={} function_names={} timestamps={}",
+                          getOutputOptions().filenames,
+                          getOutputOptions().line_numbers,
+                          getOutputOptions().function_names,
+                          getOutputOptions().timestamps);
 }
 
 OutputOptions Logger::getOutputOptions() const {
@@ -211,7 +259,7 @@ void Logger::trace(std::string_view trace_namespace,
                    std::string_view message) const {
     const auto prefix = detail::buildTraceMessagePrefix(
         *data_, trace_namespace, channel, source_file, source_line, function_name);
-    emitLine(*data_, prefix, message);
+    detail::emitLine(*data_, prefix, message);
 }
 
 void Logger::log(detail::LogSeverity severity,
@@ -222,7 +270,7 @@ void Logger::log(detail::LogSeverity severity,
                  std::string_view message) const {
     const auto prefix = detail::buildLogMessagePrefix(
         *data_, trace_namespace, severity, source_file, source_line, function_name);
-    emitLine(*data_, prefix, message);
+    detail::emitLine(*data_, prefix, message);
 }
 
 } // namespace ktrace

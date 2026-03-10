@@ -5,15 +5,20 @@
 namespace ktrace::demo::gamma {
 
 ktrace::TraceLogger GetTraceLogger() {
-    ktrace::TraceLogger logger;
-    logger.addChannel("physics", ktrace::Color("MediumOrchid1"));
-    logger.addChannel("metrics", ktrace::Color("LightSkyBlue1"));
+    static ktrace::TraceLogger logger("gamma");
+    static const bool initialized = []() {
+        logger.addChannel("physics", ktrace::Color("MediumOrchid1"));
+        logger.addChannel("metrics", ktrace::Color("LightSkyBlue1"));
+        return true;
+    }();
+    (void)initialized;
     return logger;
 }
 
 void TestTraceLoggingChannels() {
-    KTRACE("physics", "gamma trace test on channel 'physics'");
-    KTRACE("metrics", "gamma trace test on channel 'metrics'");
+    const ktrace::TraceLogger trace = GetTraceLogger();
+    trace.trace("physics", "gamma trace test on channel 'physics'");
+    trace.trace("metrics", "gamma trace test on channel 'metrics'");
 }
 
 } // namespace ktrace::demo::gamma

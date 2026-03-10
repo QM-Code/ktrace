@@ -132,7 +132,7 @@ void Logger::enableChannel(std::string_view qualified_channel, std::string_view 
     }
 
     enableChannelKeys(*data_, {resolution.key});
-    KTRACE("api.channels", "enabled channel '{}'", qualified);
+    internal_trace_.trace("api.channels", "enabled channel '{}'", qualified);
 }
 
 void Logger::enableChannels(std::string_view selectors_csv,
@@ -155,15 +155,16 @@ void Logger::enableChannels(std::string_view selectors_csv,
         }
     }
 
-    KTRACE("api",
-           "processing channels (enable api.channels for details): enabled {} channel(s), {} unmatched selector(s)",
-           resolution.channel_keys.size(),
-           resolution.unmatched_selectors.size());
-    KTRACE("api.channels",
-           "enabled {} channel(s) from '{}' ({} unmatched selector(s))",
-           resolution.channel_keys.size(),
-           selector_text,
-           resolution.unmatched_selectors.size());
+    internal_trace_.trace(
+        "api",
+        "processing channels (enable api.channels for details): enabled {} channel(s), {} unmatched selector(s)",
+        resolution.channel_keys.size(),
+        resolution.unmatched_selectors.size());
+    internal_trace_.trace("api.channels",
+                          "enabled {} channel(s) from '{}' ({} unmatched selector(s))",
+                          resolution.channel_keys.size(),
+                          selector_text,
+                          resolution.unmatched_selectors.size());
 }
 
 bool Logger::shouldTraceChannel(std::string_view qualified_channel,
@@ -203,7 +204,7 @@ void Logger::disableChannel(std::string_view qualified_channel, std::string_view
     }
 
     disableChannelKeys(*data_, {resolution.key});
-    KTRACE("api.channels", "disabled channel '{}'", qualified);
+    internal_trace_.trace("api.channels", "disabled channel '{}'", qualified);
 }
 
 void Logger::disableChannels(std::string_view selectors_csv,
@@ -226,15 +227,16 @@ void Logger::disableChannels(std::string_view selectors_csv,
         }
     }
 
-    KTRACE("api",
-           "processing channels (enable api.channels for details): disabled {} channel(s), {} unmatched selector(s)",
-           resolution.channel_keys.size(),
-           resolution.unmatched_selectors.size());
-    KTRACE("api.channels",
-           "disabled {} channel(s) from '{}' ({} unmatched selector(s))",
-           resolution.channel_keys.size(),
-           selector_text,
-           resolution.unmatched_selectors.size());
+    internal_trace_.trace(
+        "api",
+        "processing channels (enable api.channels for details): disabled {} channel(s), {} unmatched selector(s)",
+        resolution.channel_keys.size(),
+        resolution.unmatched_selectors.size());
+    internal_trace_.trace("api.channels",
+                          "disabled {} channel(s) from '{}' ({} unmatched selector(s))",
+                          resolution.channel_keys.size(),
+                          selector_text,
+                          resolution.unmatched_selectors.size());
 }
 
 } // namespace ktrace
