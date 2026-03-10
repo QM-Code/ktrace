@@ -50,7 +50,6 @@ if(KTRACE_BUILD_STATIC)
 
     target_link_libraries(ktrace_sdk_static PUBLIC
         ${_ktrace_kcli_static_dep}
-        spdlog::spdlog
     )
 
     # Internal trace macros require a compile-time namespace string.
@@ -77,7 +76,6 @@ if(KTRACE_BUILD_SHARED)
 
     target_link_libraries(ktrace_sdk_shared PUBLIC
         ${_ktrace_kcli_shared_dep}
-        spdlog::spdlog
     )
 
     # Internal trace macros require a compile-time namespace string.

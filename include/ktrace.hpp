@@ -9,10 +9,12 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <source_location>
-#include <spdlog/fmt/fmt.h>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -43,6 +45,9 @@ enum class LogSeverity {
     error,
 };
 
+template <typename>
+inline constexpr bool kAlwaysFalse = false;
+
 struct TextWithSource {
     std::string_view text;
     std::source_location source_location;
@@ -62,6 +67,36 @@ struct TextWithSource {
         const std::source_location& location = std::source_location::current())
         : text(format_text), source_location(location) {}
 };
+
+template <typename T>
+std::string FormatArgument(T&& value) {
+    std::ostringstream stream;
+    stream << std::boolalpha;
+
+    if constexpr (requires { stream << std::forward<T>(value); }) {
+        stream << std::forward<T>(value);
+    } else {
+        static_assert(kAlwaysFalse<T>, "ktrace format arguments must support stream insertion");
+    }
+
+    if (!stream) {
+        throw std::invalid_argument("failed to stringify trace format argument");
+    }
+    return stream.str();
+}
+
+std::string FormatMessagePacked(std::string_view format_text,
+                                const std::vector<std::string>& formatted_args);
+
+template <typename... Args>
+std::string FormatMessage(std::string_view format_text, Args&&... args) {
+    std::vector<std::string> formatted_args;
+    formatted_args.reserve(sizeof...(Args));
+    if constexpr (sizeof...(Args) > 0) {
+        (formatted_args.push_back(FormatArgument(std::forward<Args>(args))), ...);
+    }
+    return FormatMessagePacked(format_text, formatted_args);
+}
 
 bool ShouldTraceActive(std::string_view trace_namespace, std::string_view channel);
 void TraceActive(std::string_view trace_namespace,
@@ -178,7 +213,7 @@ inline kcli::InlineParser GetInlineParser(std::string_view trace_root = "trace")
                                           __FILE__,                               \
                                           __LINE__,                               \
                                           __func__,                               \
-                                          fmt::format((format_text), ##__VA_ARGS__)); \
+                                          ::ktrace::detail::FormatMessage((format_text), ##__VA_ARGS__)); \
         }                                                                         \
     } while (0)
 
@@ -204,7 +239,7 @@ inline kcli::InlineParser GetInlineParser(std::string_view trace_root = "trace")
                                           __FILE__,                               \
                                           __LINE__,                               \
                                           __func__,                               \
-                                          fmt::format((format_text), ##__VA_ARGS__)); \
+                                          ::ktrace::detail::FormatMessage((format_text), ##__VA_ARGS__)); \
         }                                                                         \
     } while (0)
 
@@ -216,7 +251,7 @@ inline void Info(detail::TextWithSource format_text, Args&&... args) {
         format_text.source_location.file_name(),
         static_cast<int>(format_text.source_location.line()),
         format_text.source_location.function_name(),
-        fmt::format(fmt::runtime(format_text.text), std::forward<Args>(args)...));
+        ::ktrace::detail::FormatMessage(format_text.text, std::forward<Args>(args)...));
 }
 
 template <typename... Args>
@@ -227,7 +262,7 @@ inline void Warn(detail::TextWithSource format_text, Args&&... args) {
         format_text.source_location.file_name(),
         static_cast<int>(format_text.source_location.line()),
         format_text.source_location.function_name(),
-        fmt::format(fmt::runtime(format_text.text), std::forward<Args>(args)...));
+        ::ktrace::detail::FormatMessage(format_text.text, std::forward<Args>(args)...));
 }
 
 template <typename... Args>
@@ -238,7 +273,7 @@ inline void Error(detail::TextWithSource format_text, Args&&... args) {
         format_text.source_location.file_name(),
         static_cast<int>(format_text.source_location.line()),
         format_text.source_location.function_name(),
-        fmt::format(fmt::runtime(format_text.text), std::forward<Args>(args)...));
+        ::ktrace::detail::FormatMessage(format_text.text, std::forward<Args>(args)...));
 }
 
 } // namespace ktrace

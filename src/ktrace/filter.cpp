@@ -126,8 +126,8 @@ void Logger::enableChannel(std::string_view qualified_channel, std::string_view 
             location.file_name(),
             static_cast<int>(location.line()),
             location.function_name(),
-            fmt::format("enable ignored channel '{}' because it is not registered",
-                        resolution.key));
+            detail::FormatMessage("enable ignored channel '{}' because it is not registered",
+                                  resolution.key));
         return;
     }
 
@@ -149,7 +149,7 @@ void Logger::enableChannels(std::string_view selectors_csv,
                 location.file_name(),
                 static_cast<int>(location.line()),
                 location.function_name(),
-                fmt::format(
+                detail::FormatMessage(
                     "enable ignored channel selector '{}' because it matched no registered channels",
                     selector));
         }
@@ -197,8 +197,8 @@ void Logger::disableChannel(std::string_view qualified_channel, std::string_view
             location.file_name(),
             static_cast<int>(location.line()),
             location.function_name(),
-            fmt::format("disable ignored channel '{}' because it is not registered",
-                        resolution.key));
+            detail::FormatMessage("disable ignored channel '{}' because it is not registered",
+                                  resolution.key));
         return;
     }
 
@@ -220,7 +220,7 @@ void Logger::disableChannels(std::string_view selectors_csv,
                 location.file_name(),
                 static_cast<int>(location.line()),
                 location.function_name(),
-                fmt::format(
+                detail::FormatMessage(
                     "disable ignored channel selector '{}' because it matched no registered channels",
                     selector));
         }

@@ -45,3 +45,19 @@ add_test(
     COMMAND ktrace_log_api_test
 )
 set_tests_properties(ktrace_log_api PROPERTIES TIMEOUT 30)
+
+add_executable(ktrace_format_api_test
+    ktrace_format_api_test.cpp
+)
+
+target_compile_definitions(ktrace_format_api_test PRIVATE KTRACE_NAMESPACE="tests")
+
+target_link_libraries(ktrace_format_api_test PRIVATE
+    ktrace::sdk
+)
+
+add_test(
+    NAME ktrace_format_api
+    COMMAND ktrace_format_api_test
+)
+set_tests_properties(ktrace_format_api PROPERTIES TIMEOUT 30)

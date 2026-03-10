@@ -65,6 +65,57 @@ std::unique_ptr<LoggerData> MakeLoggerData() {
     return std::make_unique<LoggerData>();
 }
 
+std::string FormatMessagePacked(std::string_view format_text,
+                                const std::vector<std::string>& formatted_args) {
+    std::string out;
+    out.reserve(format_text.size());
+
+    std::size_t arg_index = 0;
+    for (std::size_t i = 0; i < format_text.size(); ++i) {
+        const char ch = format_text[i];
+        if (ch == '{') {
+            if (i + 1 >= format_text.size()) {
+                throw std::invalid_argument("unterminated '{' in trace format string");
+            }
+
+            const char next = format_text[i + 1];
+            if (next == '{') {
+                out.push_back('{');
+                ++i;
+                continue;
+            }
+            if (next == '}') {
+                if (arg_index >= formatted_args.size()) {
+                    throw std::invalid_argument("not enough arguments for trace format string");
+                }
+                out.append(formatted_args[arg_index++]);
+                ++i;
+                continue;
+            }
+
+            throw std::invalid_argument("unsupported trace format token");
+        }
+
+        if (ch == '}') {
+            if (i + 1 < format_text.size() && format_text[i + 1] == '}') {
+                out.push_back('}');
+                ++i;
+                continue;
+            }
+
+            throw std::invalid_argument("unmatched '}' in trace format string");
+        }
+
+        out.push_back(ch);
+    }
+
+    if (arg_index != formatted_args.size()) {
+        throw std::invalid_argument("too many arguments for trace format string");
+    }
+
+    return out;
+}
+
 } // namespace ktrace::detail
 
 namespace ktrace {

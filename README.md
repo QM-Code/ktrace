@@ -137,6 +137,9 @@ Always-visible operational logging:
 Operational logging is independent of channel enablement. It is still
 namespaced and uses the same formatting options as trace output.
 
+Message formatting supports sequential `{}` placeholders and escaped braces
+`{{` and `}}`.
+
 ## Channel Expression Forms
 
 Single-selector APIs on `ktrace::Logger`:
