@@ -6,6 +6,7 @@ import sys
 
 
 LOCAL_CONFIG_FILENAME = ".kbuild.json"
+AUTO_ROOT_TOKENS = ("./kbuild", "../kbuild", ".")
 
 
 def fail(message: str, *, exit_code: int = 2) -> None:
@@ -65,9 +66,58 @@ def _write_local_root(repo_root: str, root_token: str) -> None:
     _write_json_object(local_path, payload)
 
 
+def _is_valid_kbuild_root(root_abs: str) -> bool:
+    package_init = os.path.join(root_abs, "libs", "kbuild", "__init__.py")
+    return os.path.isfile(package_init)
+
+
+def _normalize_root_token(repo_root: str, root_abs: str) -> str:
+    rel_token = os.path.relpath(root_abs, repo_root).replace(os.sep, "/")
+    if rel_token == ".":
+        return "."
+    if not rel_token.startswith("."):
+        rel_token = f"./{rel_token}"
+    return rel_token
+
+
+def _auto_detect_root_token(repo_root: str) -> str | None:
+    resolved_roots: dict[str, str] = {}
+    for root_token in AUTO_ROOT_TOKENS:
+        try:
+            root_abs = resolve_root(repo_root, root_token)
+        except ValueError:
+            continue
+        if not _is_valid_kbuild_root(root_abs):
+            continue
+        resolved_roots.setdefault(os.path.normcase(os.path.realpath(root_abs)), root_abs)
+
+    if not resolved_roots:
+        return None
+
+    if len(resolved_roots) > 1:
+        found_roots = ", ".join(
+            json.dumps(_normalize_root_token(repo_root, root_abs))
+            for root_abs in resolved_roots.values()
+        )
+        fail(
+            "could not auto-bootstrap ./.kbuild.json because multiple kbuild roots were detected.\n"
+            f"Detected roots: {found_roots}\n"
+            "Run './kbuild.py --kbuild-root <path>' to choose one explicitly."
+        )
+
+    root_abs = next(iter(resolved_roots.values()))
+    root_token = _normalize_root_token(repo_root, root_abs)
+    _write_local_root(repo_root, root_token)
+    print(f"Auto-detected ./.kbuild.json with kbuild.root='{root_token}'", flush=True)
+    return root_token
+
+
 def load_config_root_token(repo_root: str) -> str:
     local_path = os.path.join(repo_root, LOCAL_CONFIG_FILENAME)
     if not os.path.isfile(local_path):
+        root_token = _auto_detect_root_token(repo_root)
+        if root_token is not None:
+            return root_token
         fail(
             "missing required local config file './.kbuild.json'.\n"
             "Run './kbuild.py --kbuild-root <path>' first."
